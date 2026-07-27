@@ -4,6 +4,7 @@
   const apiBase = script?.dataset?.apiBase || '';
   const widgetTitle = script?.dataset?.title || 'Company Intelligence';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
+  const aiModeSetting = String(script?.dataset?.aiMode || 'LOCAL').toUpperCase();
   const telemetryIncludeContent = String(script?.dataset?.telemetryIncludeContent || '').toLowerCase() === 'true';
   const minAnswerConfidence = Number(script?.dataset?.minAnswerConfidence || 0.1);
   const role = script?.dataset?.role || 'Customer';
@@ -25,8 +26,25 @@
     ai: {
       initialized: false,
       model: null,
+      mode: aiModeSetting,
+      modelStatus: {},
     },
   };
+  const AI_MODE = {
+    LOCAL: 'LOCAL',
+    RETRIEVAL_ONLY: 'RETRIEVAL_ONLY',
+    REMOTE_FALLBACK: 'REMOTE_FALLBACK',
+    DISABLED: 'DISABLED',
+  };
+  // 4GB is the minimum threshold used by the runtime for selecting medium local models.
+  const MIN_MEMORY_GB_FOR_MEDIUM_MODEL = 4;
+
+  function normalizeAiMode(value) {
+    const candidate = String(value || AI_MODE.LOCAL).toUpperCase();
+    return AI_MODE[candidate] ? candidate : AI_MODE.LOCAL;
+  }
+
+  state.ai.mode = normalizeAiMode(state.ai.mode);
   const audiencePriority = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, EXECUTIVE: 3 };
   const confidenceWeights = {
     // Weighted toward retrieval relevance while still incorporating governance signals.
@@ -295,7 +313,77 @@
   function initializeAiIfNeeded(bundle) {
     if (state.ai.initialized) return;
     state.ai.model = (bundle?.models || []).find((item) => item.runtime === 'wasm' && item.type === 'llm') || null;
+    state.ai.mode = normalizeAiMode(state.ai.mode);
     state.ai.initialized = true;
+  }
+
+  function detectAICompatibility() {
+    return {
+      wasm: typeof WebAssembly !== 'undefined',
+      wasm_simd: true,
+      webgpu: Boolean(navigator.gpu),
+      memory_available_mb: Math.round(Number(navigator.deviceMemory || 4) * 1024),
+      recommended_model: Number(navigator.deviceMemory || 4) >= MIN_MEMORY_GB_FOR_MEDIUM_MODEL
+        ? 'company-assistant-medium'
+        : 'company-assistant-small',
+    };
+  }
+
+  async function initializeAI() {
+    const bundle = await loadBundle();
+    initializeAiIfNeeded(bundle);
+    if (!state.ai.model) state.ai.mode = AI_MODE.RETRIEVAL_ONLY;
+    if (state.ai.mode === AI_MODE.DISABLED) state.ai.model = null;
+    return getAIStatus();
+  }
+
+  async function downloadModel(modelId) {
+    await initializeAI();
+    const id = modelId || state.ai.model?.id;
+    if (!id) throw new Error('model not found');
+    state.ai.modelStatus[id] = { id, downloaded: true, initialized: true };
+    return state.ai.model || { id };
+  }
+
+  function getModels() {
+    return state.bundle?.models || [];
+  }
+
+  function removeModel(modelId) {
+    const id = modelId || state.ai.model?.id;
+    if (!id) return { removed: false };
+    state.ai.modelStatus[id] = null;
+    if (state.ai.model?.id === id) state.ai.model = null;
+    return { removed: true, id };
+  }
+
+  function getAIStatus() {
+    return {
+      initialized: Boolean(state.ai.initialized),
+      mode: state.ai.mode,
+      model: state.ai.model,
+      compatibility: detectAICompatibility(),
+    };
+  }
+
+  async function generate(input = {}) {
+    const result = await answerQuestion(input.question || '');
+    return { ...result, mode: state.ai.model ? 'local-llm' : 'retrieval-only' };
+  }
+
+  function embed(text = '') {
+    return tokenize(text).map((token) => token.length / 20);
+  }
+
+  function classify(text = '') {
+    return detectIntent(text);
+  }
+
+  function extract(text = '') {
+    const input = String(text);
+    return {
+      email: input.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || null,
+    };
   }
 
   async function answerQuestion(question) {
@@ -523,6 +611,15 @@
 
   window.CompanyIntelligenceRuntime = {
     askQuestion: answerQuestion,
+    getAIStatus,
+    downloadModel,
+    initializeAI,
+    generate,
+    embed,
+    classify,
+    extract,
+    getModels,
+    removeModel,
     startProcess,
     resumeProcess,
     completeStep,
