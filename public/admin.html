@@ -31,7 +31,7 @@
 
       h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
 
-      .shell { max-width: 1240px; margin: 0 auto; padding: 1.2rem 1rem 2.5rem; }
+      .shell { max-width: 1480px; margin: 0 auto; padding: 1.2rem 1.25rem 2.5rem; }
 
       .topbar {
         display: flex;
@@ -80,7 +80,7 @@
       .layout {
         margin-top: 1rem;
         display: grid;
-        grid-template-columns: 0.8fr 1.2fr;
+        grid-template-columns: 1fr;
         gap: 1rem;
       }
 
@@ -215,8 +215,7 @@
         </a>
         <nav class="topnav">
           <a href="/">Home</a>
-          <a href="/onboarding">Setup</a>
-          <a href="/access.html?next=%2Fadmin.html">Sign in</a>
+          <a href="/embed-test.html">Embed test</a>
         </nav>
         <div class="session-actions">
           <span id="authState" class="session-chip">Checking access...</span>
@@ -226,22 +225,11 @@
 
       <div class="layout">
         <section class="panel">
-          <h2>Simple Start</h2>
-          <p style="color: var(--muted);">Get to a working test quickly, then open advanced tools only if needed.</p>
-          <ul class="step-list">
-            <li><strong>Step 1. Test assistant</strong><span>Open the embed tester and ask a question using your onboarding data.</span></li>
-            <li><strong>Step 2. Connect website source</strong><span>Add your website in one form and test connectivity.</span></li>
-            <li><strong>Step 3. Add advanced data</strong><span>Only if needed, open advanced tools for bulk docs, compile, and analytics.</span></li>
-          </ul>
-        </section>
-
-        <section class="panel">
           <h1 style="font-size:1.65rem; margin-bottom: 0.55rem;">KnowledgeOS Dashboard</h1>
 
           <div class="card" style="margin-bottom: 0.8rem;">
             <h3 style="font-size:1rem;">Quick Test Flow</h3>
-            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">This is the fastest way to verify what you added during onboarding.</p>
-            <label>Tenant ID (from sign-in) <input id="quickTenantId" placeholder="acme" /></label>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">Run tests and manage your workspace from one place.</p>
             <div class="inline-actions">
               <button id="openEmbedTester" type="button" class="btn-primary">Test Assistant Now</button>
               <button id="refreshQuickStats" type="button" class="btn-ghost">Refresh quick stats</button>

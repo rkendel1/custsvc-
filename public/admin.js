@@ -67,30 +67,21 @@ async function refreshAccessStatus() {
   try {
     const status = await requestJson('/api/access/status');
     const tenantFromAuth = String(status?.authenticated_tenant_id || '').trim().toLowerCase();
-    const quickTenantInput = document.getElementById('quickTenantId');
     if (tenantFromAuth && tenantFromAuth !== adminTenantId) {
       adminTenantId = tenantFromAuth;
       localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
     }
-    if (quickTenantInput) {
-      if (tenantFromAuth) {
-        quickTenantInput.value = tenantFromAuth;
-        quickTenantInput.readOnly = true;
-      } else {
-        quickTenantInput.readOnly = false;
-      }
-    }
-    if (!status.password_required) {
-      setAuthState('Access: open', true);
+    if (tenantFromAuth) {
+      setAuthState(`Workspace: ${tenantFromAuth}`, true);
       return;
     }
-    if (status.authenticated) {
-      setAuthState('Access: signed in', true);
-    } else {
-      setAuthState('Access: signed out', false);
+    if (!status.password_required || status.authenticated) {
+      setAuthState('Workspace: ready', true);
+      return;
     }
+    setAuthState('Workspace session required', false);
   } catch (_error) {
-    setAuthState('Access status unavailable', false);
+    setAuthState('Workspace status unavailable', false);
   }
 }
 
@@ -520,16 +511,20 @@ function wireCompile() {
 }
 
 function resolveTenantForQuickActions() {
-  const quickTenantInput = document.getElementById('quickTenantId');
-  const inputTenant = String(quickTenantInput?.value || '').trim().toLowerCase();
   const fallbackTenant = String(adminTenantId || localStorage.getItem('knowledgeos_active_tenant_id') || '').trim().toLowerCase();
-  const tenantId = inputTenant || fallbackTenant;
-  if (quickTenantInput && tenantId) quickTenantInput.value = tenantId;
+  const tenantId = fallbackTenant;
   if (tenantId) {
     adminTenantId = tenantId;
     localStorage.setItem('knowledgeos_active_tenant_id', tenantId);
   }
   return tenantId;
+}
+
+function getTenantForDashboardActions() {
+  const tenantId = resolveTenantForQuickActions();
+  if (tenantId) return tenantId;
+  setQuickStatus('Workspace tenant is unavailable. Refresh this page to reconnect your session.');
+  return '';
 }
 
 function setQuickStatus(message) {
@@ -541,11 +536,8 @@ function setQuickStatus(message) {
 async function refreshQuickStats() {
   const docsChip = document.getElementById('quickDocsCount');
   const sourcesChip = document.getElementById('quickSourcesCount');
-  const tenantId = resolveTenantForQuickActions();
-  if (!tenantId) {
-    setQuickStatus('Enter a tenant id first.');
-    return;
-  }
+  const tenantId = getTenantForDashboardActions();
+  if (!tenantId) return;
 
   try {
     const [docs, sources] = await Promise.all([
@@ -565,24 +557,13 @@ async function refreshQuickStats() {
 }
 
 function wireQuickStart() {
-  const quickTenantInput = document.getElementById('quickTenantId');
   const openEmbedTesterBtn = document.getElementById('openEmbedTester');
   const refreshQuickStatsBtn = document.getElementById('refreshQuickStats');
   const toggleAdvancedBtn = document.getElementById('toggleAdvanced');
 
-  const initialTenant = String(adminTenantId || localStorage.getItem('knowledgeos_active_tenant_id') || '').trim().toLowerCase();
-  if (quickTenantInput && initialTenant) quickTenantInput.value = initialTenant;
-
-  quickTenantInput?.addEventListener('change', () => {
-    resolveTenantForQuickActions();
-  });
-
   openEmbedTesterBtn?.addEventListener('click', () => {
-    const tenantId = resolveTenantForQuickActions();
-    if (!tenantId) {
-      setQuickStatus('Enter a tenant id first.');
-      return;
-    }
+    const tenantId = getTenantForDashboardActions();
+    if (!tenantId) return;
     window.location.href = `/embed-test.html?tenant_id=${encodeURIComponent(tenantId)}`;
   });
 
@@ -654,6 +635,6 @@ async function bootstrapAdmin() {
 }
 
 bootstrapAdmin().catch((error) => {
-  setAuthState('Access status unavailable', false);
+  setAuthState('Workspace status unavailable', false);
   setPanelText('compileOutput', error.message || 'Failed to initialize admin console');
 });
