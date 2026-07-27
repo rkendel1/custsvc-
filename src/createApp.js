@@ -237,10 +237,12 @@ function createApp(options = {}) {
         documentCount: bundle.documentCount,
         knowledgeCount: bundle.knowledgeCount,
         chunkCount: bundle.chunkCount,
+        processCount: bundle.processCount || 0,
         relationships: bundle.relationships.length,
         contradictions: bundle.contradictions.length,
         duplicates: bundle.duplicates.length,
         review_schedule: bundle.review_schedule,
+        process_review: bundle.review?.processes || {},
         confidence: bundle.confidence,
       },
     });

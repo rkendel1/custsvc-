@@ -26,6 +26,20 @@ const SUPPORTED_RELATIONSHIPS = new Set([
   'DERIVED_FROM',
 ]);
 const DUPLICATE_SIMILARITY_THRESHOLD = 0.82;
+const PROCESS_STEP_TYPES = new Set([
+  'DECISION',
+  'APPROVAL',
+  'COLLECT_DATA',
+  'ASK_QUESTION',
+  'GENERATE_DOCUMENT',
+  'RUN_TOOL',
+  'UPLOAD_FILE',
+  'VERIFY',
+  'NOTIFY',
+  'WAIT',
+  'BRANCH',
+  'FINISH',
+]);
 
 function normalizeVisibility(visibility) {
   const value = String(visibility || 'INTERNAL').toUpperCase();
@@ -349,12 +363,202 @@ function calculateReviewSchedule(knowledge) {
   return { stale, dueNextWeek, orphaned };
 }
 
+function normalizeStepType(value) {
+  const normalized = String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
+  if (PROCESS_STEP_TYPES.has(normalized)) return normalized;
+  return 'COLLECT_DATA';
+}
+
+function normalizeProcessStep(step, index) {
+  const id = String(step?.id || `step-${index + 1}`);
+  const next = step?.next;
+  const nextSteps = Array.isArray(next)
+    ? next.map((item) => String(item || '').trim()).filter(Boolean)
+    : String(next || '').trim()
+      ? [String(next).trim()]
+      : [];
+  return {
+    id,
+    title: String(step?.title || `Step ${index + 1}`),
+    description: String(step?.description || ''),
+    type: normalizeStepType(step?.type),
+    actor: step?.actor || null,
+    required_role: step?.required_role || null,
+    required_capability: step?.required_capability || null,
+    expected_duration: Number(step?.expected_duration || 0),
+    automation: step?.automation || null,
+    validation: step?.validation || null,
+    next: nextSteps,
+    intentional_cycle: Boolean(step?.intentional_cycle),
+  };
+}
+
+function normalizeProcess(process, index) {
+  const id = String(process?.id || `process-${index + 1}`);
+  const steps = Array.isArray(process?.steps) ? process.steps.map(normalizeProcessStep) : [];
+  return {
+    id,
+    name: String(process?.name || `Process ${index + 1}`),
+    description: String(process?.description || ''),
+    purpose: String(process?.purpose || ''),
+    owner: process?.owner || null,
+    department: process?.department || null,
+    audience: normalizeAudience(process?.audience),
+    status: String(process?.status || 'DRAFT').toUpperCase(),
+    entry_conditions: parseList(process?.entry_conditions),
+    completion_conditions: parseList(process?.completion_conditions),
+    steps,
+    roles: parseList(process?.roles),
+    required_documents: parseList(process?.required_documents),
+    required_capabilities: parseList(process?.required_capabilities),
+    policies: parseList(process?.policies),
+    outputs: parseList(process?.outputs),
+    metrics: parseList(process?.metrics),
+  };
+}
+
+function buildProcessGraph(processes) {
+  const nodes = [];
+  const edges = [];
+  const adjacency = {};
+
+  for (const process of processes) {
+    for (const step of process.steps) {
+      const stepId = `${process.id}:${step.id}`;
+      nodes.push({ id: stepId, processId: process.id, stepId: step.id, type: step.type, title: step.title });
+      adjacency[stepId] = [];
+    }
+  }
+
+  for (const process of processes) {
+    const byStepId = new Set(process.steps.map((step) => step.id));
+    for (const step of process.steps) {
+      const source = `${process.id}:${step.id}`;
+      for (const next of step.next) {
+        if (!byStepId.has(next)) continue;
+        const target = `${process.id}:${next}`;
+        edges.push({ source, target, processId: process.id });
+        adjacency[source].push({ target, processId: process.id });
+      }
+    }
+  }
+
+  return { nodes, edges, adjacency };
+}
+
+function detectProcessCycles(process) {
+  const byId = new Map(process.steps.map((step) => [step.id, step]));
+  const visited = new Set();
+  const inStack = new Set();
+  const cycles = [];
+  function dfs(stepId, path = []) {
+    if (inStack.has(stepId)) {
+      cycles.push([...path, stepId]);
+      return;
+    }
+    if (visited.has(stepId)) return;
+    visited.add(stepId);
+    inStack.add(stepId);
+    const step = byId.get(stepId);
+    for (const next of step?.next || []) dfs(next, [...path, stepId]);
+    inStack.delete(stepId);
+  }
+  for (const step of process.steps) dfs(step.id);
+  return cycles;
+}
+
+function validateProcesses(processes, knowledge) {
+  const safeProcesses = Array.isArray(processes) ? processes.map(normalizeProcess) : [];
+  const byKnowledgeId = new Set((knowledge || []).map((item) => item.id));
+  const issues = {
+    dead_ends: [],
+    unreachable_steps: [],
+    branch_errors: [],
+    missing_approvals: [],
+    invalid_role_transitions: [],
+    orphaned_processes: [],
+    missing_capabilities: [],
+    invalid_links: [],
+    cycles: [],
+  };
+
+  for (const process of safeProcesses) {
+    if (!process.steps.length) {
+      issues.orphaned_processes.push({ processId: process.id });
+      continue;
+    }
+
+    const byStepId = new Map(process.steps.map((step) => [step.id, step]));
+    const roleSet = new Set(process.roles.map((role) => String(role)));
+    const capabilitySet = new Set(process.required_capabilities.map((capability) => String(capability)));
+
+    for (const step of process.steps) {
+      if (step.type !== 'FINISH' && step.next.length === 0) {
+        issues.dead_ends.push({ processId: process.id, stepId: step.id });
+      }
+      if ((step.type === 'DECISION' || step.type === 'BRANCH') && step.next.length < 2) {
+        issues.branch_errors.push({ processId: process.id, stepId: step.id });
+      }
+      if (step.type === 'APPROVAL' && !step.required_role) {
+        issues.missing_approvals.push({ processId: process.id, stepId: step.id });
+      }
+      if (step.required_role && roleSet.size && !roleSet.has(String(step.required_role))) {
+        issues.invalid_role_transitions.push({ processId: process.id, stepId: step.id, role: step.required_role });
+      }
+      if (
+        step.required_capability &&
+        capabilitySet.size &&
+        !capabilitySet.has(String(step.required_capability))
+      ) {
+        issues.missing_capabilities.push({
+          processId: process.id,
+          stepId: step.id,
+          capability: step.required_capability,
+        });
+      }
+      for (const next of step.next) {
+        if (!byStepId.has(next)) issues.dead_ends.push({ processId: process.id, stepId: step.id, target: next });
+      }
+    }
+
+    const start = process.steps[0];
+    const reachable = new Set();
+    const queue = [start.id];
+    while (queue.length) {
+      const currentId = queue.shift();
+      if (!currentId || reachable.has(currentId)) continue;
+      reachable.add(currentId);
+      const current = byStepId.get(currentId);
+      for (const next of current?.next || []) queue.push(next);
+    }
+    for (const step of process.steps) {
+      if (!reachable.has(step.id)) issues.unreachable_steps.push({ processId: process.id, stepId: step.id });
+    }
+
+    const cycles = detectProcessCycles(process);
+    for (const cycle of cycles) {
+      const intentional = cycle.some((stepId) => byStepId.get(stepId)?.intentional_cycle);
+      if (!intentional) issues.cycles.push({ processId: process.id, path: cycle });
+    }
+
+    for (const ref of [...process.required_documents, ...process.policies]) {
+      if (!byKnowledgeId.has(ref)) issues.invalid_links.push({ processId: process.id, knowledgeId: ref });
+    }
+  }
+
+  return issues;
+}
+
 function compileBundle(documents, options = {}) {
   const safeDocs = Array.isArray(documents) ? documents : [];
   const company = options.company || 'Acme';
+  const safeProcesses = Array.isArray(options.processes) ? options.processes : [];
   const knowledge = safeDocs.map(toKnowledgeObject);
   const chunks = knowledge.flatMap((item, index) => toChunks(item, index));
   const graph = buildGraph(knowledge);
+  const processes = safeProcesses.map(normalizeProcess);
+  const processGraph = buildProcessGraph(processes);
+  const processValidation = validateProcesses(processes, knowledge);
   const duplicates = detectDuplicates(knowledge);
   const contradictions = detectContradictions(knowledge);
   const reviewSchedule = calculateReviewSchedule(knowledge);
@@ -368,32 +572,63 @@ function compileBundle(documents, options = {}) {
     ? Number((knowledge.reduce((sum, item) => sum + item.confidence, 0) / knowledge.length).toFixed(3))
     : 0;
   const generatedAt = new Date().toISOString();
+  const roleViews = {};
+  for (const role of ROLES) {
+    roleViews[role] = {
+      knowledge: roleIndexes[role],
+      processes: processes
+        .filter((item) => !item.roles.length || item.roles.includes(role))
+        .map((item) => item.id),
+    };
+  }
+  const capabilitySet = new Set();
+  for (const process of processes) {
+    for (const capability of process.required_capabilities) capabilitySet.add(capability);
+  }
 
   return {
-    version: 2,
-    format: 'company.intelligence.bundle',
+    version: 3,
+    format: 'company.intelligence.bundle.v3',
+    format_legacy: 'company.intelligence.bundle',
     company,
     generatedAt,
     documentCount: safeDocs.length,
     chunkCount: chunks.length,
     knowledgeCount: knowledge.length,
+    processCount: processes.length,
     metadata: {
       company,
       generatedAt,
       documentCount: safeDocs.length,
       knowledgeCount: knowledge.length,
       chunkCount: chunks.length,
+      processCount: processes.length,
     },
     knowledge,
     relationships: graph.edges,
+    processes,
+    process_graph: processGraph,
     audiences: AUDIENCE_LEVELS,
     roles: ROLES,
+    role_views: roleViews,
     review_schedule: reviewSchedule,
+    review: {
+      knowledge: reviewSchedule,
+      processes: processValidation,
+    },
     graph,
     embeddings: [],
     indexes: {
       roles: roleIndexes,
       chunks: chunks.map((item) => item.id),
+      processes: processes.map((item) => item.id),
+    },
+    capabilities: [...capabilitySet],
+    analytics: {
+      processes: {
+        total: processes.length,
+        validation_issues: Object.values(processValidation).reduce((sum, items) => sum + items.length, 0),
+      },
     },
     duplicates,
     contradictions,
@@ -414,4 +649,5 @@ module.exports = {
   detectContradictions,
   detectDuplicates,
   calculateReviewSchedule,
+  validateProcesses,
 };
