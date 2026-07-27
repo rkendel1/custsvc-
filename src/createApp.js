@@ -149,6 +149,17 @@ function normalizeSourceType(value) {
   return normalized || 'GENERIC';
 }
 
+const ALLOWED_COMPANY_SIZES = ['1-50', '51-200', '201-500', '500+'];
+const ALLOWED_PRIMARY_USE_CASES = ['Customer Website', 'Internal Copilot', 'Both'];
+const ALLOWED_DEPLOYMENT_PROFILES = ['BOTH', 'CUSTOMER', 'EMPLOYEE', 'PRIVATE_ENTERPRISE'];
+
+function normalizeSelection(value, allowed, fallback = '') {
+  const input = String(value || '').trim();
+  if (!input) return fallback;
+  const match = allowed.find((item) => String(item).toLowerCase() === input.toLowerCase());
+  return match || fallback;
+}
+
 const SOURCE_TEMPLATES = {
   SHAREPOINT: {
     display_name: 'SharePoint',
@@ -1814,14 +1825,23 @@ function createApp(options = {}) {
       return res.status(400).json({ error: 'a valid email is required' });
     }
 
+    const selectedCompanySize = normalizeSelection(companySize, ALLOWED_COMPANY_SIZES);
+    const selectedPrimaryUseCase = normalizeSelection(primaryUseCase, ALLOWED_PRIMARY_USE_CASES);
+    const selectedDeploymentProfile = normalizeSelection(deploymentProfile, ALLOWED_DEPLOYMENT_PROFILES, 'BOTH');
+    if (!selectedCompanySize || !selectedPrimaryUseCase) {
+      return res.status(400).json({
+        error: 'please choose companySize and primaryUseCase from the provided options',
+      });
+    }
+
     let tenant;
     try {
       tenant = provisionTenant({
         companyName: company,
         ownerEmail: email,
-        companySize,
-        primaryUseCase,
-        deploymentProfile,
+        companySize: selectedCompanySize,
+        primaryUseCase: selectedPrimaryUseCase,
+        deploymentProfile: selectedDeploymentProfile,
       });
     } catch (error) {
       return res.status(400).json({ error: error.message });
@@ -1908,14 +1928,18 @@ function createApp(options = {}) {
       return res.status(400).json({ error: 'a valid email is required' });
     }
 
+    const selectedCompanySize = normalizeSelection(companySize, ALLOWED_COMPANY_SIZES, '1-50');
+    const selectedPrimaryUseCase = normalizeSelection(primaryUseCase, ALLOWED_PRIMARY_USE_CASES, 'Customer Website');
+    const selectedDeploymentProfile = normalizeSelection(deploymentProfile, ALLOWED_DEPLOYMENT_PROFILES, 'BOTH');
+
     let tenant;
     try {
       tenant = provisionTenant({
         companyName: company,
         ownerEmail: email,
-        companySize,
-        primaryUseCase,
-        deploymentProfile,
+        companySize: selectedCompanySize,
+        primaryUseCase: selectedPrimaryUseCase,
+        deploymentProfile: selectedDeploymentProfile,
       });
     } catch (error) {
       return res.status(400).json({ error: error.message });
@@ -1983,6 +2007,8 @@ function createApp(options = {}) {
         email: String(email).toLowerCase(),
       },
       deployment_choice: deploymentProfile,
+      company_size: selectedCompanySize,
+      primary_use_case: selectedPrimaryUseCase,
       import_sources: ['WEBSITE'],
       audiences: Array.isArray(audiences) && audiences.length ? audiences : ['Customers', 'Employees'],
       updated_at: new Date().toISOString(),
@@ -1993,7 +2019,7 @@ function createApp(options = {}) {
     const deployment = createDeployment({
       tenantId: tenant.tenant_id,
       companyName: tenant.company_name,
-      deploymentProfile,
+      deploymentProfile: selectedDeploymentProfile,
       audiences: onboardingState.audiences,
     });
     const deployments = listData(storage, 'listDeployments');

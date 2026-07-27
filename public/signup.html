@@ -244,11 +244,27 @@
             <label>Company
               <input name="company" required />
             </label>
+            <label>Company size
+              <select name="companySize" required>
+                <option value="1-50" selected>1-50 employees</option>
+                <option value="51-200">51-200 employees</option>
+                <option value="201-500">201-500 employees</option>
+                <option value="500+">500+ employees</option>
+              </select>
+            </label>
             <label>Primary goal
               <select name="primaryUseCase">
                 <option value="Customer Website" selected>Improve customer support answers</option>
                 <option value="Internal Copilot">Help internal teams execute faster</option>
                 <option value="Both">Support both customers and internal teams</option>
+              </select>
+            </label>
+            <label>Launch profile
+              <select name="deploymentProfile" required>
+                <option value="BOTH" selected>Customer + Internal</option>
+                <option value="CUSTOMER">Customer-facing only</option>
+                <option value="EMPLOYEE">Internal teams only</option>
+                <option value="PRIVATE_ENTERPRISE">Private enterprise</option>
               </select>
             </label>
             <div class="actions">
@@ -281,8 +297,6 @@
 
         try {
           const payload = Object.fromEntries(new FormData(form).entries());
-          payload.companySize = '1-50';
-          payload.deploymentProfile = 'BOTH';
 
           const response = await fetch('/api/signup/quickstart', {
             method: 'POST',
