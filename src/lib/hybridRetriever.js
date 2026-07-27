@@ -63,14 +63,9 @@ function createHybridRetriever(options = {}) {
       .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   }
 
-  async function search(query, context = {}) {
-    // Alias maintained for compatibility with runtime APIs that expose `search()` while retrieve() remains core logic.
-    return retrieve(query, context);
-  }
-
   return {
     retrieve,
-    search,
+    search: retrieve,
     selectStores: (context = {}) => selectStores(deploymentProfile, context),
     getDeploymentProfile: () => deploymentProfile,
   };

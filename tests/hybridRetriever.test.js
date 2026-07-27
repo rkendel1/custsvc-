@@ -17,9 +17,9 @@ test('selectStores routes by audience and enforces permissions', () => {
   const blockedSupport = selectStores(profile, { role: 'Support', permissions: [] });
   assert.equal(blockedSupport.length, 0);
 
-  const allowedEmployee = selectStores(profile, { role: 'Support', permissions: ['store:internal'] });
-  assert.equal(allowedEmployee.length, 1);
-  assert.equal(allowedEmployee[0].id, 'internal');
+  const allowedSupport = selectStores(profile, { role: 'Support', permissions: ['store:internal'] });
+  assert.equal(allowedSupport.length, 1);
+  assert.equal(allowedSupport[0].id, 'internal');
 });
 
 test('hybrid retriever merges parallel results and ranks by score', async () => {
