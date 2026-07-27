@@ -14,6 +14,17 @@ const { createConnectorVault } = require('./lib/connectorVault');
 const { testConnector } = require('./lib/connectors');
 const { createPgVectorStore, normalizeEmbedding } = require('./lib/pgVectorStore');
 const { tokenize, termFrequency, magnitude, similarity } = require('./lib/tokenize');
+const {
+  sanitizeDomainHost: sanitizeDomainHostFromContext,
+  resolvePublicOrigin: resolvePublicOriginFromContext,
+  resolveTenantBaseDomain: resolveTenantBaseDomainFromContext,
+  resolveTenantIdFromHost: resolveTenantIdFromHostFromContext,
+  resolveTenantId: resolveTenantIdFromContext,
+  resolveTenantOrigin: resolveTenantOriginFromContext,
+  resolveCookieDomain: resolveCookieDomainFromContext,
+  resolveTenantRedirectUrl: resolveTenantRedirectUrlFromContext,
+  validateEmbedTenantHost: validateEmbedTenantHostFromContext,
+} = require('./lib/authContext');
 
 function stripHtml(text) {
   const input = String(text || '');
@@ -820,116 +831,31 @@ function parseCookies(req) {
 }
 
 function resolveTenantId(req) {
-  const fromSubdomain = resolveTenantIdFromHost(req);
-  return (
-    req.header('x-tenant-id') ||
-    req.query.tenant_id ||
-    req.body?.tenant_id ||
-    req.body?.tenantId ||
-    fromSubdomain ||
-    null
-  );
+  return resolveTenantIdFromContext(req);
 }
 
 function sanitizeDomainHost(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '')
-    .replace(/^\*\./, '')
-    .replace(/:\d+$/, '')
-    .replace(/\.$/, '');
+  return sanitizeDomainHostFromContext(value);
 }
 
 function resolveTenantBaseDomain(req) {
-  const configured = sanitizeDomainHost(
-    process.env.TENANT_BASE_DOMAIN
-      || process.env.APP_BASE_DOMAIN
-      || process.env.PUBLIC_BASE_DOMAIN,
-  );
-  if (configured) return configured;
-
-  const configuredPublicOrigin = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
-  if (configuredPublicOrigin) {
-    try {
-      const host = sanitizeDomainHost(new URL(configuredPublicOrigin).hostname || '');
-      if (host && !isPrivateHost(host) && host !== 'localhost') return host;
-    } catch (_error) {
-      // Ignore invalid configured origin and fall back to request host.
-    }
-  }
-
-  const hostHeader = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
-  const candidate = sanitizeDomainHost(hostHeader);
-  if (!candidate || isPrivateHost(candidate) || candidate === 'localhost') return '';
-  const labels = candidate.split('.');
-  if (labels.length < 2) return '';
-  return labels.slice(-2).join('.');
+  return resolveTenantBaseDomainFromContext(req);
 }
 
 function resolveTenantIdFromHost(req) {
-  const baseDomain = resolveTenantBaseDomain(req);
-  if (!baseDomain) return null;
-
-  const hostHeader = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
-  const host = sanitizeDomainHost(hostHeader);
-  if (!host || host === baseDomain || host === `www.${baseDomain}`) return null;
-  if (!host.endsWith(`.${baseDomain}`)) return null;
-
-  const subdomain = host.slice(0, -(baseDomain.length + 1));
-  if (!subdomain || subdomain.includes('.')) return null;
-  if (!/^[a-z0-9-]{1,63}$/.test(subdomain)) return null;
-  if (subdomain === 'www') return null;
-  return subdomain;
+  return resolveTenantIdFromHostFromContext(req);
 }
 
 function resolveTenantOrigin(req, tenantId, fallbackPort = 3000) {
-  const normalizedTenantId = String(tenantId || '').trim().toLowerCase();
-  if (!normalizedTenantId) return resolvePublicOrigin(req, fallbackPort);
-
-  const baseDomain = resolveTenantBaseDomain(req);
-  if (!baseDomain) return resolvePublicOrigin(req, fallbackPort);
-
-  const configuredPublicOrigin = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
-  if (configuredPublicOrigin) {
-    try {
-      const proto = new URL(configuredPublicOrigin).protocol || 'https:';
-      return `${proto}//${normalizedTenantId}.${baseDomain}`;
-    } catch (_error) {
-      // Fall through to request-derived protocol.
-    }
-  }
-
-  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
-  const protocol = forwardedProto || req?.protocol || 'http';
-  return `${protocol}://${normalizedTenantId}.${baseDomain}`;
+  return resolveTenantOriginFromContext(req, tenantId, fallbackPort);
 }
 
 function resolveCookieDomain(req) {
-  const baseDomain = resolveTenantBaseDomain(req);
-  if (!baseDomain || isPrivateHost(baseDomain) || baseDomain === 'localhost') return '';
-  return `.${baseDomain}`;
+  return resolveCookieDomainFromContext(req);
 }
 
 function validateEmbedTenantHost(req, tenantId) {
-  const requestedTenantId = String(tenantId || '').trim().toLowerCase();
-  if (!requestedTenantId) {
-    return { ok: false, status: 400, error: 'tenant_id is required', reason: 'missing_tenant_id' };
-  }
-
-  const hostTenantId = String(resolveTenantIdFromHost(req) || '').trim().toLowerCase();
-  if (!hostTenantId) return { ok: true };
-  if (hostTenantId === requestedTenantId) return { ok: true };
-
-  return {
-    ok: false,
-    status: 409,
-    error: 'tenant_id does not match tenant subdomain',
-    reason: 'tenant_host_mismatch',
-    expected_tenant_id: hostTenantId,
-    received_tenant_id: requestedTenantId,
-  };
+  return validateEmbedTenantHostFromContext(req, tenantId);
 }
 
 function resolveEmbedCorsOrigin(req) {
@@ -1019,17 +945,7 @@ function resolvePostAuthNextUrl(storage, tenantId, { forceOnboarding = false } =
 }
 
 function resolveTenantRedirectUrl(req, tenantId, nextPath) {
-  const pathValue = String(nextPath || '').trim();
-  if (!pathValue) return '';
-  if (/^https?:\/\//i.test(pathValue)) return pathValue;
-  if (!pathValue.startsWith('/')) return pathValue;
-
-  const origin = resolveTenantOrigin(req, tenantId, Number(process.env.APP_PORT || 3000));
-  try {
-    return new URL(pathValue, origin).toString();
-  } catch (_error) {
-    return pathValue;
-  }
+  return resolveTenantRedirectUrlFromContext(req, tenantId, nextPath);
 }
 
 function base64urlEncode(input) {
@@ -1832,19 +1748,7 @@ function ensureDefaultBundle(storage, companyName) {
 }
 
 function resolvePublicOrigin(req, fallbackPort = 3000) {
-  const configured = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch (_error) {
-      // Fall through to request-derived origin.
-    }
-  }
-
-  const host = String(req?.get?.('host') || `127.0.0.1:${fallbackPort}`).trim();
-  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '').trim().toLowerCase();
-  const protocol = forwardedProto || req?.protocol || 'http';
-  return `${protocol}://${host}`;
+  return resolvePublicOriginFromContext(req, fallbackPort);
 }
 
 function withOriginalQuery(req, targetPath) {
