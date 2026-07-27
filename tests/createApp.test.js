@@ -1140,8 +1140,20 @@ test('source endpoints accept console cookie auth without session token', async 
      }),
    });
    assert.equal(signupResponse.status, 201);
-   const signupBody = await signupResponse.json();
-   const sessionToken = String(signupBody?.session?.token || '').trim();
+
+  const onboardingSession = await fetch(`${baseUrl}/api/onboarding/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'sourceauth',
+      name: 'Source Owner',
+      email: 'owner@sourceauth.dev',
+      company: 'sourceauth',
+    }),
+  });
+  assert.equal(onboardingSession.status, 201);
+  const onboardingBody = await onboardingSession.json();
+  const sessionToken = String(onboardingBody?.session?.token || '').trim();
    assert.equal(Boolean(sessionToken), true);
 
    const sourceCreate = await fetch(`${baseUrl}/api/sources`, {

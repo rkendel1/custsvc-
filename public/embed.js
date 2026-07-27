@@ -24,9 +24,46 @@
     }
   }
 
+  function sanitizeHost(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/:\d+$/, '')
+      .replace(/\.$/, '');
+  }
+
+  function resolveTenantFromHost(host, runtimeHost) {
+    const currentHost = sanitizeHost(host);
+    const baseHost = sanitizeHost(runtimeHost);
+    if (!currentHost || !baseHost) return '';
+
+    const baseLabels = baseHost.split('.').filter(Boolean);
+    if (baseLabels.length < 2) return '';
+    const baseDomain = baseLabels.slice(-2).join('.');
+    if (currentHost === baseDomain || currentHost === `www.${baseDomain}`) return '';
+    if (!currentHost.endsWith(`.${baseDomain}`)) return '';
+
+    const sub = currentHost.slice(0, -(baseDomain.length + 1));
+    if (!sub || sub.includes('.')) return '';
+    if (!/^[a-z0-9-]{1,63}$/.test(sub) || sub === 'www') return '';
+    return sub;
+  }
+
+  const runtimeHost = (() => {
+    try {
+      return new URL(runtimeOrigin).hostname;
+    } catch (_error) {
+      return '';
+    }
+  })();
+  const tenantFromHost = resolveTenantFromHost(window.location.hostname, runtimeHost);
+  const effectiveTenantId = tenantFromHost || tenantId;
+
   const apiBase = explicitApiBase || runtimeOrigin;
-  const bundleUrl = explicitBundleUrl || (tenantId
-    ? `${apiBase}/api/embed/bundle?tenant_id=${encodeURIComponent(tenantId)}`
+  const bundleUrl = explicitBundleUrl || (effectiveTenantId
+    ? `${apiBase}/api/embed/bundle?tenant_id=${encodeURIComponent(effectiveTenantId)}`
     : `${apiBase}/bundles/knowledgeos.bundle.json`);
   const loaderSrc = explicitLoaderSrc || `${apiBase}/company-ai.js`;
 
@@ -50,10 +87,10 @@
 
   loader.dataset.bundleUrl = bundleUrl;
   loader.dataset.apiBase = apiBase;
-  if (tenantId) loader.dataset.tenantId = tenantId;
+  if (effectiveTenantId) loader.dataset.tenantId = effectiveTenantId;
 
-  if (!script.dataset.title && tenantId) {
-    loader.dataset.title = `Ask ${tenantId}`;
+  if (!script.dataset.title && effectiveTenantId) {
+    loader.dataset.title = `Ask ${effectiveTenantId}`;
   }
 
   for (const key of passthroughKeys) {
