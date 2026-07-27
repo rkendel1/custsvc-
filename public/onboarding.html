@@ -607,6 +607,50 @@
         return selected.length ? selected : ['Customers', 'Employees'];
       }
 
+      function renderSelectOptions(selectNode, options, fallbackValue = '') {
+        if (!selectNode || !Array.isArray(options) || !options.length) return;
+        const previous = String(selectNode.value || '').trim();
+        const selectedValue = options.some((item) => item.value === previous) ? previous : fallbackValue;
+        selectNode.innerHTML = options
+          .map((item) => `<option value="${item.value}">${item.label || item.value}</option>`)
+          .join('');
+        if (selectedValue) selectNode.value = selectedValue;
+      }
+
+      function renderCheckboxGrid(containerId, options, defaults = []) {
+        const container = document.getElementById(containerId);
+        if (!container || !Array.isArray(options) || !options.length) return;
+        const selected = new Set(
+          [...container.querySelectorAll('input:checked')]
+            .map((node) => String(node.value || '').trim())
+            .filter(Boolean),
+        );
+        const fallback = new Set(defaults);
+        container.innerHTML = options
+          .map((item) => {
+            const isChecked = selected.has(item.value) || (!selected.size && fallback.has(item.value));
+            return `<label><input type="checkbox" value="${item.value}" ${isChecked ? 'checked' : ''} /> ${item.label || item.value}</label>`;
+          })
+          .join('');
+      }
+
+      async function loadOnboardingStandards() {
+        try {
+          const response = await fetch('/api/standards/onboarding');
+          const standards = await response.json();
+          if (!response.ok) return;
+
+          renderSelectOptions(companySizeChoiceInput, standards.company_size_options, '1-50');
+          renderSelectOptions(primaryUseCaseChoiceInput, standards.primary_use_case_options, 'Customer Website');
+          renderSelectOptions(deploymentChoiceInput, standards.deployment_profile_options, 'BOTH');
+          renderCheckboxGrid('audienceGrid', standards.audience_options, ['Customers', 'Employees']);
+          renderCheckboxGrid('targetGrid', standards.import_source_options, ['SHAREPOINT', 'WEBSITE']);
+          renderSelectOptions(sourceTypeInput, standards.import_source_options, 'WEBSITE');
+        } catch (_error) {
+          // Keep static defaults if standards endpoint is unavailable.
+        }
+      }
+
       function selectedTargets() {
         return [...document.querySelectorAll('#targetGrid input:checked')].map((item) => item.value);
       }
@@ -691,16 +735,15 @@
         renderStep();
       });
 
-      document.querySelectorAll('#targetGrid input').forEach((node) => {
-        node.addEventListener('change', updateTargetSummary);
-      });
       sourceTypeInput.addEventListener('change', () => {
         renderSourceCredentialFields(sourceTypeInput.value);
       });
 
-      applyRequestedTargets();
-      updateTargetSummary();
-      renderStep();
+      function bindTargetListeners() {
+        document.querySelectorAll('#targetGrid input').forEach((node) => {
+          node.addEventListener('change', updateTargetSummary);
+        });
+      }
 
       if (quickMode) {
         const guidePanel = document.querySelector('.layout > section.panel');
@@ -886,7 +929,7 @@
           await postJson('/api/onboarding', {
             tenant_id: tenantId,
             step: 'compile-intelligence',
-            deploymentChoice: document.getElementById('deploymentChoice').value,
+            deploymentChoice: deploymentChoiceInput.value,
             importSources: selectedTargets(),
             audiences: parseAudiences(),
           });
@@ -924,6 +967,14 @@
         .then(() => renderSourceCredentialFields(sourceTypeInput.value))
         .catch((error) => {
           setStatus('Could not load source templates', error.message);
+        });
+
+      loadOnboardingStandards()
+        .finally(() => {
+          applyRequestedTargets();
+          bindTargetListeners();
+          updateTargetSummary();
+          renderStep();
         });
     </script>
   </body>

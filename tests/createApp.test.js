@@ -87,6 +87,35 @@ test('telemetry endpoint rejects payloads without question and intent', async (t
   assert.equal(response.status, 400);
 });
 
+test('onboarding standards endpoint returns canonical option sets', async (t) => {
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listTelemetry: () => [],
+    saveTelemetry: () => {},
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/standards/onboarding`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(Array.isArray(body.company_size_options), true);
+  assert.equal(Array.isArray(body.primary_use_case_options), true);
+  assert.equal(Array.isArray(body.deployment_profile_options), true);
+  assert.equal(Array.isArray(body.audience_options), true);
+  assert.equal(Array.isArray(body.import_source_options), true);
+  assert.equal(body.company_size_options.some((item) => item.value === '1-50'), true);
+  assert.equal(body.primary_use_case_options.some((item) => item.value === 'Customer Website'), true);
+  assert.equal(body.deployment_profile_options.some((item) => item.value === 'BOTH'), true);
+  assert.equal(body.audience_options.some((item) => item.value === 'Customers'), true);
+  assert.equal(body.import_source_options.some((item) => item.value === 'WEBSITE'), true);
+});
+
 test('onboarding resolves tenant_id from session token when tenant_id is omitted', async (t) => {
   const now = Date.now();
   const sessions = [
