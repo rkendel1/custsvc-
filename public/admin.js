@@ -67,9 +67,18 @@ async function refreshAccessStatus() {
   try {
     const status = await requestJson('/api/access/status');
     const tenantFromAuth = String(status?.authenticated_tenant_id || '').trim().toLowerCase();
+    const quickTenantInput = document.getElementById('quickTenantId');
     if (tenantFromAuth && tenantFromAuth !== adminTenantId) {
       adminTenantId = tenantFromAuth;
       localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
+    }
+    if (quickTenantInput) {
+      if (tenantFromAuth) {
+        quickTenantInput.value = tenantFromAuth;
+        quickTenantInput.readOnly = true;
+      } else {
+        quickTenantInput.readOnly = false;
+      }
     }
     if (!status.password_required) {
       setAuthState('Access: open', true);

@@ -267,6 +267,91 @@ test('onboarding resolves tenant_id from session token when tenant_id is omitted
   assert.equal(body.onboarding.tenant_id, 'acme');
 });
 
+test('embed runtime auto-provisions deployment and bundle for authenticated tenant', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+    else process.env.APP_AUTH_SECRET = previousAuthSecret;
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-autobundle-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const signupResponse = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'randy',
+      email: 'owner@randy.dev',
+      password: 'password123',
+    }),
+  });
+  assert.equal(signupResponse.status, 201);
+  const cookie = signupResponse.headers.get('set-cookie');
+  assert.equal(Boolean(cookie), true);
+
+  const sessionResponse = await fetch(`${baseUrl}/api/embed/session?tenant_id=randy`, {
+    headers: { cookie },
+  });
+  assert.equal(sessionResponse.status, 200);
+  const sessionBody = await sessionResponse.json();
+  assert.equal(typeof sessionBody.token, 'string');
+  assert.equal(sessionBody.token.length > 10, true);
+
+  const bundleResponse = await fetch(`${baseUrl}/api/embed/bundle?tenant_id=randy`, {
+    headers: { 'x-embed-token': sessionBody.token, cookie },
+  });
+  assert.equal(bundleResponse.status, 200);
+  const bundle = await bundleResponse.json();
+  assert.equal(bundle.company, 'randy');
+
+  const tenantBundlePath = path.join(rootDir, 'bundles', 'randy.knowledgeos.bundle.json');
+  assert.equal(fs.existsSync(tenantBundlePath), true);
+});
+
+test('embed session does not auto-provision without authenticated tenant identity', async (t) => {
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-noauth-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const onboardingResponse = await fetch(`${baseUrl}/api/onboarding/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'No Auth',
+      email: 'owner@noauth.dev',
+      company: 'No Auth Co',
+    }),
+  });
+  assert.equal(onboardingResponse.status, 201);
+  const onboardingBody = await onboardingResponse.json();
+  const tenantId = String(onboardingBody?.tenant?.tenant_id || '').trim();
+  assert.equal(Boolean(tenantId), true);
+
+  const sessionResponse = await fetch(`${baseUrl}/api/embed/session?tenant_id=${encodeURIComponent(tenantId)}`);
+  assert.equal(sessionResponse.status, 403);
+  const sessionBody = await sessionResponse.json();
+  assert.equal(sessionBody.error, 'tenant is not deployed yet');
+
+  const tenantBundlePath = path.join(rootDir, 'bundles', `${tenantId}.knowledgeos.bundle.json`);
+  assert.equal(fs.existsSync(tenantBundlePath), false);
+});
+
 test('bulk documents endpoint ingests valid items and reports rejects', async (t) => {
   const documents = [];
   const storage = {

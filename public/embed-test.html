@@ -181,7 +181,6 @@
         </a>
         <nav class="topnav">
           <a href="/onboarding.html">Setup</a>
-          <a id="spaceLink" href="/admin.html">Dashboard</a>
           <a id="dashboardLink" href="/access.html?next=%2Fadmin.html">Dashboard</a>
         </nav>
       </header>
@@ -193,7 +192,7 @@
             Enter your tenant and run one preview. Then ask a test question below.
           </p>
 
-          <label for="tenantIdInput">Tenant ID</label>
+          <label for="tenantIdInput">Tenant ID (auto from sign-in)</label>
           <input id="tenantIdInput" placeholder="acme" />
 
           <label for="embedScriptInput">Embed script</label>
@@ -240,7 +239,6 @@
       const answer = document.getElementById('answer');
       const status = document.getElementById('status');
       const previewFrame = document.getElementById('previewFrame');
-      const spaceLink = document.getElementById('spaceLink');
       const dashboardLink = document.getElementById('dashboardLink');
 
       function setStatus(title, lines = []) {
@@ -265,16 +263,92 @@
         return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}" data-api-base="${origin}" data-title="Ask ${safeTenant}"><\\/script>`;
       }
 
+      function parseEmbedConfig(rawScript, fallbackTenantId = '') {
+        const scriptText = String(rawScript || '').trim();
+        const tenantFromScript = extractTenantFromScript(scriptText);
+        const tenantId = normalizeTenant(tenantFromScript || fallbackTenantId);
+        const srcMatch = scriptText.match(/src\s*=\s*['\"]([^'\"]+)['\"]/i);
+        const apiBaseMatch = scriptText.match(/data-api-base\s*=\s*['\"]([^'\"]+)['\"]/i);
+        const titleMatch = scriptText.match(/data-title\s*=\s*['\"]([^'\"]+)['\"]/i);
+        const src = String(srcMatch?.[1] || `${window.location.origin}/embed.js`).trim();
+        const apiBase = String(apiBaseMatch?.[1] || window.location.origin).trim();
+        const title = String(titleMatch?.[1] || (tenantId ? `Ask ${tenantId}` : 'KnowledgeOS Assistant')).trim();
+        return {
+          src,
+          apiBase,
+          tenantId,
+          title,
+        };
+      }
+
+      async function preflightEmbedRuntime(config) {
+        if (!config?.tenantId) {
+          return { ok: false, reason: 'Tenant ID is required.' };
+        }
+
+        try {
+          const sessionUrl = `${config.apiBase}/api/embed/session?tenant_id=${encodeURIComponent(config.tenantId)}`;
+          const response = await fetch(sessionUrl, { credentials: 'include' });
+          if (response.ok) return { ok: true };
+
+          const payload = await response.json().catch(() => ({}));
+          const apiError = String(payload?.error || '').trim();
+          if (response.status === 403 && apiError.toLowerCase().includes('tenant is not deployed yet')) {
+            return {
+              ok: false,
+              reason: `Tenant ${config.tenantId} is not deployed yet. Finish onboarding and click Finish setup first.`,
+            };
+          }
+          if (response.status === 401) {
+            return {
+              ok: false,
+              reason: 'You are not authorized for embed runtime. Sign in and try again.',
+            };
+          }
+
+          return {
+            ok: false,
+            reason: apiError || `Embed session check failed (${response.status}).`,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            reason: `Could not reach embed runtime: ${error?.message || 'network error'}`,
+          };
+        }
+      }
+
       function updateLinks(tenantId) {
         const safeTenant = normalizeTenant(tenantId);
         if (!safeTenant) {
-          spaceLink.href = '/admin.html';
           dashboardLink.href = '/access.html?next=%2Fadmin.html';
           return;
         }
-        spaceLink.href = `/admin.html?tenant_id=${encodeURIComponent(safeTenant)}`;
         const next = `/admin.html?tenant_id=${encodeURIComponent(safeTenant)}`;
         dashboardLink.href = `/access.html?next=${encodeURIComponent(next)}`;
+      }
+
+      async function hydrateTenantFromAuth() {
+        try {
+          const response = await fetch('/api/access/status', { credentials: 'include' });
+          const data = await response.json();
+          const tenantFromAuth = normalizeTenant(data?.authenticated_tenant_id || '');
+          if (!tenantFromAuth) return '';
+
+          tenantIdInput.value = tenantFromAuth;
+          tenantIdInput.readOnly = true;
+          localStorage.setItem('knowledgeos_active_tenant_id', tenantFromAuth);
+
+          if (!String(embedScriptInput.value || '').trim()) {
+            embedScriptInput.value = buildEmbedScript(tenantFromAuth);
+          }
+
+          updateLinks(tenantFromAuth);
+          saveState();
+          return tenantFromAuth;
+        } catch (_error) {
+          return '';
+        }
       }
 
       function saveState() {
@@ -341,7 +415,34 @@
           return;
         }
 
+        const config = parseEmbedConfig(script, tenantIdInput.value);
+        if (!config.tenantId) {
+          setStatus('Action needed', 'Tenant ID is missing. Enter a tenant and reload preview.');
+          return;
+        }
+
+        tenantIdInput.value = config.tenantId;
+        updateLinks(config.tenantId);
+
+        const preflight = await preflightEmbedRuntime(config);
+        if (!preflight.ok) {
+          setStatus('Preview blocked', [
+            preflight.reason,
+            'If you just added data, return to onboarding and finish setup to activate deployment.',
+          ]);
+          return;
+        }
+
         clearAnswer();
+
+        const bootstrapConfig = JSON.stringify({
+          src: config.src,
+          tenantId: config.tenantId,
+          apiBase: config.apiBase,
+          title: config.title,
+        });
+        const scriptOpenTag = '<script>';
+        const scriptCloseTag = '</' + 'script>';
 
         const html = `<!doctype html>
 <html>
@@ -363,7 +464,18 @@
       <p>Your script is loaded below. The Ask button should appear at the bottom-right.</p>
       <p class="note">If it does not appear, return to the test tab and use Ask test question.</p>
     </div>
-    ${script}
+    ${scriptOpenTag}
+      window.__KOS_EMBED_TEST__ = ${bootstrapConfig};
+      (function mountEmbedScript() {
+        const cfg = window.__KOS_EMBED_TEST__ || {};
+        const tag = document.createElement('script');
+        tag.src = String(cfg.src || '${window.location.origin}/embed.js');
+        if (cfg.tenantId) tag.dataset.tenantId = String(cfg.tenantId);
+        if (cfg.apiBase) tag.dataset.apiBase = String(cfg.apiBase);
+        if (cfg.title) tag.dataset.title = String(cfg.title);
+        (document.head || document.body || document.documentElement).appendChild(tag);
+      })();
+    ${scriptCloseTag}
   </body>
 </html>`;
 
@@ -473,9 +585,11 @@
       embedScriptInput.addEventListener('change', saveState);
 
       loadState();
-      if (embedScriptInput.value || tenantIdInput.value) {
-        setStatus('Ready to test', 'Click Load assistant preview to verify your latest server data.');
-      }
+      hydrateTenantFromAuth().finally(() => {
+        if (embedScriptInput.value || tenantIdInput.value) {
+          setStatus('Ready to test', 'Click Load assistant preview to verify your latest server data.');
+        }
+      });
     </script>
   </body>
 </html>

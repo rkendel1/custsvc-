@@ -1428,6 +1428,70 @@ function createApp(options = {}) {
     };
   }
 
+  function canAutoProvisionEmbedRuntime(req, tenantId) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return false;
+    if (!isConsoleAuthorized(req)) return false;
+    const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
+    return Boolean(identityTenantId && identityTenantId === normalizedTenantId);
+  }
+
+  function ensureTenantBundleAndDeploymentForEmbed(req, tenantId) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) {
+      return { ok: false, status: 400, error: 'tenant_id is required' };
+    }
+
+    const tenants = listData(storage, 'listTenants');
+    const tenant = tenants.find((item) => item.tenant_id === normalizedTenantId);
+    if (!tenant) {
+      return { ok: false, status: 404, error: 'tenant not found' };
+    }
+
+    const docs = listData(storage, 'listDocuments').filter((doc) => doc.tenant_id === normalizedTenantId);
+    const bundle = compileBundle(docs, { company: tenant.company_name || normalizedTenantId });
+    storage.writeBundle(`${normalizedTenantId}.knowledgeos.bundle.json`, bundle);
+
+    const deployments = listData(storage, 'listDeployments');
+    const activeDeployment = deployments.find((item) => item.tenant_id === normalizedTenantId && item.status === 'active');
+    if (activeDeployment) {
+      return { ok: true, deployment: activeDeployment, provisioned: false };
+    }
+
+    const selectedAudiences = Array.isArray(tenant.audiences) && tenant.audiences.length
+      ? tenant.audiences
+      : ['Customers', 'Employees'];
+    const selectedDeploymentProfile = normalizeSelection(
+      tenant.deployment_profile,
+      ALLOWED_DEPLOYMENT_PROFILES,
+      'BOTH',
+    );
+    const publicOrigin = resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000));
+    const deployment = createDeployment({
+      tenantId: normalizedTenantId,
+      companyName: tenant.company_name,
+      deploymentProfile: selectedDeploymentProfile,
+      audiences: selectedAudiences,
+      runtimeOrigin: publicOrigin,
+    });
+
+    deployments.push(deployment);
+    saveData(storage, 'saveDeployments', deployments);
+
+    const runtimeInstances = listData(storage, 'listRuntimeInstances');
+    runtimeInstances.push({
+      runtime_instance_id: `runtime-${randomUUID()}`,
+      tenant_id: normalizedTenantId,
+      deployment_id: deployment.deployment_id,
+      runtime_url: deployment.runtime_url,
+      status: deployment.status,
+      created_at: deployment.deployed_at,
+    });
+    saveData(storage, 'saveRuntimeInstances', runtimeInstances);
+
+    return { ok: true, deployment, provisioned: true };
+  }
+
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.locals.consolePasswordState = consolePasswordState;
@@ -1703,7 +1767,15 @@ function createApp(options = {}) {
     if (!tenant) return res.status(404).json({ error: 'tenant not found' });
 
     const deployments = listData(storage, 'listDeployments');
-    const activeDeployment = deployments.find((item) => item.tenant_id === tenantId && item.status === 'active');
+    let activeDeployment = deployments.find((item) => item.tenant_id === tenantId && item.status === 'active');
+    if (!activeDeployment && canAutoProvisionEmbedRuntime(req, tenantId)) {
+      const provisionResult = ensureTenantBundleAndDeploymentForEmbed(req, tenantId);
+      if (!provisionResult.ok) {
+        return res.status(provisionResult.status || 500).json({ error: provisionResult.error || 'could not provision tenant runtime' });
+      }
+      const refreshedDeployments = listData(storage, 'listDeployments');
+      activeDeployment = refreshedDeployments.find((item) => item.tenant_id === tenantId && item.status === 'active');
+    }
     if (!activeDeployment) {
       return res.status(403).json({ error: 'tenant is not deployed yet' });
     }
@@ -1742,7 +1814,15 @@ function createApp(options = {}) {
     const bundleName = `${tenantId}.knowledgeos.bundle.json`;
     const bundlePath = path.join(rootDir, 'bundles', bundleName);
     if (!fs.existsSync(bundlePath)) {
-      return res.status(404).json({ error: 'bundle not found' });
+      if (canAutoProvisionEmbedRuntime(req, tenantId)) {
+        const provisionResult = ensureTenantBundleAndDeploymentForEmbed(req, tenantId);
+        if (!provisionResult.ok) {
+          return res.status(provisionResult.status || 500).json({ error: provisionResult.error || 'could not provision tenant runtime' });
+        }
+      }
+      if (!fs.existsSync(bundlePath)) {
+        return res.status(404).json({ error: 'bundle not found' });
+      }
     }
 
     return res.sendFile(bundlePath);
