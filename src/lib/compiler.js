@@ -650,6 +650,15 @@ function compileBundle(documents, options = {}) {
   const connectors = safeConnectors.map(normalizeConnector);
   const executionPolicies = Array.isArray(options.execution_policies) ? options.execution_policies : [];
   const permissions = Array.isArray(options.permissions) ? options.permissions : [];
+  const totalSteps = processes.reduce((sum, process) => sum + process.steps.length, 0);
+  const automatedSteps = processes.reduce(
+    (sum, process) => sum + process.steps.filter((step) => step.type === 'ACTION').length,
+    0,
+  );
+  const approvalSteps = processes.reduce(
+    (sum, process) => sum + process.steps.filter((step) => step.type === 'APPROVAL').length,
+    0,
+  );
 
   return {
     version: 4,
@@ -701,8 +710,8 @@ function compileBundle(documents, options = {}) {
         validation_issues: Object.values(processValidation).reduce((sum, items) => sum + items.length, 0),
       },
       execution: {
-        automation_percentage: 0,
-        human_intervention_rate: 0,
+        automationPercentage: totalSteps ? Number((automatedSteps / totalSteps).toFixed(3)) : 0,
+        humanInterventionRate: totalSteps ? Number((approvalSteps / totalSteps).toFixed(3)) : 0,
       },
     },
     duplicates,

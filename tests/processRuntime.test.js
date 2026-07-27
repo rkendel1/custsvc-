@@ -66,6 +66,7 @@ test('runtime supports branch, rollback, and finish completion', () => {
   execution = branch(bundle, execution, 'approve');
   execution = completeStep(bundle, execution, { capabilities: ['Upload', 'Email'] });
   const pendingApproval = execution.approvals.find((item) => item.decision === 'PENDING');
+  assert.ok(pendingApproval);
   execution = approve(execution, pendingApproval.id, { decided_by: 'manager@company.com' });
   execution = completeStep(bundle, execution, { capabilities: ['Upload', 'Email'] });
   execution = completeStep(bundle, execution, { capabilities: ['Upload', 'Email'] });
@@ -135,6 +136,7 @@ test('action capability execution and approval gates are tracked', () => {
   execution = runtime.completeStep(execution.id);
   assert.equal(execution.status, 'WAITING_APPROVAL');
   const pendingApproval = execution.approvals.find((item) => item.decision === 'PENDING');
+  assert.ok(pendingApproval);
   execution = runtime.approve(execution.id, pendingApproval.id, { decided_by: 'manager@company.com', reason: 'within policy' });
   execution = runtime.completeStep(execution.id);
   execution = runtime.completeStep(execution.id);

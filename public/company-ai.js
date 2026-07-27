@@ -217,7 +217,11 @@
     }
 
     function getCapability(bundle, capabilityId) {
-      return (bundle?.capabilities || []).find((item) => (typeof item === 'string' ? item === capabilityId : item.id === capabilityId)) || null;
+      return (bundle?.capabilities || []).find((item) => matchesCapabilityId(item, capabilityId)) || null;
+    }
+
+    function matchesCapabilityId(item, capabilityId) {
+      return typeof item === 'string' ? item === capabilityId : item?.id === capabilityId;
     }
 
     function listCapabilities(context = state.context) {
@@ -232,13 +236,13 @@
 
     function getExecutionHistory(executionId) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
-      return [...(execution.timeline || execution.history || [])];
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
+      return [...(execution.timeline || [])];
     }
 
     function executeCapability(executionId, capabilityId, input = {}) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const capability = getCapability(state.bundle || {}, capabilityId);
       if (!capability) throw new Error(`unknown capability: ${capabilityId}`);
       const result = { outputs: input, external_ref: null };
@@ -250,7 +254,7 @@
 
     function updateApproval(executionId, approvalId, decision, reason = null) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const approvals = execution.approvals || [];
       const approval = approvals.find((item) => item.id === approvalId);
       if (!approval) throw new Error('approval not found');
@@ -258,7 +262,7 @@
       approval.decision = decision;
       approval.reason = reason;
       approval.decidedAt = new Date().toISOString();
-      execution.status = decision === 'APPROVED' ? 'ACTIVE' : 'REJECTED';
+      execution.status = decision === 'APPROVED' ? 'ACTIVE' : 'CANCELLED';
       execution.timeline = [...(execution.timeline || []), { event: `APPROVAL_${decision}`, approvalId, at: new Date().toISOString() }];
       return execution;
     }
@@ -295,7 +299,7 @@
 
     function resumeProcess(executionId) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       if (execution.status === 'CANCELLED') throw new Error('process is cancelled');
       if (execution.status === 'COMPLETED') throw new Error('process is completed');
       execution.status = 'ACTIVE';
@@ -304,7 +308,7 @@
 
     async function validateStep(executionId, payload = {}) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const bundle = await loadBundle();
       const process = getProcess(bundle, execution.processId);
       const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
@@ -317,7 +321,7 @@
 
     async function completeStep(executionId, payload = {}) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const validation = await validateStep(executionId, payload);
       if (!validation.ok) throw new Error(validation.reason);
       const bundle = await loadBundle();
@@ -361,7 +365,7 @@
 
     async function branch(executionId, nextStepId) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const bundle = await loadBundle();
       const process = getProcess(bundle, execution.processId);
       const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
@@ -373,7 +377,7 @@
 
     function rollback(executionId) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       const history = [...execution.history];
       const previous = history.pop();
       if (!previous) return execution;
@@ -386,7 +390,7 @@
 
     function cancel(executionId) {
       const execution = state.executions[executionId];
-      if (!execution) throw new Error('execution not found');
+      if (!execution) throw new Error(`execution not found: ${executionId}`);
       execution.status = 'CANCELLED';
       execution.cancelledAt = new Date().toISOString();
       return execution;

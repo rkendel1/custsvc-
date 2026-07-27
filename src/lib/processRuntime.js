@@ -36,6 +36,10 @@ function setPath(target, path, value) {
   return target;
 }
 
+/**
+ * Maps internal execution fields into external action payload fields using dot-notation paths.
+ * mapping shape: { "context.customer.email": "contact.email" }.
+ */
 function mapActionInputs(execution, mapping = {}, payloadInputs = {}) {
   const mapped = { ...payloadInputs };
   for (const [internalPath, externalPath] of Object.entries(mapping)) {
@@ -128,7 +132,9 @@ function executeCapability(bundle, execution, capabilityId, payload = {}) {
   const providers = payload.providers && typeof payload.providers === 'object' ? payload.providers : {};
   const providerId = typeof capability === 'string' ? null : capability.provider;
   const provider = providerId ? providers[providerId] : null;
-  if (providerId && !provider) throw new Error(`missing capability provider: ${providerId}`);
+  if (providerId && !provider) {
+    throw new Error(`missing capability provider: ${providerId}; ensure it is configured in payload.providers`);
+  }
   if (provider?.authenticate) provider.authenticate(payload.credentials || null, capability);
   const validation = provider?.validate ? provider.validate(payload.inputs || {}, capability) : { ok: true };
   if (validation && validation.ok === false) throw new Error(validation.reason || 'capability validation failed');
@@ -257,7 +263,7 @@ function decideApproval(execution, approvalId, decision, payload = {}) {
     decided_by: payload.decided_by || null,
     decidedAt: new Date().toISOString(),
   };
-  const status = decision === 'APPROVED' ? 'ACTIVE' : 'REJECTED';
+  const status = decision === 'APPROVED' ? 'ACTIVE' : 'CANCELLED';
   return appendTimeline({
     ...execution,
     status,
@@ -323,7 +329,9 @@ class CompanyIntelligenceRuntime {
   }
 
   executeCapability(executionId, capabilityId, payload = {}) {
-    const executed = executeCapability(this.bundle, this.executions[executionId], capabilityId, {
+    const execution = this.executions[executionId];
+    if (!execution) throw new Error(`execution not found: ${executionId}`);
+    const executed = executeCapability(this.bundle, execution, capabilityId, {
       ...payload,
       providers: this.options.providers,
     });
