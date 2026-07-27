@@ -536,34 +536,34 @@
 
         <section class="section reveal delay-2">
           <div class="kicker">Launch Plan</div>
-          <h2>From zero to deployed intelligence in one week</h2>
+          <h2>From idea to measurable impact in days, not months</h2>
           <div class="split" style="margin-top: 0.8rem;">
             <ul class="timeline">
               <li>
-                <strong>Day 1 - Connect sources</strong>
-                <span>Bring in SharePoint, websites, SOP docs, and policies into a controlled knowledge catalog.</span>
+                <strong>Day 1 - Map your top customer pain</strong>
+                <span>Focus on the repetitive questions slowing your team down today.</span>
               </li>
               <li>
-                <strong>Day 2 - Compile runtime</strong>
-                <span>Generate a knowledge bundle with retrieval signals, process graphs, and role views.</span>
+                <strong>Day 2 - Connect your trusted answers</strong>
+                <span>Bring in key policies and help content from the systems you already use.</span>
               </li>
               <li>
-                <strong>Day 3 - Pilot audience launch</strong>
-                <span>Deploy to customer or support teams first and validate confidence + coverage.</span>
+                <strong>Day 3 - Go live with one team</strong>
+                <span>Launch to a pilot audience and start reducing repetitive support load.</span>
               </li>
             </ul>
             <ul class="timeline">
               <li>
-                <strong>Day 4 - Tune with telemetry</strong>
-                <span>Use unanswered questions and intent trends to close content and process gaps.</span>
+                <strong>Day 4 - Improve what matters most</strong>
+                <span>See where people still get stuck and fix those gaps first.</span>
               </li>
               <li>
-                <strong>Day 5 - Scale access</strong>
-                <span>Roll out role-aware runtime to managers and execs with stronger governance controls.</span>
+                <strong>Day 5 - Expand with confidence</strong>
+                <span>Roll out to more teams once your pilot is clearly helping.</span>
               </li>
               <li>
-                <strong>Week 2 - Expand automations</strong>
-                <span>Add action-driven process execution and approval-aware operating workflows.</span>
+                <strong>Week 2 - Prove business value</strong>
+                <span>Show faster resolution, lower support effort, and higher consistency.</span>
               </li>
             </ul>
           </div>
@@ -604,30 +604,33 @@
         </section>
 
         <section class="section reveal delay-4">
-          <div class="kicker">Trust Center</div>
-          <h2>Runtime transparency your buyers can validate in real time</h2>
+          <div class="kicker">What You Get</div>
+          <h2>A practical assistant your team and customers actually use</h2>
           <div class="trust-row" style="margin-top: 0.8rem;">
             <div class="diag">
-              <h3 style="margin-bottom:0.5rem;">Live Runtime Diagnostics</h3>
-              <pre id="runtimeDiagnostics">Initializing runtime diagnostics...</pre>
+              <h3 style="margin-bottom:0.5rem;">For customers</h3>
+              <ul style="margin:0; padding-left:1rem; color:var(--muted);">
+                <li>Faster answers without waiting in queue</li>
+                <li>Clear, consistent policy responses</li>
+                <li>Smoother handoff when escalation is needed</li>
+              </ul>
             </div>
             <div class="diag" style="background:#fff7f2;border-color:#ffd9c5;">
-              <h3 style="margin-bottom:0.5rem;">Enterprise Signals</h3>
-              <pre>{
-  "data_governance": "enabled",
-  "source_monitoring": "active",
-  "audience_controls": ["public", "internal", "confidential", "executive"],
-  "deployment": "customer-ready"
-}</pre>
+              <h3 style="margin-bottom:0.5rem;">For your team</h3>
+              <ul style="margin:0; padding-left:1rem; color:var(--muted);">
+                <li>Less repetitive answering work</li>
+                <li>Shared guidance for high-stakes cases</li>
+                <li>A clear path to improve weak spots weekly</li>
+              </ul>
             </div>
           </div>
         </section>
 
         <section class="install-card reveal delay-4">
           <div class="kicker">Install Fast</div>
-          <h2 style="font-size:1.3rem;">Copy script + open install guide in one click</h2>
+          <h2 style="font-size:1.3rem;">Install in one click</h2>
           <p style="margin:0.45rem 0 0; color: var(--muted);">
-            Tenant-scoped embed install without onboarding friction. Enter tenant id, copy script, and open the full guide.
+            Enter your tenant name. We generate the script, check readiness, and open your install guide.
           </p>
           <div class="install-controls">
             <input id="quickInstallTenant" value="acme" placeholder="tenant id" />
@@ -652,25 +655,6 @@
     </div>
     <script src="/knowledgeos-ai.js" data-bundle-url="/bundles/knowledgeos.bundle.json" data-title="KnowledgeOS Assistant"></script>
     <script>
-      async function renderRuntimeDiagnostics() {
-        const output = document.getElementById('runtimeDiagnostics');
-        if (!output) return;
-        const runtime = window.KnowledgeOSRuntime;
-        if (!runtime || typeof runtime.getRuntimeDiagnostics !== 'function') {
-          output.textContent = 'Runtime not available yet.';
-          return;
-        }
-        const diagnostics = await runtime.getRuntimeDiagnostics();
-        output.textContent = JSON.stringify(diagnostics, null, 2);
-      }
-
-      setTimeout(() => {
-        renderRuntimeDiagnostics().catch((error) => {
-          const output = document.getElementById('runtimeDiagnostics');
-          if (output) output.textContent = `Diagnostics failed: ${error.message}`;
-        });
-      }, 800);
-
       const quickInstallTenant = document.getElementById('quickInstallTenant');
       const quickInstallAction = document.getElementById('quickInstallAction');
       const quickInstallCopyOnly = document.getElementById('quickInstallCopyOnly');

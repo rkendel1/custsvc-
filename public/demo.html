@@ -261,6 +261,20 @@
         padding: 0.9rem;
       }
 
+      .story-title {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.02rem;
+        margin-bottom: 0.45rem;
+      }
+
+      .story-list {
+        margin: 0;
+        padding-left: 1rem;
+        color: var(--muted);
+        display: grid;
+        gap: 0.28rem;
+      }
+
       .chips {
         display: flex;
         flex-wrap: wrap;
@@ -465,7 +479,7 @@
         <article class="panel">
           <h2 style="font-size:1.05rem;">Executive ROI Simulator</h2>
           <p style="margin:0.45rem 0 0; color: var(--muted); font-size: 0.9rem;">
-            Translate runtime performance into financial value using your operating assumptions.
+            Enter your assumptions and get an instant business case for rollout.
           </p>
 
           <div class="roi-input-grid">
@@ -498,7 +512,7 @@
         <article class="panel">
           <h2 style="font-size:1.05rem;">Projected Value Snapshot</h2>
           <p style="margin:0.45rem 0 0; color: var(--muted); font-size: 0.9rem;">
-            Use this as an executive narrative for pilot justification and expansion planning.
+            Use this summary in leadership updates and rollout decisions.
           </p>
           <div class="roi-results">
             <div class="roi-row"><span>Monthly ticket-cost savings</span><strong id="roiTicketSavings">$0</strong></div>
@@ -506,7 +520,7 @@
             <div class="roi-row"><span>Total monthly value</span><strong id="roiMonthlyValue">$0</strong></div>
             <div class="roi-row"><span>Annualized impact</span><strong id="roiAnnualValue">$0</strong></div>
           </div>
-          <pre id="roiNarrative" style="margin-top:0.62rem;">ROI narrative will appear here.</pre>
+          <div id="roiNarrative" style="margin-top:0.62rem; border:1px solid var(--line); border-radius:10px; background:#fff; padding:0.7rem; color:var(--muted); font-size:0.88rem; line-height:1.42;">ROI narrative will appear here.</div>
         </article>
       </section>
 
@@ -558,7 +572,7 @@
               <span class="chip" id="viewChip">View: customer</span>
               <span class="chip" id="valueChip">Outcome: faster response</span>
             </div>
-            <pre id="demoOutput">Loading demo...</pre>
+            <div id="demoOutput">Loading demo...</div>
           </div>
         </div>
       </section>
@@ -645,16 +659,7 @@
         roiAnnualValue.textContent = formatCurrency(annual);
 
         const avoided = Math.round(tickets * deflection);
-        roiNarrative.textContent = JSON.stringify(
-          {
-            avoided_tickets_per_month: avoided,
-            monthly_value_usd: Math.round(monthly),
-            annual_value_usd: Math.round(annual),
-            executive_message: 'KnowledgeOS converts service quality gains into measurable financial leverage while strengthening governance.',
-          },
-          null,
-          2,
-        );
+        roiNarrative.textContent = `If these assumptions hold, your team avoids about ${avoided.toLocaleString()} repetitive tickets per month and creates roughly ${formatCurrency(monthly)} in monthly value (${formatCurrency(annual)} annually).`;
       }
 
       function buildTenantEmbedScript(tenantId) {
@@ -708,12 +713,32 @@
         return script;
       }
 
+      function renderViewStory(view, data) {
+        if (!data || typeof data !== 'object') {
+          return '<div style="color:#8b2d2d;">No demo data available for this view.</div>';
+        }
+
+        if (view === 'customer') {
+          return `<div class="story-title">Customer experience</div><ul class="story-list"><li>Question: ${data.question || 'N/A'}</li><li>Answer delivered immediately: ${data.answer || 'N/A'}</li><li>Why this matters: fewer repeat contacts and higher trust.</li></ul>`;
+        }
+
+        if (view === 'support') {
+          return `<div class="story-title">Support experience</div><ul class="story-list"><li>Context available: ${data.customer_context || 'N/A'}</li><li>Recommended next step: ${data.recommended_process || 'N/A'}</li><li>Result: faster handling and less guesswork.</li></ul>`;
+        }
+
+        if (view === 'manager') {
+          return `<div class="story-title">Manager experience</div><ul class="story-list"><li>Approval workflow: ${data.approval_workflow || 'N/A'}</li><li>Operational visibility: pending ${data.metrics?.pending ?? 0}, approved today ${data.metrics?.approved_today ?? 0}</li><li>Result: better control with fewer delays.</li></ul>`;
+        }
+
+        return `<div class="story-title">Executive experience</div><ul class="story-list"><li>Top knowledge gap: ${(data.knowledge_gaps || [])[0] || 'N/A'}</li><li>Trend signal: ${(data.operational_insights || [])[0] || 'N/A'}</li><li>Result: clearer investment priorities for service quality.</li></ul>`;
+      }
+
       function setActiveView(view) {
         if (!demo || !demo.views[view]) return;
         personaButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.view === view));
         viewChip.textContent = `View: ${view}`;
         valueChip.textContent = viewOutcomes[view] || 'Outcome: insight';
-        output.textContent = JSON.stringify(demo.views[view], null, 2);
+        output.innerHTML = renderViewStory(view, demo.views[view]);
       }
 
       function runStory() {
