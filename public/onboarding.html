@@ -382,6 +382,13 @@
             <label>Upload docs (txt, md, csv, html, json, pdf)
               <input id="knowledgeFiles" type="file" multiple accept=".txt,.md,.markdown,.csv,.html,.htm,.json,.pdf" />
             </label>
+            <div class="inline-actions" style="margin-top: 0.45rem;">
+              <button id="pickDeviceFilesBtn" type="button" class="btn-ghost">Choose files from this device</button>
+            </div>
+            <div id="knowledgeDropzone" style="margin-top:0.5rem; border:1px dashed var(--line); border-radius:10px; padding:0.7rem; color:var(--muted); font-size:0.9rem; background:#fbfdff;">
+              Drag and drop files here from any local folder.
+            </div>
+            <p id="knowledgeFilesSummary" style="margin:0.45rem 0 0; color:var(--muted); font-size:0.88rem;">No files selected.</p>
             <label>Bulk knowledge JSON (optional)
               <textarea id="quickKnowledge" rows="7" placeholder='[{"title":"Return policy","body":"Returns allowed in 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
             </label>
@@ -450,10 +457,14 @@
       const sourceTypeInput = document.getElementById('sourceType');
       const quickKnowledgeInput = document.getElementById('quickKnowledge');
       const knowledgeFilesInput = document.getElementById('knowledgeFiles');
+      const pickDeviceFilesBtn = document.getElementById('pickDeviceFilesBtn');
+      const knowledgeDropzone = document.getElementById('knowledgeDropzone');
+      const knowledgeFilesSummary = document.getElementById('knowledgeFilesSummary');
       const skipKnowledgeBtn = document.getElementById('skipKnowledgeBtn');
       const authState = document.getElementById('authState');
       const signOutBtn = document.getElementById('signOutBtn');
       let sourceTemplates = [];
+      let stagedKnowledgeFiles = [];
       let step = 1;
       let autoStartAttempted = false;
       const tenantLine = document.getElementById('tenantLine');
@@ -1052,6 +1063,74 @@
         return 'TEXT';
       }
 
+      function fileFingerprint(file) {
+        if (!file) return '';
+        return [
+          String(file.name || ''),
+          Number(file.size || 0),
+          Number(file.lastModified || 0),
+        ].join('::');
+      }
+
+      function mergeKnowledgeFiles(...collections) {
+        const map = new Map();
+        for (const collection of collections) {
+          for (const file of collection || []) {
+            const key = fileFingerprint(file);
+            if (!key || map.has(key)) continue;
+            map.set(key, file);
+          }
+        }
+        return [...map.values()];
+      }
+
+      function getSelectedKnowledgeFiles() {
+        const fromInput = Array.from(knowledgeFilesInput?.files || []);
+        return mergeKnowledgeFiles(fromInput, stagedKnowledgeFiles);
+      }
+
+      function updateKnowledgeFilesSummary() {
+        if (!knowledgeFilesSummary) return;
+        const files = getSelectedKnowledgeFiles();
+        if (!files.length) {
+          knowledgeFilesSummary.textContent = 'No files selected.';
+          return;
+        }
+        const names = files.slice(0, 4).map((file) => file.name).join(', ');
+        const suffix = files.length > 4 ? ` (+${files.length - 4} more)` : '';
+        knowledgeFilesSummary.textContent = `${files.length} file(s): ${names}${suffix}`;
+      }
+
+      async function pickKnowledgeFilesFromDevice() {
+        if (typeof window.showOpenFilePicker === 'function') {
+          try {
+            const handles = await window.showOpenFilePicker({
+              multiple: true,
+              startIn: 'documents',
+              types: [
+                {
+                  description: 'Knowledge files',
+                  accept: {
+                    'text/plain': ['.txt', '.md', '.markdown', '.csv', '.json'],
+                    'text/html': ['.html', '.htm'],
+                    'application/pdf': ['.pdf'],
+                  },
+                },
+              ],
+            });
+            const pickedFiles = await Promise.all(handles.map((handle) => handle.getFile()));
+            stagedKnowledgeFiles = mergeKnowledgeFiles(stagedKnowledgeFiles, pickedFiles);
+            updateKnowledgeFilesSummary();
+            return;
+          } catch (error) {
+            if (String(error?.name || '') === 'AbortError') return;
+            // Fall back to regular file input if picker API fails.
+          }
+        }
+
+        knowledgeFilesInput?.click();
+      }
+
       function normalizeStarterItem(item, index, fallbackVisibility) {
         if (!item || typeof item !== 'object') return null;
         const title = String(item.title || '').trim();
@@ -1070,7 +1149,7 @@
       }
 
       async function parseUploadedKnowledgeFiles(defaultVisibility) {
-        const files = Array.from(knowledgeFilesInput?.files || []);
+        const files = getSelectedKnowledgeFiles();
         const bulkItems = [];
         const pdfFiles = [];
 
@@ -1110,6 +1189,35 @@
 
         return { bulkItems, pdfFiles };
       }
+
+      pickDeviceFilesBtn?.addEventListener('click', () => {
+        pickKnowledgeFilesFromDevice();
+      });
+
+      knowledgeFilesInput?.addEventListener('change', () => {
+        updateKnowledgeFilesSummary();
+      });
+
+      knowledgeDropzone?.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        knowledgeDropzone.style.borderColor = '#7fa6ff';
+        knowledgeDropzone.style.background = '#f3f7ff';
+      });
+
+      knowledgeDropzone?.addEventListener('dragleave', () => {
+        knowledgeDropzone.style.borderColor = 'var(--line)';
+        knowledgeDropzone.style.background = '#fbfdff';
+      });
+
+      knowledgeDropzone?.addEventListener('drop', (event) => {
+        event.preventDefault();
+        knowledgeDropzone.style.borderColor = 'var(--line)';
+        knowledgeDropzone.style.background = '#fbfdff';
+        const dropped = Array.from(event.dataTransfer?.files || []);
+        if (!dropped.length) return;
+        stagedKnowledgeFiles = mergeKnowledgeFiles(stagedKnowledgeFiles, dropped);
+        updateKnowledgeFilesSummary();
+      });
 
       async function uploadPdfKnowledge(file, visibility) {
         await ensureTenantScope();
@@ -1265,6 +1373,8 @@
 
           if (quickKnowledgeInput) quickKnowledgeInput.value = '';
           if (knowledgeFilesInput) knowledgeFilesInput.value = '';
+          stagedKnowledgeFiles = [];
+          updateKnowledgeFilesSummary();
 
           setStatus('Knowledge imported', [
             `${insertedCount} item(s) added`,
@@ -1279,6 +1389,8 @@
       skipKnowledgeBtn?.addEventListener('click', () => {
         if (quickKnowledgeInput) quickKnowledgeInput.value = '';
         if (knowledgeFilesInput) knowledgeFilesInput.value = '';
+        stagedKnowledgeFiles = [];
+        updateKnowledgeFilesSummary();
         setStatus('Skipped knowledge import', 'No problem. Continue to Finish setup and mark ready.');
       });
 
@@ -1401,6 +1513,7 @@
           applyRequestedTargets();
           bindTargetListeners();
           updateTargetSummary();
+          updateKnowledgeFilesSummary();
           renderStep();
           hydrateTenantFromSession();
         });
