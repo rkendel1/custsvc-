@@ -136,6 +136,14 @@
         gap: 0.8rem;
       }
 
+      .source-screen { display: none; margin-top: 0.7rem; }
+      .source-screen.active { display: block; }
+      .source-nav button[aria-pressed="true"] {
+        background: #eaf1ff;
+        border-color: #b9cffc;
+        color: #1f428a;
+      }
+
       .card {
         border: 1px solid var(--line);
         border-radius: 12px;
@@ -243,8 +251,15 @@
           </div>
 
           <div class="wizard-step active" data-step="1">
-            <h3 style="font-size:1rem;">Connect and monitor sources</h3>
-            <div class="card-grid" style="margin-top: 0.7rem;">
+            <h3 style="font-size:1rem;">Source operations</h3>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">Switch between setup, monitoring, and ingestion.</p>
+            <div class="inline-actions source-nav">
+              <button id="sourceScreenConnectBtn" type="button" class="btn-primary" aria-pressed="true">Connect source</button>
+              <button id="sourceScreenHealthBtn" type="button" class="btn-ghost" aria-pressed="false">Monitor + health</button>
+              <button id="sourceScreenIngestBtn" type="button" class="btn-ghost" aria-pressed="false">Ingest documents</button>
+            </div>
+
+            <div id="sourceScreenConnect" class="source-screen active">
               <div class="card">
                 <h3 style="font-size:0.98rem;">Connect Source</h3>
                 <form id="sourceForm">
@@ -270,6 +285,9 @@
                   <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Register source</button>
                 </form>
               </div>
+            </div>
+
+            <div id="sourceScreenHealth" class="source-screen">
               <div class="card">
                 <h3 style="font-size:0.98rem;">Source health</h3>
                 <div class="inline-actions">
@@ -285,8 +303,15 @@
                   <button id="testSourceBtn" class="btn-ghost">Test connection</button>
                   <button id="updateSourceBtn" class="btn-ghost">Rotate credentials</button>
                 </div>
-                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.8rem 0;" />
+                <pre id="sourcesOutput">No sources loaded yet.</pre>
+              </div>
+            </div>
+
+            <div id="sourceScreenIngest" class="source-screen">
+              <div class="card">
                 <h3 style="font-size:0.95rem; margin: 0 0 0.45rem;">Ingest source documents</h3>
+                <p style="color: var(--muted); margin: 0 0 0.5rem; font-size: 0.9rem;">Use a connected source ID to attach imported docs.</p>
+                <label>Source ID <input id="ingestSourceId" placeholder="source-..." /></label>
                 <form id="sourceDocForm">
                   <label>Document title <input name="title" placeholder="Policy excerpt" required /></label>
                   <label>Document body
@@ -324,7 +349,7 @@
                   <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
                   <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Upload source PDF</button>
                 </form>
-                <pre id="sourcesOutput">No sources loaded yet.</pre>
+                <pre id="sourcesIngestOutput">Ingestion status will appear here.</pre>
               </div>
             </div>
           </div>

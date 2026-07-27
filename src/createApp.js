@@ -55,6 +55,61 @@ function extractHtmlTitle(html, fallback = 'Website content') {
   return title || fallback;
 }
 
+function inferTitleFromUrl(urlValue, fallback = 'Source document') {
+  try {
+    const parsed = new URL(String(urlValue || '').trim());
+    const segment = String(parsed.pathname || '').split('/').filter(Boolean).pop() || '';
+    const decoded = decodeURIComponent(segment).replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
+    return decoded || parsed.hostname || fallback;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function isLikelyPdfUrl(urlValue) {
+  const value = String(urlValue || '').trim().toLowerCase();
+  return /\.pdf(?:$|[?#])/.test(value);
+}
+
+async function fetchPdfSourceSnapshot(siteUrl) {
+  const normalizedUrl = toNormalizedContentUrl(siteUrl);
+  if (!normalizedUrl) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(normalizedUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'application/pdf,*/*;q=0.3',
+        'user-agent': 'KnowledgeOS-SourceSync/1.0',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`pdf fetch failed (${response.status})`);
+    }
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('application/pdf') && !isLikelyPdfUrl(normalizedUrl)) {
+      return null;
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const parsedText = String(await extractPdfTextLocal(bytes)).trim();
+    if (!parsedText) return null;
+
+    return {
+      title: inferTitleFromUrl(normalizedUrl, 'PDF source document'),
+      body: parsedText.slice(0, 120_000),
+      source_url: normalizedUrl,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function toNormalizedContentUrl(value) {
   try {
     const parsed = new URL(String(value || '').trim());
@@ -1331,10 +1386,44 @@ function requireTenantRole(storage, allowedRoles = ['Owner', 'Admin', 'Administr
       return next();
     }
 
-    const token = resolveSessionToken(req);
-    if (!token) return res.status(401).json({ error: 'session token is required' });
-
     const tenantId = resolveScopedTenantId(req);
+    const token = resolveSessionToken(req);
+
+    if (!token) {
+      const identity = resolveConsoleAccessIdentity(req);
+      const identityTenant = String(identity?.tenant_id || '').trim();
+      const identityEmail = String(identity?.email || '').trim().toLowerCase();
+      if (identityTenant && identityEmail && identityTenant === tenantId) {
+        const users = listData(storage, 'listUsers');
+        const user = users.find((item) => (
+          String(item?.tenant_id || '').trim() === tenantId
+          && String(item?.email || '').trim().toLowerCase() === identityEmail
+        ));
+        const memberships = listData(storage, 'listTenantMemberships');
+        const membership = memberships.find((item) => (
+          item.tenant_id === tenantId
+          && item.user_id === user?.user_id
+          && String(item.status || '').toLowerCase() === 'active'
+        ));
+        const role = String(membership?.role || '').toLowerCase();
+        if (!allowed.has(role)) {
+          return res.status(403).json({ error: 'owner or admin role is required' });
+        }
+
+        req.session = {
+          token: 'console-access',
+          tenant_id: tenantId,
+          user_id: user?.user_id || null,
+          role: membership?.role || null,
+          status: 'active',
+        };
+        req.tenantId = tenantId;
+        return next();
+      }
+
+      return res.status(401).json({ error: 'session token is required' });
+    }
+
     const sessions = listData(storage, 'listSessions');
     const session = sessions.find(
       (item) => item.token === token && item.tenant_id === tenantId && item.status === 'active',
@@ -1755,7 +1844,13 @@ function createApp(options = {}) {
 
     try {
       const crawlLimit = Math.max(1, Math.min(Number(source?.config?.max_pages || source?.max_pages || 12), 50));
-      const snapshots = await fetchWebsiteSourceSnapshots(siteUrl, { maxPages: crawlLimit });
+      let snapshots = [];
+      if (isLikelyPdfUrl(siteUrl)) {
+        const pdfSnapshot = await fetchPdfSourceSnapshot(siteUrl);
+        snapshots = pdfSnapshot ? [pdfSnapshot] : [];
+      } else {
+        snapshots = await fetchWebsiteSourceSnapshots(siteUrl, { maxPages: crawlLimit });
+      }
       if (!Array.isArray(snapshots) || !snapshots.length) {
         const extractionError = new Error('Website content could not be extracted');
         return {

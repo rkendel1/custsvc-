@@ -364,8 +364,13 @@
             <div id="sourceCredentialFields"></div>
             <div class="inline-actions">
               <button id="connectSourceBtn" class="btn-primary">Connect Source</button>
-              <button id="testSourceBtn" class="btn-ghost">Check connection</button>
-              <button id="refreshSourceMonitorBtn" class="btn-ghost">View connected sources</button>
+              <button id="toggleSourceDiagnosticsBtn" type="button" class="btn-ghost">Show diagnostics</button>
+            </div>
+            <div id="sourceDiagnostics" style="display:none; margin-top:0.55rem;">
+              <div class="inline-actions" style="margin-top:0;">
+                <button id="testSourceBtn" class="btn-ghost" type="button">Check connection</button>
+                <button id="refreshSourceMonitorBtn" class="btn-ghost" type="button">View connected sources</button>
+              </div>
             </div>
           </div>
 
@@ -461,10 +466,13 @@
       const knowledgeDropzone = document.getElementById('knowledgeDropzone');
       const knowledgeFilesSummary = document.getElementById('knowledgeFilesSummary');
       const skipKnowledgeBtn = document.getElementById('skipKnowledgeBtn');
+      const toggleSourceDiagnosticsBtn = document.getElementById('toggleSourceDiagnosticsBtn');
+      const sourceDiagnostics = document.getElementById('sourceDiagnostics');
       const authState = document.getElementById('authState');
       const signOutBtn = document.getElementById('signOutBtn');
       let sourceTemplates = [];
       let stagedKnowledgeFiles = [];
+      let latestConnectedSourceId = '';
       let step = 1;
       let autoStartAttempted = false;
       const tenantLine = document.getElementById('tenantLine');
@@ -1411,29 +1419,53 @@
           };
           const data = await postJson('/api/sources', payload);
           const sourceId = data?.source?.source_id || '';
+          latestConnectedSourceId = sourceId;
           let syncedCount = 0;
+          let syncErrorMessage = '';
           if (sourceId) {
             const syncResult = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/sync`, {
               documents: [],
             });
             syncedCount = Number(syncResult?.synced_count || 0);
+            syncErrorMessage = String(syncResult?.source?.last_sync_error || '').trim();
           }
+
+          let connectedCount = 0;
+          try {
+            const listed = await getJson('/api/sources');
+            connectedCount = Array.isArray(listed?.sources) ? listed.sources.length : 0;
+          } catch (_error) {
+            connectedCount = 0;
+          }
+
           setStatus('Source connected', [
             `${data?.source?.name || 'Source'} is now connected.`,
             syncedCount > 0
               ? `${syncedCount} website document(s) were synced and are ready for questions.`
-              : 'No documents were synced yet. Use Check connection and retry sync if needed.',
+              : (syncErrorMessage
+                ? `Sync issue: ${syncErrorMessage}`
+                : 'No documents were synced yet. You can continue onboarding and sync more in the dashboard.'),
+            connectedCount > 0 ? `${connectedCount} source(s) connected so far.` : '',
           ]);
-          document.getElementById('testSourceBtn').dataset.sourceId = sourceId;
+          const testButton = document.getElementById('testSourceBtn');
+          if (testButton) testButton.dataset.sourceId = sourceId;
         } catch (error) {
           setStatus('Could not connect source', error.message);
+        }
+      });
+
+      toggleSourceDiagnosticsBtn?.addEventListener('click', () => {
+        const showing = sourceDiagnostics?.style.display !== 'none';
+        if (sourceDiagnostics) sourceDiagnostics.style.display = showing ? 'none' : 'block';
+        if (toggleSourceDiagnosticsBtn) {
+          toggleSourceDiagnosticsBtn.textContent = showing ? 'Show diagnostics' : 'Hide diagnostics';
         }
       });
 
       document.getElementById('testSourceBtn').addEventListener('click', async () => {
         try {
           if (!(await requireSessionTokenFor('Source test'))) return;
-          const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || '').trim();
+          const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || latestConnectedSourceId || '').trim();
           if (!sourceId) throw new Error('Connect a source first to run a live test');
           const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, {});
           setStatus(data?.ok ? 'Connection healthy' : 'Connection needs attention', [

@@ -829,6 +829,75 @@ test('source document endpoint ingests content and links it to source', async (t
   assert.equal(documents.some((doc) => doc.source_id === created.source.source_id && doc.title === 'Returns'), true);
 });
 
+test('source endpoints accept console cookie auth without session token', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  t.after(() => {
+    if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+    else process.env.APP_AUTH_SECRET = previousAuthSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-source-cookie-auth-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const signup = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'cookieco',
+      email: 'owner@cookieco.dev',
+      password: 'password123',
+    }),
+  });
+  assert.equal(signup.status, 201);
+  const cookie = signup.headers.get('set-cookie');
+  assert.equal(Boolean(cookie), true);
+
+  const sourceCreate = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+    },
+    body: JSON.stringify({
+      name: 'Cookie Source',
+      type: 'GENERIC',
+      config: { notes: 'cookie auth path' },
+    }),
+  });
+  assert.equal(sourceCreate.status, 201);
+  const created = await sourceCreate.json();
+
+  const sourceDoc = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/documents`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+    },
+    body: JSON.stringify({
+      title: 'Cookie-auth document',
+      body: 'This source document was ingested via console cookie auth.',
+      visibility: 'INTERNAL',
+    }),
+  });
+  const sourceDocBody = await sourceDoc.json();
+  assert.equal(sourceDoc.status, 201);
+  assert.equal(sourceDocBody.document.title, 'Cookie-auth document');
+
+  const badPdf = new FormData();
+  badPdf.set('file', new Blob([Buffer.from('not-a-real-pdf')], { type: 'application/pdf' }), 'invalid.pdf');
+  badPdf.set('title', 'Invalid PDF');
+
+  const pdfUpload = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/documents/pdf`, {
+    method: 'POST',
+    headers: { cookie },
+    body: badPdf,
+  });
+  assert.equal(pdfUpload.status !== 401, true);
+});
+
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {
     listDocuments: () => [],

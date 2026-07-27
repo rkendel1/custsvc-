@@ -489,9 +489,9 @@ function wireSourceDocumentForm() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const sourceId = String(document.getElementById('syncSourceId')?.value || '').trim();
+    const sourceId = String(document.getElementById('ingestSourceId')?.value || document.getElementById('syncSourceId')?.value || '').trim();
     if (!sourceId) {
-      setPanelText('sourcesOutput', 'Source ID is required to add a source document.');
+      setPanelText('sourcesIngestOutput', 'Source ID is required to add a source document.');
       return;
     }
 
@@ -506,11 +506,11 @@ function wireSourceDocumentForm() {
         body: JSON.stringify(payload),
       });
       form.reset();
-      setPanelText('sourcesOutput', `Source document ingested: ${data?.document?.id || 'created'}`);
+      setPanelText('sourcesIngestOutput', `Source document ingested: ${data?.document?.id || 'created'}`);
       await refreshSources();
       await refreshDocuments();
     } catch (error) {
-      setPanelText('sourcesOutput', `Could not add source document: ${error.message}`);
+      setPanelText('sourcesIngestOutput', `Could not add source document: ${error.message}`);
     }
   });
 }
@@ -521,9 +521,9 @@ function wireSourcePdfForm() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const sourceId = String(document.getElementById('syncSourceId')?.value || '').trim();
+    const sourceId = String(document.getElementById('ingestSourceId')?.value || document.getElementById('syncSourceId')?.value || '').trim();
     if (!sourceId) {
-      setPanelText('sourcesOutput', 'Source ID is required to upload a source PDF.');
+      setPanelText('sourcesIngestOutput', 'Source ID is required to upload a source PDF.');
       return;
     }
 
@@ -534,13 +534,46 @@ function wireSourcePdfForm() {
         body: formData,
       });
       form.reset();
-      setPanelText('sourcesOutput', `Source PDF ingested: ${data?.document?.id || 'created'}`);
+      setPanelText('sourcesIngestOutput', `Source PDF ingested: ${data?.document?.id || 'created'}`);
       await refreshSources();
       await refreshDocuments();
     } catch (error) {
-      setPanelText('sourcesOutput', `Could not upload source PDF: ${error.message}`);
+      setPanelText('sourcesIngestOutput', `Could not upload source PDF: ${error.message}`);
     }
   });
+}
+
+function wireSourceScreens() {
+  const screens = {
+    connect: document.getElementById('sourceScreenConnect'),
+    health: document.getElementById('sourceScreenHealth'),
+    ingest: document.getElementById('sourceScreenIngest'),
+  };
+  const buttons = {
+    connect: document.getElementById('sourceScreenConnectBtn'),
+    health: document.getElementById('sourceScreenHealthBtn'),
+    ingest: document.getElementById('sourceScreenIngestBtn'),
+  };
+
+  if (!screens.connect || !screens.health || !screens.ingest) return;
+  if (!buttons.connect || !buttons.health || !buttons.ingest) return;
+
+  function activate(screenName) {
+    for (const [name, node] of Object.entries(screens)) {
+      node.classList.toggle('active', name === screenName);
+    }
+    for (const [name, button] of Object.entries(buttons)) {
+      const active = name === screenName;
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.classList.toggle('btn-primary', active);
+      button.classList.toggle('btn-ghost', !active);
+    }
+  }
+
+  buttons.connect.addEventListener('click', () => activate('connect'));
+  buttons.health.addEventListener('click', () => activate('health'));
+  buttons.ingest.addEventListener('click', () => activate('ingest'));
+  activate('connect');
 }
 
 function wireCompile() {
@@ -679,6 +712,7 @@ async function bootstrapAdmin() {
   wireSourceSync();
   wireSourceTest();
   wireSourceUpdate();
+  wireSourceScreens();
   wireSourceDocumentForm();
   wireSourcePdfForm();
   wireCompile();
