@@ -1,5 +1,5 @@
 const { tokenize } = require('./tokenize');
-const MIN_KEYWORD_LENGTH = 4;
+const MIN_KEYWORD_CHAR_LENGTH = 4;
 
 function topEntries(map, limit = 5) {
   return Object.entries(map)
@@ -34,7 +34,7 @@ function buildAnalytics(telemetryEvents) {
 
     if (!event.answered) {
       unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
-      const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_LENGTH);
+      const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_CHAR_LENGTH);
       for (const keyword of keywords) {
         missingKeywords[keyword] = (missingKeywords[keyword] || 0) + 1;
       }

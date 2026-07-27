@@ -39,9 +39,15 @@ function createStorage(baseDir) {
   ensureJsonFile(telemetryPath, []);
 
   function sanitizeBundleName(name) {
-    const fileName = path.basename(String(name || 'company.intelligence.bundle.json'));
+    let raw = String(name || 'company.intelligence.bundle.json');
+    try {
+      raw = decodeURIComponent(raw);
+    } catch (_e) {
+      // Keep raw when decode fails.
+    }
+    const fileName = path.basename(raw);
     if (fileName.includes('..')) return 'company.intelligence.bundle.json';
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 120);
     return safeName || 'company.intelligence.bundle.json';
   }
 
@@ -62,7 +68,11 @@ function createStorage(baseDir) {
     },
     writeBundle(name, bundle) {
       const safeName = sanitizeBundleName(name);
-      const bundlePath = path.join(bundlesDir, safeName);
+      const bundlePath = path.resolve(bundlesDir, safeName);
+      const bundleRoot = path.resolve(bundlesDir) + path.sep;
+      if (!bundlePath.startsWith(bundleRoot)) {
+        throw new Error('invalid bundle path');
+      }
       writeJson(bundlePath, bundle);
       return { bundlePath, safeName };
     },

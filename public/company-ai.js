@@ -11,6 +11,16 @@
     history: [],
   };
 
+  function simpleHash(value) {
+    let hash = 0;
+    const input = String(value || '');
+    for (let i = 0; i < input.length; i += 1) {
+      hash = (hash << 5) - hash + input.charCodeAt(i);
+      hash |= 0;
+    }
+    return String(hash);
+  }
+
   function tokenize(text) {
     return String(text || '')
       .toLowerCase()
@@ -45,7 +55,7 @@
   async function loadBundle() {
     if (state.bundle) return state.bundle;
 
-    const cacheKey = `company-intelligence:${bundleUrl}`;
+    const cacheKey = `company-intelligence:${simpleHash(bundleUrl)}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {

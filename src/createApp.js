@@ -9,10 +9,26 @@ const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
 
 function stripHtml(text) {
-  return String(text || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const input = String(text || '');
+  let insideTag = false;
+  let output = '';
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (ch === '<') {
+      insideTag = true;
+      output += ' ';
+      continue;
+    }
+    if (ch === '>') {
+      insideTag = false;
+      output += ' ';
+      continue;
+    }
+    if (!insideTag) output += ch;
+  }
+
+  return output.replace(/\s+/g, ' ').trim();
 }
 
 function createRateLimiter({ max = 120, windowMs = 60_000 } = {}) {
@@ -139,7 +155,7 @@ function createApp(options = {}) {
       storage.saveDocuments(docs);
       return res.status(201).json({ document });
     } catch (error) {
-      return res.status(500).json({ error: `unable to fetch url: ${error.message}` });
+      return res.status(500).json({ error: `unable to process URL content: ${error.message}` });
     }
   });
 
@@ -175,6 +191,9 @@ function createApp(options = {}) {
     const docs = storage.listDocuments();
     const bundle = compileBundle(docs, { company: companyName });
     const name = req.body?.name || 'company.intelligence.bundle.json';
+    if (String(name).length > 120) {
+      return res.status(400).json({ error: 'bundle name is too long' });
+    }
     const { safeName } = storage.writeBundle(name, bundle);
 
     res.json({
