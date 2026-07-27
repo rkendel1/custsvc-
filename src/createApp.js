@@ -55,47 +55,130 @@ function extractHtmlTitle(html, fallback = 'Website content') {
   return title || fallback;
 }
 
-async function fetchWebsiteSourceSnapshot(siteUrl) {
-  const normalizedUrl = String(siteUrl || '').trim();
-  if (!normalizedUrl) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+function toNormalizedContentUrl(value) {
   try {
-    const response = await fetch(normalizedUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        accept: 'text/html,text/plain;q=0.9,*/*;q=0.5',
-        'user-agent': 'KnowledgeOS-SourceSync/1.0',
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`website fetch failed (${response.status})`);
+    const parsed = new URL(String(value || '').trim());
+    parsed.hash = '';
+    if ((parsed.protocol === 'https:' && parsed.port === '443') || (parsed.protocol === 'http:' && parsed.port === '80')) {
+      parsed.port = '';
     }
-
-    const raw = await response.text();
-    const text = stripHtml(raw).slice(0, 80_000);
-    if (!text) return null;
-
-    const fallbackTitle = (() => {
-      try {
-        const parsed = new URL(normalizedUrl);
-        return parsed.hostname || 'Website content';
-      } catch (_error) {
-        return 'Website content';
-      }
-    })();
-
-    return {
-      title: extractHtmlTitle(raw, fallbackTitle),
-      body: text,
-      source_url: normalizedUrl,
-    };
-  } finally {
-    clearTimeout(timeout);
+    if (parsed.pathname.endsWith('/') && parsed.pathname !== '/') {
+      parsed.pathname = parsed.pathname.slice(0, -1);
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return String(value || '').trim();
   }
+}
+
+function extractSameOriginLinks(html, fromUrl, rootOrigin) {
+  const raw = String(html || '');
+  const links = new Set();
+  const pattern = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = pattern.exec(raw)) !== null) {
+    const href = String(match?.[1] || '').trim();
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) {
+      continue;
+    }
+    try {
+      const absolute = new URL(href, fromUrl);
+      if (!['http:', 'https:'].includes(absolute.protocol)) continue;
+      if (absolute.origin !== rootOrigin) continue;
+      const pathname = String(absolute.pathname || '').toLowerCase();
+      if (/\.(pdf|png|jpe?g|gif|svg|webp|zip|gz|mp4|mov|avi|mp3|wav|json|xml|rss)$/i.test(pathname)) continue;
+      absolute.hash = '';
+      links.add(toNormalizedContentUrl(absolute.toString()));
+    } catch (_error) {
+      // Ignore malformed links.
+    }
+  }
+  return [...links];
+}
+
+async function fetchWebsiteSourceSnapshots(siteUrl, options = {}) {
+  const normalizedUrl = toNormalizedContentUrl(siteUrl);
+  if (!normalizedUrl) return [];
+
+  const maxPages = Math.max(1, Math.min(Number(options.maxPages || 12), 50));
+  const perPageTextLimit = Math.max(1000, Math.min(Number(options.perPageTextLimit || 80_000), 200_000));
+  const queue = [normalizedUrl];
+  const visited = new Set();
+  const snapshots = [];
+
+  let rootOrigin = null;
+  try {
+    rootOrigin = new URL(normalizedUrl).origin;
+  } catch (_error) {
+    rootOrigin = null;
+  }
+  if (!rootOrigin) return [];
+
+  while (queue.length && snapshots.length < maxPages) {
+    const currentUrl = queue.shift();
+    const currentKey = toNormalizedContentUrl(currentUrl);
+    if (!currentKey || visited.has(currentKey)) continue;
+    visited.add(currentKey);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch(currentKey, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: {
+          accept: 'text/html,text/plain;q=0.9,*/*;q=0.5',
+          'user-agent': 'KnowledgeOS-SourceSync/1.0',
+        },
+      });
+      if (!response.ok) continue;
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('text/html') && !contentType.includes('text/plain')) continue;
+
+      const raw = await response.text();
+      const text = stripHtml(raw).slice(0, perPageTextLimit).trim();
+      if (!text) continue;
+
+      const fallbackTitle = (() => {
+        try {
+          const parsed = new URL(currentKey);
+          return parsed.pathname && parsed.pathname !== '/'
+            ? `${parsed.hostname}${parsed.pathname}`
+            : parsed.hostname;
+        } catch (_error) {
+          return 'Website content';
+        }
+      })();
+
+      snapshots.push({
+        title: extractHtmlTitle(raw, fallbackTitle),
+        body: text,
+        source_url: currentKey,
+      });
+
+      if (contentType.includes('text/html') && snapshots.length < maxPages) {
+        const discovered = extractSameOriginLinks(raw, currentKey, rootOrigin);
+        for (const link of discovered) {
+          if (!visited.has(link) && !queue.includes(link) && queue.length + snapshots.length < maxPages * 3) {
+            queue.push(link);
+          }
+        }
+      }
+    } catch (_error) {
+      // Skip individual page failures and continue crawl.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return snapshots;
+}
+
+async function fetchWebsiteSourceSnapshot(siteUrl) {
+  const snapshots = await fetchWebsiteSourceSnapshots(siteUrl, { maxPages: 1 });
+  return snapshots[0] || null;
 }
 
 function ensureLocalPdfParserPackage(rootDir) {
@@ -1541,8 +1624,9 @@ function createApp(options = {}) {
     }
 
     try {
-      const snapshot = await fetchWebsiteSourceSnapshot(siteUrl);
-      if (!snapshot?.body) {
+      const crawlLimit = Math.max(1, Math.min(Number(source?.config?.max_pages || source?.max_pages || 12), 50));
+      const snapshots = await fetchWebsiteSourceSnapshots(siteUrl, { maxPages: crawlLimit });
+      if (!Array.isArray(snapshots) || !snapshots.length) {
         const extractionError = new Error('Website content could not be extracted');
         return {
           syncedCount: 0,
@@ -1558,40 +1642,46 @@ function createApp(options = {}) {
       }
 
       const docs = listData(storage, 'listDocuments');
-      const existingIndex = docs.findIndex((doc) => (
-        doc.tenant_id === normalizedTenantId
-        && String(doc.type || '').toUpperCase() === 'URL'
-        && normalizeSourceSiteUrl(doc.source_url || doc.sourceUrl || '') === siteUrl
-      ));
-
       let syncedCount = 0;
-      if (existingIndex >= 0) {
-        const existing = docs[existingIndex];
-        const nextDoc = {
-          ...existing,
-          title: snapshot.title,
-          body: snapshot.body,
-          visibility: 'PUBLIC',
-          audience: 'PUBLIC',
-          source_url: siteUrl,
-          embeddings: normalizeEmbedding(existing?.embeddings) || createSemanticEmbedding(`${snapshot.title}\n${snapshot.body}`),
-          updatedAt: new Date().toISOString(),
-        };
-        docs[existingIndex] = nextDoc;
-        await upsertVectorDocument(nextDoc);
-      } else {
-        const created = toDocumentFromInput({
-          title: snapshot.title,
-          body: snapshot.body,
-          type: 'URL',
-          visibility: 'PUBLIC',
-          audience: 'PUBLIC',
-          source_url: siteUrl,
-        }, normalizedTenantId);
-        if (created) {
-          docs.push(created);
-          await upsertVectorDocument(created);
-          syncedCount = 1;
+      for (const snapshot of snapshots) {
+        const snapshotUrl = normalizeSourceSiteUrl(snapshot?.source_url || siteUrl) || siteUrl;
+        const existingIndex = docs.findIndex((doc) => (
+          doc.tenant_id === normalizedTenantId
+          && String(doc.type || '').toUpperCase() === 'URL'
+          && normalizeSourceSiteUrl(doc.source_url || doc.sourceUrl || '') === snapshotUrl
+        ));
+
+        if (existingIndex >= 0) {
+          const existing = docs[existingIndex];
+          const nextDoc = {
+            ...existing,
+            title: snapshot.title,
+            body: snapshot.body,
+            visibility: 'PUBLIC',
+            audience: 'PUBLIC',
+            source_id: source.source_id,
+            source_url: snapshotUrl,
+            embeddings: normalizeEmbedding(existing?.embeddings) || createSemanticEmbedding(`${snapshot.title}\n${snapshot.body}`),
+            updatedAt: new Date().toISOString(),
+          };
+          docs[existingIndex] = nextDoc;
+          await upsertVectorDocument(nextDoc);
+          syncedCount += 1;
+        } else {
+          const created = toDocumentFromInput({
+            title: snapshot.title,
+            body: snapshot.body,
+            type: 'URL',
+            visibility: 'PUBLIC',
+            audience: 'PUBLIC',
+            source_id: source.source_id,
+            source_url: snapshotUrl,
+          }, normalizedTenantId);
+          if (created) {
+            docs.push(created);
+            await upsertVectorDocument(created);
+            syncedCount += 1;
+          }
         }
       }
 
@@ -2935,12 +3025,14 @@ function createApp(options = {}) {
             type: item.type || (source.type === 'WEBSITE' ? 'URL' : 'TEXT'),
             visibility: item.visibility || (source.type === 'WEBSITE' ? 'PUBLIC' : 'INTERNAL'),
             audience: item.audience || (source.type === 'WEBSITE' ? 'PUBLIC' : null),
+            source_id: item.source_id || source.source_id,
             source_url: item.source_url || source.site_url || null,
           },
           tenantId,
         );
         if (!doc) continue;
         docs.push(doc);
+        await upsertVectorDocument(doc);
         syncedCount += 1;
       }
       saveData(storage, 'saveDocuments', docs);
@@ -2990,6 +3082,130 @@ function createApp(options = {}) {
       source: await toSourceResponse(updated, tenantId),
       synced_count: syncedCount,
     });
+  });
+
+  app.post('/api/sources/:sourceId/documents', writeLimiter, sourceAdminRoleMiddleware, async (req, res) => {
+    const sourceId = req.params.sourceId;
+    const tenantId = resolveScopedTenantId(req);
+    const sources = listData(storage, 'listSources');
+    const sourceIndex = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (sourceIndex < 0) return res.status(404).json({ error: 'source not found' });
+
+    const source = sources[sourceIndex];
+    const document = toDocumentFromInput({
+      ...req.body,
+      type: req.body?.type || (source.type === 'WEBSITE' ? 'URL' : 'TEXT'),
+      visibility: req.body?.visibility || (source.type === 'WEBSITE' ? 'PUBLIC' : 'INTERNAL'),
+      audience: req.body?.audience || (source.type === 'WEBSITE' ? 'PUBLIC' : null),
+      source_id: source.source_id,
+      source_url: req.body?.source_url || source.site_url || null,
+    }, tenantId);
+
+    if (!document) {
+      return res.status(400).json({ error: 'title and body are required' });
+    }
+
+    const docs = listData(storage, 'listDocuments');
+    docs.push(document);
+    saveData(storage, 'saveDocuments', docs);
+    await upsertVectorDocument(document);
+    rebuildTenantBundle(tenantId);
+
+    const updatedSource = {
+      ...source,
+      last_sync_at: new Date().toISOString(),
+      last_sync_status: 'success',
+      last_sync_error: null,
+      documents_synced: Number(source.documents_synced || 0) + 1,
+      updated_at: new Date().toISOString(),
+    };
+    sources[sourceIndex] = updatedSource;
+    saveData(storage, 'saveSources', sources);
+
+    await connectorVault.appendAudit({
+      tenant_id: tenantId,
+      source_id: sourceId,
+      action: 'source.document.add',
+      status: 'ok',
+      details: {
+        document_id: document.id,
+        document_type: document.type,
+      },
+    });
+
+    return res.status(201).json({
+      source: await toSourceResponse(updatedSource, tenantId),
+      document,
+    });
+  });
+
+  app.post('/api/sources/:sourceId/documents/pdf', writeLimiter, sourceAdminRoleMiddleware, upload.single('file'), async (req, res) => {
+    const sourceId = req.params.sourceId;
+    const tenantId = resolveScopedTenantId(req);
+    const sources = listData(storage, 'listSources');
+    const sourceIndex = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (sourceIndex < 0) return res.status(404).json({ error: 'source not found' });
+    if (!req.file?.buffer) return res.status(400).json({ error: 'pdf file is required' });
+
+    const source = sources[sourceIndex];
+    const visibility = normalizeVisibility(req.body?.visibility || (source.type === 'WEBSITE' ? 'PUBLIC' : 'INTERNAL'));
+    const title = String(req.body?.title || req.file.originalname || `${source.name || 'Source'} PDF`).trim();
+
+    try {
+      const text = await extractPdfTextLocal(req.file.buffer);
+      if (!text) {
+        return res.status(400).json({ error: 'pdf had no extractable text' });
+      }
+
+      const document = {
+        id: `doc-${randomUUID()}`,
+        tenant_id: tenantId,
+        title,
+        body: text,
+        type: 'PDF',
+        visibility,
+        audience: visibility,
+        source_id: source.source_id,
+        source_url: source.site_url || null,
+        embeddings: createSemanticEmbedding(`${title}\n${text}`),
+        createdAt: new Date().toISOString(),
+      };
+
+      const docs = listData(storage, 'listDocuments');
+      docs.push(document);
+      saveData(storage, 'saveDocuments', docs);
+      await upsertVectorDocument(document);
+      rebuildTenantBundle(tenantId);
+
+      const updatedSource = {
+        ...source,
+        last_sync_at: new Date().toISOString(),
+        last_sync_status: 'success',
+        last_sync_error: null,
+        documents_synced: Number(source.documents_synced || 0) + 1,
+        updated_at: new Date().toISOString(),
+      };
+      sources[sourceIndex] = updatedSource;
+      saveData(storage, 'saveSources', sources);
+
+      await connectorVault.appendAudit({
+        tenant_id: tenantId,
+        source_id: sourceId,
+        action: 'source.document.upload_pdf',
+        status: 'ok',
+        details: {
+          document_id: document.id,
+          filename: req.file.originalname || null,
+        },
+      });
+
+      return res.status(201).json({
+        source: await toSourceResponse(updatedSource, tenantId),
+        document,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: `unable to parse pdf: ${error.message}` });
+    }
   });
 
   app.post('/api/signup', signupLimiter, (req, res) => {

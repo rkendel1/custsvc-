@@ -483,6 +483,66 @@ function wireSourceUpdate() {
   });
 }
 
+function wireSourceDocumentForm() {
+  const form = document.getElementById('sourceDocForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const sourceId = String(document.getElementById('syncSourceId')?.value || '').trim();
+    if (!sourceId) {
+      setPanelText('sourcesOutput', 'Source ID is required to add a source document.');
+      return;
+    }
+
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.body || ''}`);
+
+    try {
+      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      form.reset();
+      setPanelText('sourcesOutput', `Source document ingested: ${data?.document?.id || 'created'}`);
+      await refreshSources();
+      await refreshDocuments();
+    } catch (error) {
+      setPanelText('sourcesOutput', `Could not add source document: ${error.message}`);
+    }
+  });
+}
+
+function wireSourcePdfForm() {
+  const form = document.getElementById('sourcePdfForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const sourceId = String(document.getElementById('syncSourceId')?.value || '').trim();
+    if (!sourceId) {
+      setPanelText('sourcesOutput', 'Source ID is required to upload a source PDF.');
+      return;
+    }
+
+    const formData = new FormData(form);
+    try {
+      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents/pdf`, {
+        method: 'POST',
+        body: formData,
+      });
+      form.reset();
+      setPanelText('sourcesOutput', `Source PDF ingested: ${data?.document?.id || 'created'}`);
+      await refreshSources();
+      await refreshDocuments();
+    } catch (error) {
+      setPanelText('sourcesOutput', `Could not upload source PDF: ${error.message}`);
+    }
+  });
+}
+
 function wireCompile() {
   const button = document.getElementById('compileBtn');
   const output = document.getElementById('compileOutput');
@@ -619,6 +679,8 @@ async function bootstrapAdmin() {
   wireSourceSync();
   wireSourceTest();
   wireSourceUpdate();
+  wireSourceDocumentForm();
+  wireSourcePdfForm();
   wireCompile();
   wireSignOut();
 

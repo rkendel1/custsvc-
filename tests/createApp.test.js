@@ -678,6 +678,64 @@ test('source listing marks health as error when last sync failed', async (t) => 
   assert.equal(listed.sources[0].health, 'error');
 });
 
+test('source document endpoint ingests content and links it to source', async (t) => {
+  const documents = [];
+  const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const storage = {
+    listDocuments: () => [...documents],
+    saveDocuments: (nextDocuments) => {
+      documents.length = 0;
+      documents.push(...nextDocuments);
+    },
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
+    body: JSON.stringify({
+      name: 'Support Site',
+      type: 'WEBSITE',
+      site_url: 'https://example.com/help',
+      tenant_id: 'public',
+    }),
+  });
+  const created = await createResponse.json();
+  assert.equal(createResponse.status, 201);
+
+  const ingestResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
+    body: JSON.stringify({
+      title: 'Returns',
+      body: 'Returns are accepted within 30 days.',
+      type: 'POLICY',
+      visibility: 'PUBLIC',
+    }),
+  });
+  const ingested = await ingestResponse.json();
+
+  assert.equal(ingestResponse.status, 201);
+  assert.equal(ingested.document.source_id, created.source.source_id);
+  assert.equal(ingested.document.tenant_id, 'public');
+  assert.equal(documents.length >= 1, true);
+  assert.equal(documents.some((doc) => doc.source_id === created.source.source_id && doc.title === 'Returns'), true);
+});
+
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {
     listDocuments: () => [],

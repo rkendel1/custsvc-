@@ -285,6 +285,45 @@
                   <button id="testSourceBtn" class="btn-ghost">Test connection</button>
                   <button id="updateSourceBtn" class="btn-ghost">Rotate credentials</button>
                 </div>
+                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.8rem 0;" />
+                <h3 style="font-size:0.95rem; margin: 0 0 0.45rem;">Ingest source documents</h3>
+                <form id="sourceDocForm">
+                  <label>Document title <input name="title" placeholder="Policy excerpt" required /></label>
+                  <label>Document body
+                    <textarea name="body" rows="4" placeholder="Paste source content" required></textarea>
+                  </label>
+                  <label>Type
+                    <select name="type">
+                      <option value="TEXT">TEXT</option>
+                      <option value="MARKDOWN">MARKDOWN</option>
+                      <option value="FAQ">FAQ</option>
+                      <option value="POLICY">POLICY</option>
+                      <option value="URL">URL</option>
+                    </select>
+                  </label>
+                  <label>Visibility
+                    <select name="visibility">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL" selected>INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Add source document</button>
+                </form>
+                <form id="sourcePdfForm" enctype="multipart/form-data" style="margin-top: 0.7rem;">
+                  <label>PDF title override <input name="title" placeholder="Optional title" /></label>
+                  <label>Visibility
+                    <select name="visibility">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL" selected>INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
+                  <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Upload source PDF</button>
+                </form>
                 <pre id="sourcesOutput">No sources loaded yet.</pre>
               </div>
             </div>
