@@ -112,6 +112,24 @@
       .wizard-step { display: none; }
       .wizard-step.active { display: block; }
 
+      [data-advanced] { display: none; }
+      body.show-advanced [data-advanced] { display: block; }
+
+      .quickstart-grid {
+        margin-top: 0.7rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.8rem;
+      }
+
+      .stat-chip {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 0.5rem 0.6rem;
+        font-size: 0.88rem;
+      }
+
       .card-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -184,7 +202,7 @@
 
       @media (max-width: 1000px) {
         .layout { grid-template-columns: 1fr; }
-        .card-grid, .output-grid { grid-template-columns: 1fr; }
+        .card-grid, .output-grid, .quickstart-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -208,20 +226,36 @@
 
       <div class="layout">
         <section class="panel">
-          <h2>Operations Workspace</h2>
-          <p style="color: var(--muted);">Run your day-to-day setup and quality workflow from one place.</p>
+          <h2>Simple Start</h2>
+          <p style="color: var(--muted);">Get to a working test quickly, then open advanced tools only if needed.</p>
           <ul class="step-list">
-            <li><strong>Step 1. Connect sources</strong><span>Link your content systems and verify health.</span></li>
-            <li><strong>Step 2. Build coverage</strong><span>Add policies, FAQs, and process guidance.</span></li>
-            <li><strong>Step 3. Go live safely</strong><span>Compile, review quality, and deploy with confidence.</span></li>
+            <li><strong>Step 1. Test assistant</strong><span>Open the embed tester and ask a question using your onboarding data.</span></li>
+            <li><strong>Step 2. Connect website source</strong><span>Add your website in one form and test connectivity.</span></li>
+            <li><strong>Step 3. Add advanced data</strong><span>Only if needed, open advanced tools for bulk docs, compile, and analytics.</span></li>
           </ul>
         </section>
 
         <section class="panel">
-          <h1 style="font-size:1.65rem; margin-bottom: 0.55rem;">KnowledgeOS Admin Console</h1>
+          <h1 style="font-size:1.65rem; margin-bottom: 0.55rem;">KnowledgeOS Dashboard</h1>
+
+          <div class="card" style="margin-bottom: 0.8rem;">
+            <h3 style="font-size:1rem;">Quick Test Flow</h3>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">This is the fastest way to verify what you added during onboarding.</p>
+            <label>Tenant ID <input id="quickTenantId" placeholder="acme" /></label>
+            <div class="inline-actions">
+              <button id="openEmbedTester" type="button" class="btn-primary">Test Assistant Now</button>
+              <button id="refreshQuickStats" type="button" class="btn-ghost">Refresh quick stats</button>
+              <button id="toggleAdvanced" type="button" class="btn-ghost">Show advanced tools</button>
+            </div>
+            <div class="quickstart-grid">
+              <div class="stat-chip" id="quickDocsCount">Knowledge objects: -</div>
+              <div class="stat-chip" id="quickSourcesCount">Connected sources: -</div>
+            </div>
+            <pre id="quickStatus">Open the embed tester and ask a question to validate your live knowledge.</pre>
+          </div>
 
           <div class="wizard-step active" data-step="1">
-            <h3 style="font-size:1rem;">Step 1 - Connect and monitor sources</h3>
+            <h3 style="font-size:1rem;">Connect and monitor sources</h3>
             <div class="card-grid" style="margin-top: 0.7rem;">
               <div class="card">
                 <h3 style="font-size:0.98rem;">Connect Source</h3>
@@ -268,8 +302,8 @@
             </div>
           </div>
 
-          <div class="wizard-step" data-step="2">
-            <h3 style="font-size:1rem;">Step 2 - Add and organize knowledge</h3>
+          <div class="wizard-step" data-step="2" data-advanced>
+            <h3 style="font-size:1rem;">Advanced: add and organize knowledge</h3>
             <div class="card-grid" style="margin-top: 0.7rem;">
               <div class="card">
                 <h3 style="font-size:0.98rem;">Knowledge Object</h3>
@@ -353,10 +387,10 @@
             </div>
           </div>
 
-          <div class="wizard-step" data-step="3">
-            <h3 style="font-size:1rem;">Step 3 - Review quality and deploy</h3>
+          <div class="wizard-step" data-step="3" data-advanced>
+            <h3 style="font-size:1rem;">Advanced: review quality and rebuild bundle</h3>
             <div class="inline-actions" style="margin-top: 0.7rem;">
-              <button id="compileBtn" class="btn-primary">Compile knowledgeos.bundle.json</button>
+              <button id="compileBtn" class="btn-primary">Rebuild bundle (advanced)</button>
               <button id="refreshDocs" class="btn-ghost">Refresh knowledge objects</button>
               <button id="refreshAnalytics" class="btn-ghost">Refresh analytics</button>
             </div>
@@ -378,7 +412,7 @@
             </div>
           </div>
 
-          <div class="wizard-nav">
+          <div class="wizard-nav" data-advanced>
             <button id="prevAdminStep" type="button" class="btn-ghost">Back</button>
             <button id="nextAdminStep" type="button" class="btn-primary">Next</button>
           </div>

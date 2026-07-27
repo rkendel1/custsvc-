@@ -510,6 +510,83 @@ function wireCompile() {
   });
 }
 
+function resolveTenantForQuickActions() {
+  const quickTenantInput = document.getElementById('quickTenantId');
+  const inputTenant = String(quickTenantInput?.value || '').trim().toLowerCase();
+  const fallbackTenant = String(adminTenantId || localStorage.getItem('knowledgeos_active_tenant_id') || '').trim().toLowerCase();
+  const tenantId = inputTenant || fallbackTenant;
+  if (quickTenantInput && tenantId) quickTenantInput.value = tenantId;
+  if (tenantId) {
+    adminTenantId = tenantId;
+    localStorage.setItem('knowledgeos_active_tenant_id', tenantId);
+  }
+  return tenantId;
+}
+
+function setQuickStatus(message) {
+  const node = document.getElementById('quickStatus');
+  if (!node) return;
+  node.textContent = String(message || '');
+}
+
+async function refreshQuickStats() {
+  const docsChip = document.getElementById('quickDocsCount');
+  const sourcesChip = document.getElementById('quickSourcesCount');
+  const tenantId = resolveTenantForQuickActions();
+  if (!tenantId) {
+    setQuickStatus('Enter a tenant id first.');
+    return;
+  }
+
+  try {
+    const [docs, sources] = await Promise.all([
+      requestJson('/api/documents'),
+      requestJson('/api/sources'),
+    ]);
+    const docCount = Array.isArray(docs?.documents) ? docs.documents.length : 0;
+    const sourceCount = Array.isArray(sources?.sources) ? sources.sources.length : 0;
+
+    if (docsChip) docsChip.textContent = `Knowledge objects: ${docCount}`;
+    if (sourcesChip) sourcesChip.textContent = `Connected sources: ${sourceCount}`;
+
+    setQuickStatus(`Ready: ${docCount} knowledge objects and ${sourceCount} connected sources for tenant ${tenantId}.`);
+  } catch (error) {
+    setQuickStatus(`Could not load quick stats: ${error.message}`);
+  }
+}
+
+function wireQuickStart() {
+  const quickTenantInput = document.getElementById('quickTenantId');
+  const openEmbedTesterBtn = document.getElementById('openEmbedTester');
+  const refreshQuickStatsBtn = document.getElementById('refreshQuickStats');
+  const toggleAdvancedBtn = document.getElementById('toggleAdvanced');
+
+  const initialTenant = String(adminTenantId || localStorage.getItem('knowledgeos_active_tenant_id') || '').trim().toLowerCase();
+  if (quickTenantInput && initialTenant) quickTenantInput.value = initialTenant;
+
+  quickTenantInput?.addEventListener('change', () => {
+    resolveTenantForQuickActions();
+  });
+
+  openEmbedTesterBtn?.addEventListener('click', () => {
+    const tenantId = resolveTenantForQuickActions();
+    if (!tenantId) {
+      setQuickStatus('Enter a tenant id first.');
+      return;
+    }
+    window.location.href = `/embed-test.html?tenant_id=${encodeURIComponent(tenantId)}`;
+  });
+
+  refreshQuickStatsBtn?.addEventListener('click', () => {
+    refreshQuickStats();
+  });
+
+  toggleAdvancedBtn?.addEventListener('click', () => {
+    const showing = document.body.classList.toggle('show-advanced');
+    toggleAdvancedBtn.textContent = showing ? 'Hide advanced tools' : 'Show advanced tools';
+  });
+}
+
 function wireConsoleWizard() {
   const panes = [...document.querySelectorAll('.wizard-step')];
   const prev = document.getElementById('prevAdminStep');
@@ -542,6 +619,7 @@ function wireConsoleWizard() {
 async function bootstrapAdmin() {
   await loadSourceTemplates();
 
+  wireQuickStart();
   wireConsoleWizard();
   wireTextDocForm();
   wireUrlDocForm();
@@ -560,6 +638,7 @@ async function bootstrapAdmin() {
   document.getElementById('refreshSourceAudit').addEventListener('click', refreshSourceAudit);
 
   await refreshAccessStatus();
+  await refreshQuickStats();
   await refreshDocuments();
   await refreshAnalytics();
   await refreshSources();
