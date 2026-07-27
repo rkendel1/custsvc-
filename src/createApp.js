@@ -1418,9 +1418,62 @@ function createApp(options = {}) {
     }
 
     const tenants = listData(storage, 'listTenants');
-    const tenant = tenants.find((item) => String(item.tenant_id || '').toLowerCase() === tenantId);
+    let tenant = tenants.find((item) => String(item.tenant_id || '').toLowerCase() === tenantId);
+    let createdTenant = false;
     if (!tenant) {
-      return res.status(404).json({ error: 'tenant not found' });
+      try {
+        tenant = provisionTenant({
+          companyName: tenantId,
+          ownerEmail: email,
+          companySize: '1-50',
+          primaryUseCase: 'Both',
+          deploymentProfile: 'BOTH',
+        });
+      } catch (error) {
+        return res.status(400).json({ error: error.message || 'could not create workspace' });
+      }
+
+      if (tenants.some((item) => String(item.tenant_id || '').toLowerCase() === String(tenant.tenant_id || '').toLowerCase())) {
+        return res.status(409).json({ error: 'workspace already exists' });
+      }
+
+      const userId = `user-${randomUUID()}`;
+      tenant.owner_user_id = userId;
+      tenants.push(tenant);
+      saveData(storage, 'saveTenants', tenants);
+
+      const users = listData(storage, 'listUsers');
+      users.push({
+        user_id: userId,
+        tenant_id: tenant.tenant_id,
+        name: 'Workspace Owner',
+        email,
+        email_verified: false,
+        created_at: new Date().toISOString(),
+      });
+      saveData(storage, 'saveUsers', users);
+
+      const memberships = listData(storage, 'listTenantMemberships');
+      memberships.push({
+        tenant_id: tenant.tenant_id,
+        user_id: userId,
+        role: 'Owner',
+        status: 'active',
+        created_at: new Date().toISOString(),
+      });
+      saveData(storage, 'saveTenantMemberships', memberships);
+
+      const subscriptions = listData(storage, 'listSubscriptions');
+      subscriptions.push({
+        tenant_id: tenant.tenant_id,
+        plan: 'Starter',
+        usage: { questions_answered: 0, runtime_instances: 0 },
+        limits: { documents: 100, monthly_questions: 1000, runtime_instances: 1 },
+        status: 'active',
+        created_at: new Date().toISOString(),
+      });
+      saveData(storage, 'saveSubscriptions', subscriptions);
+      createdTenant = true;
     }
 
     const upserted = accessCredentialState.upsert({ tenantId, email, password });
@@ -1438,6 +1491,7 @@ function createApp(options = {}) {
       ok: true,
       tenant_id: upserted.tenant_id,
       email: upserted.email,
+      created_workspace: createdTenant,
       expires_at: new Date(expiresAt).toISOString(),
       auth_mode: 'credentials',
     });

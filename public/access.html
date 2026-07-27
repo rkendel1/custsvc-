@@ -127,6 +127,24 @@
 
       .auth-pane { display: none; }
       .auth-pane.active { display: block; }
+
+      .mode-toggle {
+        margin-top: 0.8rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.45rem;
+      }
+
+      .mode-btn {
+        margin-top: 0;
+        width: 100%;
+      }
+
+      .mode-btn.inactive {
+        background: #fff;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
     </style>
   </head>
   <body>
@@ -138,9 +156,14 @@
       <h1>Sign in</h1>
       <p id="introText">Use your workspace password to continue.</p>
 
+      <div class="mode-toggle">
+        <button id="signinModeBtn" type="button" class="mode-btn">Sign in</button>
+        <button id="signupModeBtn" type="button" class="mode-btn inactive">Sign up</button>
+      </div>
+
       <section id="loginPane" class="auth-pane active">
         <form id="accessForm">
-          <label>Workspace ID
+          <label>Workspace ID (your company)
             <input id="workspaceId" autocomplete="organization" placeholder="Optional" />
           </label>
           <label>Work email
@@ -155,10 +178,10 @@
 
       <section id="signupPane" class="auth-pane">
         <section class="section" style="margin-top:0.75rem; border-top:none; padding-top:0;">
-          <h2>Create password</h2>
-          <p id="passwordHelp">Create your workspace password. You will use this password to access protected pages.</p>
+          <h2>Create account</h2>
+          <p id="passwordHelp">Use your workspace ID (your company), work email, and password to create your account.</p>
           <form id="passwordForm">
-            <label>Workspace ID
+            <label>Workspace ID (your company)
               <input id="signupWorkspaceId" autocomplete="organization" required />
             </label>
             <label>Work email
@@ -170,7 +193,7 @@
             <label>Confirm new password
               <input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required />
             </label>
-            <button type="submit">Create password</button>
+            <button type="submit">Create account</button>
           </form>
         </section>
       </section>
@@ -191,6 +214,8 @@
       const passwordHelp = document.getElementById('passwordHelp');
       const introText = document.getElementById('introText');
       const status = document.getElementById('status');
+      const signinModeBtn = document.getElementById('signinModeBtn');
+      const signupModeBtn = document.getElementById('signupModeBtn');
       const loginPane = document.getElementById('loginPane');
       const signupPane = document.getElementById('signupPane');
       const params = new URLSearchParams(window.location.search);
@@ -204,6 +229,11 @@
         const signupMode = mode === 'signup';
         loginPane.classList.toggle('active', !signupMode);
         signupPane.classList.toggle('active', signupMode);
+        signinModeBtn.classList.toggle('inactive', signupMode);
+        signupModeBtn.classList.toggle('inactive', !signupMode);
+        introText.textContent = signupMode
+          ? 'Create your workspace account to continue.'
+          : 'Use your workspace credentials to sign in.';
       }
 
       async function getAccessStatus() {
@@ -224,23 +254,21 @@
           }
 
           if (state.auth_mode === 'credentials') {
-            introText.textContent = 'Sign in with workspace ID, email, and password.';
             setMode('login');
             setStatus('Enter your credentials to sign in.');
             return;
           }
 
           if (!state.password_required) {
-            introText.textContent = 'Create a workspace password to get started.';
+            introText.textContent = 'Create your workspace account to continue.';
             setMode('signup');
-            setStatus('Create your password to continue.');
+            setStatus('Create your account to continue.');
             return;
           }
           if (state.authenticated) {
             setStatus('You are already logged in. Redirecting...');
             window.location.href = next;
           } else {
-            introText.textContent = 'Sign in with your workspace password to continue.';
             setMode('login');
             setStatus('Enter your credentials to sign in.');
           }
@@ -251,7 +279,7 @@
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        setStatus('Checking password...');
+        setStatus('Signing in...');
 
         const workspaceId = String(workspaceIdInput.value || '').trim();
         const workEmail = String(workEmailInput.value || '').trim().toLowerCase();
@@ -307,7 +335,7 @@
           return;
         }
 
-        setStatus('Saving password...');
+        setStatus('Creating account...');
 
         const response = await fetch('/api/access/signup', {
           method: 'POST',
@@ -349,6 +377,9 @@
         if (signupWorkEmailInput && savedEmail) signupWorkEmailInput.value = savedEmail;
         if (signupWorkspaceIdInput && savedWorkspace) signupWorkspaceIdInput.value = savedWorkspace;
       }
+
+      signinModeBtn.addEventListener('click', () => setMode('login'));
+      signupModeBtn.addEventListener('click', () => setMode('signup'));
 
       refreshStatus();
     </script>
