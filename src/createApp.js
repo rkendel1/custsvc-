@@ -1463,6 +1463,142 @@ function createApp(options = {}) {
     });
   });
 
+  app.post('/api/onboarding/session', signupLimiter, (req, res) => {
+    const {
+      tenant_id,
+      name = 'Onboarding User',
+      email = '',
+      company = '',
+      companySize = '1-50',
+      primaryUseCase = 'Customer Website',
+      deploymentProfile = 'BOTH',
+    } = req.body || {};
+
+    const requestedTenantId = String(tenant_id || '').trim();
+    const tenants = listData(storage, 'listTenants');
+    const users = listData(storage, 'listUsers');
+    const memberships = listData(storage, 'listTenantMemberships');
+
+    const existingTenant = requestedTenantId
+      ? tenants.find((item) => item.tenant_id === requestedTenantId)
+      : null;
+
+    if (existingTenant) {
+      const ownerMembership = memberships.find(
+        (item) => item.tenant_id === existingTenant.tenant_id
+          && String(item.status || '').toLowerCase() === 'active'
+          && String(item.role || '').toLowerCase() === 'owner',
+      );
+
+      let userId = ownerMembership?.user_id || null;
+      if (!userId) {
+        const fallbackEmail = isValidEmail(email)
+          ? String(email).toLowerCase()
+          : `onboarding+${Date.now()}@example.com`;
+        userId = `user-${randomUUID()}`;
+        users.push({
+          user_id: userId,
+          tenant_id: existingTenant.tenant_id,
+          name: String(name || 'Onboarding User'),
+          email: fallbackEmail,
+          email_verified: false,
+          created_at: new Date().toISOString(),
+        });
+        memberships.push({
+          tenant_id: existingTenant.tenant_id,
+          user_id: userId,
+          role: 'Owner',
+          status: 'active',
+          created_at: new Date().toISOString(),
+        });
+        saveData(storage, 'saveUsers', users);
+        saveData(storage, 'saveTenantMemberships', memberships);
+      }
+
+      const session = createSession(storage, { tenantId: existingTenant.tenant_id, userId, role: 'Owner' });
+      return res.status(201).json({
+        tenant: existingTenant,
+        session: {
+          token: session.token,
+          expires_at: session.expires_at,
+        },
+        onboarding_url: `/onboarding?tenant_id=${existingTenant.tenant_id}&session_token=${session.token}`,
+      });
+    }
+
+    const safeCompany = String(company || '').trim();
+    const safeEmail = String(email || '').trim().toLowerCase();
+    const safeName = String(name || '').trim();
+    if (!safeCompany) {
+      return res.status(400).json({ error: 'company is required to create a new onboarding tenant' });
+    }
+    if (!isValidEmail(safeEmail)) {
+      return res.status(400).json({ error: 'a valid email is required to create a new onboarding tenant' });
+    }
+
+    let tenant;
+    try {
+      tenant = provisionTenant({
+        companyName: safeCompany,
+        ownerEmail: safeEmail,
+        companySize,
+        primaryUseCase,
+        deploymentProfile,
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (tenants.some((item) => item.tenant_id === tenant.tenant_id)) {
+      return res.status(409).json({ error: 'tenant already exists for this company' });
+    }
+
+    const userId = `user-${randomUUID()}`;
+    tenant.owner_user_id = userId;
+    tenants.push(tenant);
+    saveData(storage, 'saveTenants', tenants);
+
+    users.push({
+      user_id: userId,
+      tenant_id: tenant.tenant_id,
+      name: safeName || 'Onboarding User',
+      email: safeEmail,
+      email_verified: false,
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveUsers', users);
+
+    memberships.push({
+      tenant_id: tenant.tenant_id,
+      user_id: userId,
+      role: 'Owner',
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveTenantMemberships', memberships);
+
+    const subscriptions = listData(storage, 'listSubscriptions');
+    subscriptions.push({
+      tenant_id: tenant.tenant_id,
+      plan: 'Starter',
+      usage: { questions_answered: 0, runtime_instances: 0 },
+      limits: { documents: 100, monthly_questions: 1000, runtime_instances: 1 },
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveSubscriptions', subscriptions);
+
+    const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+    return res.status(201).json({
+      tenant,
+      session: {
+        token: session.token,
+        expires_at: session.expires_at,
+      },
+      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+    });
+  });
+
   app.get('/api/tenant', readLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const tenants = listData(storage, 'listTenants');
     const tenant = tenants.find((item) => item.tenant_id === req.tenantId);

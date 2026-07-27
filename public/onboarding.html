@@ -165,8 +165,8 @@
       }
 
       .token-banner {
-        border: 1px solid #ffd8bf;
-        background: #fff6ef;
+        border: 1px solid #d9e6ff;
+        background: #f2f7ff;
         border-radius: 12px;
         padding: 0.75rem;
         margin-bottom: 0.75rem;
@@ -174,8 +174,15 @@
 
       .token-banner p {
         margin: 0;
-        color: #7a4b2e;
+        color: #2d4c84;
         font-size: 0.9rem;
+      }
+
+      .token-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr auto;
+        gap: 0.45rem;
+        margin-top: 0.5rem;
       }
 
       .token-row {
@@ -192,6 +199,7 @@
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
         .target-grid { grid-template-columns: 1fr; }
+        .token-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -224,12 +232,13 @@
           <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">KnowledgeOS Onboarding Wizard</h1>
           <div id="tokenBanner" class="token-banner" style="display:none;">
             <p>
-              A session token is required for protected steps like connector setup, compile checkpoint, and deploy.
-              Complete signup first, or paste your `session_token` below.
+              Start secure onboarding without a session token. We will create or attach your onboarding session automatically.
             </p>
-            <div class="token-row">
-              <input id="sessionTokenInput" placeholder="Paste session token (kos_...)" />
-              <button id="saveSessionTokenBtn" type="button" class="btn-primary">Save token</button>
+            <div class="token-grid">
+              <input id="onboardingNameInput" placeholder="Your name" />
+              <input id="onboardingEmailInput" type="email" placeholder="Work email" />
+              <input id="onboardingCompanyInput" placeholder="Company name" />
+              <button id="startOnboardingBtn" type="button" class="btn-primary">Start secure onboarding</button>
             </div>
           </div>
 
@@ -305,6 +314,10 @@
               <button id="compileBtn" class="btn-primary">Run Compile Step</button>
               <button id="deployBtn" class="btn-ghost">Deploy Runtime</button>
             </div>
+            <label style="margin-top:0.72rem;">Simple embed script
+              <textarea id="embedScript" rows="6" readonly placeholder="Deploy runtime to generate your embed script."></textarea>
+            </label>
+            <button id="copyEmbedBtn" type="button" class="btn-ghost" style="margin-top:0.5rem;">Copy embed script</button>
           </div>
 
           <div class="wizard-nav">
@@ -319,7 +332,7 @@
 
     <script>
       const params = new URLSearchParams(window.location.search);
-      const tenantId = params.get('tenant_id') || '';
+      let tenantId = params.get('tenant_id') || '';
       let sessionToken =
         params.get('session_token') ||
         localStorage.getItem('knowledgeos_onboarding_session_token') ||
@@ -331,22 +344,28 @@
         .filter(Boolean);
       const output = document.getElementById('output');
       const tokenBanner = document.getElementById('tokenBanner');
-      const sessionTokenInput = document.getElementById('sessionTokenInput');
-      const saveSessionTokenBtn = document.getElementById('saveSessionTokenBtn');
+      const onboardingNameInput = document.getElementById('onboardingNameInput');
+      const onboardingEmailInput = document.getElementById('onboardingEmailInput');
+      const onboardingCompanyInput = document.getElementById('onboardingCompanyInput');
+      const startOnboardingBtn = document.getElementById('startOnboardingBtn');
+      const embedScript = document.getElementById('embedScript');
+      const copyEmbedBtn = document.getElementById('copyEmbedBtn');
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
       const nextStep = document.getElementById('nextStep');
       const sourceTypeInput = document.getElementById('sourceType');
       let sourceTemplates = [];
       let step = 1;
-      document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
+      const tenantLine = document.getElementById('tenantLine');
+
+      function renderTenantLine() {
+        tenantLine.textContent = tenantId ? `Tenant: ${tenantId}` : 'No tenant yet. Start secure onboarding to provision one.';
+      }
+
+      renderTenantLine();
 
       if (sessionToken) {
         localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
-      }
-
-      if (sessionTokenInput) {
-        sessionTokenInput.value = sessionToken;
       }
 
       function hasSessionToken() {
@@ -358,26 +377,113 @@
         tokenBanner.style.display = hasSessionToken() ? 'none' : 'block';
       }
 
-      function requireSessionTokenFor(actionLabel) {
-        if (hasSessionToken()) return true;
-        output.textContent = `${actionLabel} requires a session token. Complete signup or paste your session_token above.`;
-        updateTokenBanner();
-        return false;
+      function updateUrlState() {
+        const next = new URL(window.location.href);
+        if (tenantId) next.searchParams.set('tenant_id', tenantId);
+        else next.searchParams.delete('tenant_id');
+        if (sessionToken) next.searchParams.set('session_token', sessionToken);
+        else next.searchParams.delete('session_token');
+        window.history.replaceState({}, '', next.toString());
       }
 
-      saveSessionTokenBtn?.addEventListener('click', () => {
-        const nextToken = String(sessionTokenInput?.value || '').trim();
-        if (!nextToken) {
-          output.textContent = 'Enter a session token first.';
+      function updateEmbedScript(script = '') {
+        if (!embedScript) return;
+        if (script) {
+          embedScript.value = script;
           return;
         }
-        sessionToken = nextToken;
-        localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
-        output.textContent = 'Session token saved. Protected onboarding actions are now enabled.';
-        updateTokenBanner();
+        if (!tenantId) {
+          embedScript.value = 'Deploy runtime to generate your embed script.';
+          return;
+        }
+        const origin = window.location.origin;
+        embedScript.value = `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${tenantId}.knowledgeos.bundle.json" data-title="Ask ${tenantId}"><\\/script>`;
+      }
+
+      function requireSessionTokenFor(actionLabel) {
+        if (!tenantId || !hasSessionToken()) {
+          output.textContent = `${actionLabel} requires an onboarding session. Use Start secure onboarding above.`;
+          updateTokenBanner();
+          return false;
+        }
+        return true;
+      }
+
+      startOnboardingBtn?.addEventListener('click', async () => {
+        try {
+          const name = String(onboardingNameInput?.value || '').trim() || 'Onboarding User';
+          const email = String(onboardingEmailInput?.value || '').trim();
+          const company = String(onboardingCompanyInput?.value || '').trim();
+
+          if (!email) throw new Error('Work email is required.');
+          if (!company && !tenantId) throw new Error('Company name is required when creating a new tenant.');
+
+          const data = await postJson('/api/onboarding/session', {
+            tenant_id: tenantId || undefined,
+            name,
+            email,
+            company,
+            companySize: '1-50',
+            primaryUseCase: 'Customer Website',
+            deploymentProfile: document.getElementById('deploymentChoice').value,
+          });
+
+          tenantId = String(data?.tenant?.tenant_id || '').trim();
+          sessionToken = String(data?.session?.token || '').trim();
+          if (!tenantId || !sessionToken) {
+            throw new Error('Could not start onboarding session.');
+          }
+
+          localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+          renderTenantLine();
+          updateUrlState();
+          updateTokenBanner();
+          updateEmbedScript();
+          output.textContent = 'Secure onboarding session is ready.';
+        } catch (error) {
+          output.textContent = error.message;
+        }
       });
 
-      updateTokenBanner();
+      copyEmbedBtn?.addEventListener('click', async () => {
+        const value = String(embedScript?.value || '').trim();
+        if (!value || value === 'Deploy runtime to generate your embed script.') {
+          output.textContent = 'Deploy runtime first to generate your embed script.';
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(value);
+          output.textContent = 'Embed script copied.';
+        } catch (_error) {
+          output.textContent = 'Could not copy automatically. Select and copy the embed script manually.';
+        }
+      });
+
+      updateEmbedScript();
+
+      if (onboardingCompanyInput && !onboardingCompanyInput.value) {
+        onboardingCompanyInput.value = String(params.get('company') || '').trim();
+      }
+
+      if (hasSessionToken()) {
+        updateEmbedScript();
+      }
+
+      {
+        const savedEmail = localStorage.getItem('knowledgeos_last_email') || '';
+        if (onboardingEmailInput && savedEmail) onboardingEmailInput.value = savedEmail;
+      }
+
+      if (onboardingEmailInput) {
+        onboardingEmailInput.addEventListener('change', () => {
+          const value = String(onboardingEmailInput.value || '').trim();
+          if (value) localStorage.setItem('knowledgeos_last_email', value);
+        });
+      }
+
+      {
+        updateTokenBanner();
+      }
 
       function parseAudiences() {
         return String(document.getElementById('audienceInput').value || '')
@@ -542,6 +648,7 @@
 
       document.getElementById('importKnowledgeBtn').addEventListener('click', async () => {
         try {
+          if (!tenantId) throw new Error('Start secure onboarding first.');
           const raw = document.getElementById('quickKnowledge').value.trim();
           if (!raw) throw new Error('Enter JSON array first');
           const parsedItems = JSON.parse(raw);
@@ -600,6 +707,7 @@
 
       document.getElementById('refreshSourceMonitorBtn').addEventListener('click', async () => {
         try {
+          if (!tenantId) throw new Error('Start secure onboarding first.');
           const data = await getJson(`/api/sources?tenant_id=${encodeURIComponent(tenantId)}`);
           output.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
@@ -647,6 +755,7 @@
             if (!response.ok) throw new Error(body.error || 'Deployment failed');
             return body;
           });
+          updateEmbedScript(String(data?.outputs?.embed_code || ''));
           output.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
           output.textContent = error.message;
