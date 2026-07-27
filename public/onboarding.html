@@ -4,48 +4,338 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KnowledgeOS Onboarding</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      button { margin-top: 0.5rem; padding: 0.55rem 0.9rem; }
-      .step { border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.75rem; }
-      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+      :root {
+        --ink: #1d1f2b;
+        --muted: #5f667d;
+        --panel: #ffffff;
+        --line: #dbe2f1;
+        --brand: #1254ff;
+        --canvas: #f6f8fc;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(1100px 500px at 10% -10%, #f8f2dc 0%, transparent 62%),
+          radial-gradient(900px 480px at 85% 0%, #d7e7ff 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 1140px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 2.5rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .wordmark { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.2rem; }
+      .wordmark span { color: var(--brand); }
+      .topbar a { text-decoration: none; color: var(--muted); font-weight: 600; }
+
+      .layout {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 1rem;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 1rem;
+      }
+
+      .step-list {
+        list-style: none;
+        margin: 0.8rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .step-list li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.65rem;
+        background: #fff;
+      }
+
+      .step-list strong { display: block; margin-bottom: 0.2rem; }
+      .step-list span { color: var(--muted); font-size: 0.9rem; }
+
+      .wizard-pane { display: none; }
+      .wizard-pane.active { display: block; }
+
+      label {
+        display: block;
+        margin-top: 0.62rem;
+        font-weight: 700;
+        font-size: 0.93rem;
+      }
+
+      input, select, textarea {
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.6rem 0.65rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.62rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .btn-primary { background: linear-gradient(135deg, #1254ff, #2f88ff); color: #fff; }
+      .btn-ghost { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+
+      .wizard-nav {
+        margin-top: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+
+      .inline-actions {
+        margin-top: 0.6rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .target-grid {
+        margin-top: 0.4rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.45rem;
+      }
+
+      .target-grid label {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.45rem 0.5rem;
+        background: #fff;
+      }
+
+      .target-grid input { width: auto; margin: 0; }
+
+      .chips { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.5rem; }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.3rem 0.6rem;
+        font-size: 0.82rem;
+        color: #3d4870;
+      }
+
+      pre {
+        background: #f4f7ff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin-top: 0.8rem;
+        overflow: auto;
+      }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .target-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <h1>KnowledgeOS Onboarding Wizard</h1>
-    <p id="tenantLine"></p>
-    <div class="step"><strong>Step 1:</strong> Company Profile</div>
-    <div class="step"><strong>Step 2:</strong> Choose Deployment (Customer Website / Employee Knowledge / Both / Private Enterprise)</div>
-    <div class="step"><strong>Step 3:</strong> Import Knowledge (Upload documents / Paste content / Import URL / Connect sources)</div>
-    <div class="step">
-      <strong>Quick Add Knowledge</strong>
-      <textarea id="quickKnowledge" rows="5" style="width: 100%; margin-top: 0.5rem;" placeholder='[{"title":"Return policy","body":"Returns allowed in 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
-      <button id="importKnowledgeBtn">Import Knowledge JSON</button>
+    <div class="shell">
+      <header class="topbar">
+        <div class="wordmark">Knowledge<span>OS</span></div>
+        <a href="/">Back to site</a>
+      </header>
+
+      <div class="layout">
+        <section class="panel">
+          <h2>Guided Onboarding</h2>
+          <p id="tenantLine" style="color: var(--muted); margin: 0.45rem 0 0;"></p>
+          <ul class="step-list">
+            <li><strong>Step 1. Deployment profile</strong><span>Define runtime rollout and audiences.</span></li>
+            <li><strong>Step 2. Connect all targets</strong><span>Register SharePoint, website, and any additional systems.</span></li>
+            <li><strong>Step 3. Import content</strong><span>Bulk ingest knowledge for first compile.</span></li>
+            <li><strong>Step 4. Compile + deploy</strong><span>Generate bundle and launch your runtime.</span></li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">KnowledgeOS Onboarding Wizard</h1>
+
+          <div class="wizard-pane active" data-step="1">
+            <h3 style="font-size:1rem;">Deployment and audiences</h3>
+            <label>Deployment profile
+              <select id="deploymentChoice">
+                <option value="BOTH" selected>BOTH</option>
+                <option value="CUSTOMER">CUSTOMER</option>
+                <option value="EMPLOYEE">EMPLOYEE</option>
+                <option value="PRIVATE_ENTERPRISE">PRIVATE_ENTERPRISE</option>
+              </select>
+            </label>
+            <label>Audiences (comma-separated)
+              <input id="audienceInput" value="Customers, Employees, Managers, Executives" />
+            </label>
+          </div>
+
+          <div class="wizard-pane" data-step="2">
+            <h3 style="font-size:1rem;">Connect all targets</h3>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">Register connectors, then monitor health and sync progress.</p>
+            <div class="target-grid" id="targetGrid">
+              <label><input type="checkbox" value="SHAREPOINT" checked /> SharePoint</label>
+              <label><input type="checkbox" value="WEBSITE" checked /> Website</label>
+              <label><input type="checkbox" value="CONFLUENCE" /> Confluence</label>
+              <label><input type="checkbox" value="GOOGLE_DRIVE" /> Google Drive</label>
+              <label><input type="checkbox" value="NOTION" /> Notion</label>
+              <label><input type="checkbox" value="SLACK" /> Slack</label>
+              <label><input type="checkbox" value="ZENDESK" /> Zendesk</label>
+              <label><input type="checkbox" value="SALESFORCE" /> Salesforce</label>
+              <label><input type="checkbox" value="S3" /> S3</label>
+              <label><input type="checkbox" value="GITHUB" /> GitHub</label>
+            </div>
+            <div class="chips" id="targetSummary"></div>
+
+            <label>Source name <input id="sourceName" placeholder="Support SharePoint" /></label>
+            <label>Source type
+              <select id="sourceType">
+                <option value="SHAREPOINT">SHAREPOINT</option>
+                <option value="WEBSITE">WEBSITE</option>
+                <option value="CONFLUENCE">CONFLUENCE</option>
+                <option value="GOOGLE_DRIVE">GOOGLE_DRIVE</option>
+                <option value="NOTION">NOTION</option>
+                <option value="SLACK">SLACK</option>
+                <option value="ZENDESK">ZENDESK</option>
+                <option value="SALESFORCE">SALESFORCE</option>
+                <option value="S3">S3</option>
+                <option value="GITHUB">GITHUB</option>
+                <option value="GENERIC">GENERIC</option>
+              </select>
+            </label>
+            <label>Source URL <input id="sourceUrl" placeholder="https://..." /></label>
+            <div class="inline-actions">
+              <button id="connectSourceBtn" class="btn-primary">Connect Source</button>
+              <button id="refreshSourceMonitorBtn" class="btn-ghost">Refresh Source Monitor</button>
+            </div>
+          </div>
+
+          <div class="wizard-pane" data-step="3">
+            <h3 style="font-size:1rem;">Import starter knowledge</h3>
+            <label>Bulk knowledge JSON
+              <textarea id="quickKnowledge" rows="7" placeholder='[{"title":"Return policy","body":"Returns allowed in 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
+            </label>
+            <button id="importKnowledgeBtn" class="btn-primary">Import Knowledge JSON</button>
+          </div>
+
+          <div class="wizard-pane" data-step="4">
+            <h3 style="font-size:1rem;">Compile and deploy</h3>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">Run onboarding checkpoint, compile intelligence, and deploy runtime output.</p>
+            <div class="inline-actions">
+              <button id="compileBtn" class="btn-primary">Run Compile Step</button>
+              <button id="deployBtn" class="btn-ghost">Deploy Runtime</button>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <button id="prevStep" type="button" class="btn-ghost">Back</button>
+            <button id="nextStep" type="button" class="btn-primary">Next</button>
+          </div>
+
+          <pre id="output">Ready.</pre>
+        </section>
+      </div>
     </div>
-    <div class="step">
-      <strong>Connect External Source (SharePoint / Website)</strong>
-      <input id="sourceName" placeholder="Source name" style="width: 100%; margin-top: 0.5rem;" />
-      <select id="sourceType" style="width: 100%; margin-top: 0.5rem;">
-        <option value="SHAREPOINT">SHAREPOINT</option>
-        <option value="WEBSITE">WEBSITE</option>
-      </select>
-      <input id="sourceUrl" placeholder="https://..." style="width: 100%; margin-top: 0.5rem;" />
-      <button id="connectSourceBtn">Connect Source</button>
-      <button id="refreshSourceMonitorBtn">Refresh Source Monitor</button>
-    </div>
-    <div class="step"><strong>Step 4:</strong> Define Audience (Customers / Employees / Managers / Executives)</div>
-    <div class="step"><strong>Step 5:</strong> Compile Intelligence</div>
-    <button id="compileBtn">Run Step 5</button>
-    <div class="step"><strong>Step 6:</strong> Deploy</div>
-    <button id="deployBtn">Deploy Runtime</button>
-    <pre id="output">Ready.</pre>
 
     <script>
       const params = new URLSearchParams(window.location.search);
       const tenantId = params.get('tenant_id') || '';
       const sessionToken = params.get('session_token') || '';
       const output = document.getElementById('output');
+      const panes = [...document.querySelectorAll('.wizard-pane')];
+      const prevStep = document.getElementById('prevStep');
+      const nextStep = document.getElementById('nextStep');
+      let step = 1;
       document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
+
+      function parseAudiences() {
+        return String(document.getElementById('audienceInput').value || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean);
+      }
+
+      function selectedTargets() {
+        return [...document.querySelectorAll('#targetGrid input:checked')].map((item) => item.value);
+      }
+
+      function updateTargetSummary() {
+        const targets = selectedTargets();
+        const targetSummary = document.getElementById('targetSummary');
+        targetSummary.innerHTML = '';
+        if (!targets.length) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = 'No targets selected';
+          targetSummary.appendChild(chip);
+          return;
+        }
+        for (const target of targets) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = target;
+          targetSummary.appendChild(chip);
+        }
+      }
+
+      function renderStep() {
+        panes.forEach((pane, index) => {
+          pane.classList.toggle('active', index + 1 === step);
+        });
+        prevStep.style.visibility = step === 1 ? 'hidden' : 'visible';
+        nextStep.textContent = step === panes.length ? 'Review Ready' : 'Next';
+      }
+
+      prevStep.addEventListener('click', () => {
+        step = Math.max(1, step - 1);
+        renderStep();
+      });
+
+      nextStep.addEventListener('click', () => {
+        step = Math.min(panes.length, step + 1);
+        renderStep();
+      });
+
+      document.querySelectorAll('#targetGrid input').forEach((node) => {
+        node.addEventListener('change', updateTargetSummary);
+      });
+      updateTargetSummary();
+      renderStep();
 
       function authHeader() {
         return sessionToken ? { 'x-session-token': sessionToken } : {};
@@ -118,9 +408,9 @@
           const data = await postJson('/api/onboarding', {
             tenant_id: tenantId,
             step: 'compile-intelligence',
-            deploymentChoice: 'Both',
-            importSources: ['Upload documents', 'Import URL'],
-            audiences: ['Customers', 'Employees', 'Managers', 'Executives'],
+            deploymentChoice: document.getElementById('deploymentChoice').value,
+            importSources: selectedTargets(),
+            audiences: parseAudiences(),
           });
           output.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
@@ -144,7 +434,7 @@
             },
             body: JSON.stringify({
               tenant_id: tenantId,
-              audiences: ['Customers', 'Employees', 'Managers', 'Executives'],
+              audiences: parseAudiences(),
             }),
           }).then(async (response) => {
             const body = await response.json();

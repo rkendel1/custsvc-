@@ -137,9 +137,13 @@ function isValidHttpUrl(rawUrl) {
 }
 
 function normalizeSourceType(value) {
-  const type = String(value || '').trim().toUpperCase();
-  if (['SHAREPOINT', 'WEBSITE', 'CONFLUENCE', 'GOOGLE_DRIVE', 'GENERIC'].includes(type)) return type;
-  return 'GENERIC';
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_ -]/g, '')
+    .replace(/[ -]+/g, '_')
+    .slice(0, 48);
+  return normalized || 'GENERIC';
 }
 
 function sourceHealth(source) {

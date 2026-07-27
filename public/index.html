@@ -3,62 +3,553 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KnowledgeOS</title>
+    <title>KnowledgeOS | Enterprise Intelligence Runtime</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 0; color: #111827; background: #f9fafb; }
-      main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
-      section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
-      h1 { font-size: 2rem; margin: 0.25rem 0; }
-      .cta { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-      .cta a { text-decoration: none; border: 1px solid #111827; padding: 0.6rem 1rem; border-radius: 8px; color: #111827; font-weight: 700; }
-      .formula { font-size: 1.2rem; font-weight: 700; }
-      pre { white-space: pre-wrap; background: #f3f4f6; padding: 0.85rem; border-radius: 8px; }
+      :root {
+        --ink: #1d1f2b;
+        --muted: #5f667d;
+        --canvas: #f6f8fc;
+        --panel: #ffffff;
+        --line: #dbe2f1;
+        --brand: #1254ff;
+        --brand-soft: #dce7ff;
+        --accent: #ff7b3d;
+        --accent-soft: #ffe7da;
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(1200px 500px at 15% -5%, #f8f2dc 0%, transparent 65%),
+          radial-gradient(900px 500px at 90% 0%, #d7e7ff 0%, transparent 65%),
+          var(--canvas);
+        font-family: 'Manrope', sans-serif;
+      }
+
+      h1, h2, h3 {
+        font-family: 'Sora', sans-serif;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 1.25rem 1rem 4.5rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+      }
+
+      .wordmark {
+        font-family: 'Sora', sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        font-size: 1.25rem;
+      }
+
+      .wordmark span {
+        color: var(--brand);
+      }
+
+      .topnav {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        text-decoration: none;
+        border-radius: 999px;
+        padding: 0.72rem 1.15rem;
+        font-weight: 700;
+        border: 1px solid transparent;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn.primary {
+        background: linear-gradient(130deg, var(--brand), #2f88ff);
+        color: #fff;
+        box-shadow: 0 14px 30px rgba(18, 84, 255, 0.26);
+      }
+
+      .btn.ghost {
+        background: #fff;
+        border-color: var(--line);
+        color: var(--ink);
+      }
+
+      .hero {
+        margin-top: 1rem;
+        background: linear-gradient(160deg, #fefeff 0%, #f0f4ff 100%);
+        border: 1px solid var(--line);
+        border-radius: calc(var(--radius) + 6px);
+        padding: clamp(1.4rem, 3vw, 3rem);
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: clamp(1rem, 2.6vw, 2rem);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .hero::after {
+        content: '';
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #ffbf95 0%, #ffdaa8 60%, transparent 72%);
+        top: -70px;
+        right: -80px;
+        opacity: 0.6;
+      }
+
+      .badge {
+        display: inline-flex;
+        background: #fff;
+        border: 1px solid var(--line);
+        color: #3c4a70;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 0.35rem 0.8rem;
+        font-size: 0.8rem;
+        margin-bottom: 0.9rem;
+      }
+
+      .hero h1 {
+        font-size: clamp(1.9rem, 4.5vw, 3.3rem);
+        line-height: 1.1;
+      }
+
+      .hero p {
+        margin: 0.95rem 0 1.4rem;
+        color: var(--muted);
+        font-size: clamp(1rem, 2.1vw, 1.14rem);
+        max-width: 56ch;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+      }
+
+      .hero-grid {
+        display: grid;
+        gap: 0.65rem;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 14px;
+        padding: 0.75rem 0.9rem;
+      }
+
+      .stat strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.15rem;
+        display: block;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .section {
+        margin-top: 1rem;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: clamp(1.1rem, 2.3vw, 1.7rem);
+      }
+
+      .section h2 {
+        font-size: clamp(1.2rem, 2.9vw, 1.75rem);
+        margin-bottom: 0.8rem;
+      }
+
+      .kicker {
+        color: #36508f;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.76rem;
+        margin-bottom: 0.4rem;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      .feature {
+        padding: 0.95rem;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+      }
+
+      .feature h3 {
+        font-size: 1rem;
+        margin-bottom: 0.4rem;
+      }
+
+      .feature p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.8rem;
+      }
+
+      .timeline {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.72rem;
+      }
+
+      .timeline li {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.78rem 0.82rem;
+        background: #fff;
+      }
+
+      .timeline strong {
+        display: block;
+        margin-bottom: 0.2rem;
+      }
+
+      .timeline span {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .pricing {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      .plan {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.95rem;
+        background: #fff;
+      }
+
+      .plan.popular {
+        border: 1.5px solid var(--brand);
+        box-shadow: 0 18px 30px rgba(18, 84, 255, 0.14);
+      }
+
+      .plan h3 {
+        font-size: 1rem;
+      }
+
+      .price {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.6rem;
+        margin: 0.5rem 0;
+      }
+
+      .plan ul {
+        margin: 0.4rem 0 0;
+        padding-left: 1rem;
+        color: var(--muted);
+      }
+
+      .plan li {
+        margin: 0.33rem 0;
+      }
+
+      .trust-row {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 0.8rem;
+      }
+
+      .diag {
+        background: #f6f9ff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.9rem;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
+      .footer-cta {
+        margin-top: 1rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        background: linear-gradient(130deg, #fffaf3 0%, #ffffff 42%, #eef4ff 100%);
+        padding: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .footer-cta h2 {
+        font-size: 1.2rem;
+        margin-bottom: 0.35rem;
+      }
+
+      .footer-cta p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(14px);
+        animation: rise 0.75s ease forwards;
+      }
+
+      .delay-1 { animation-delay: 0.08s; }
+      .delay-2 { animation-delay: 0.16s; }
+      .delay-3 { animation-delay: 0.24s; }
+      .delay-4 { animation-delay: 0.32s; }
+
+      @keyframes rise {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 930px) {
+        .hero,
+        .grid-3,
+        .split,
+        .pricing,
+        .trust-row {
+          grid-template-columns: 1fr;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .topnav {
+          width: 100%;
+        }
+      }
     </style>
   </head>
   <body>
-    <main>
-      <section>
-        <p>KnowledgeOS</p>
-        <h1>Your company's intelligence, deployed everywhere.</h1>
-        <p>Turn documents, processes, and expertise into a private AI runtime for customers and employees.</p>
-        <div class="cta">
-          <a href="/signup">Create your KnowledgeOS</a>
-          <a href="/demo">See Demo</a>
-        </div>
-      </section>
+    <div class="shell">
+      <header class="topbar reveal">
+        <div class="wordmark">Knowledge<span>OS</span></div>
+        <nav class="topnav">
+          <a href="/demo">Live demo</a>
+          <a href="/admin">Console</a>
+          <a href="/signup">Pricing</a>
+          <a class="btn ghost" href="/onboarding">Start onboarding</a>
+        </nav>
+      </header>
 
-      <section>
-        <h2>Companies have knowledge everywhere</h2>
-        <p>PDFs · Docs · Wikis · CRM · Email · Slack · SOPs</p>
-        <p>People cannot find it. Processes are inconsistent. Answers vary.</p>
-      </section>
+      <main>
+        <section class="hero reveal delay-1">
+          <div>
+            <div class="badge">Enterprise Intelligence Runtime</div>
+            <h1>Turn company knowledge into revenue-ready AI experiences.</h1>
+            <p>
+              Launch customer and employee assistants from one governed platform. Connect documents,
+              codify process playbooks, and deploy role-aware AI in days, not quarters.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="/signup">Start free pilot</a>
+              <a class="btn ghost" href="/demo">See product demo</a>
+            </div>
+          </div>
+          <div class="hero-grid">
+            <div class="stat">
+              <strong>72%</strong>
+              <span>Faster resolution for repetitive support questions</span>
+            </div>
+            <div class="stat">
+              <strong>4 audiences</strong>
+              <span>Customers, employees, managers, and executives from one runtime</span>
+            </div>
+            <div class="stat">
+              <strong>Local + governed</strong>
+              <span>Browser-first runtime with role-based visibility and telemetry</span>
+            </div>
+          </div>
+        </section>
 
-      <section>
-        <h2>Solution</h2>
-        <p class="formula">Knowledge + AI Runtime + Processes + Roles + Integrations = KnowledgeOS</p>
-      </section>
+        <section class="section reveal delay-2">
+          <div class="kicker">Why Teams Buy</div>
+          <h2>One platform that turns fragmented knowledge into operating leverage</h2>
+          <div class="grid-3" style="margin-top: 0.8rem;">
+            <article class="feature">
+              <h3>Faster onboarding</h3>
+              <p>Bulk import docs, monitor live sources, and compile deployable bundles in a single workflow.</p>
+            </article>
+            <article class="feature">
+              <h3>Governed answers</h3>
+              <p>Audience-aware visibility with confidence signals, freshness checks, and contradiction detection.</p>
+            </article>
+            <article class="feature">
+              <h3>Production visibility</h3>
+              <p>Telemetry and runtime diagnostics provide clear proof of answer quality and system readiness.</p>
+            </article>
+          </div>
+        </section>
 
-      <section>
-        <h2>Architecture</h2>
-<pre>Your Knowledge
-       |
-Knowledge Compiler
-       |
-KnowledgeOS Runtime
-       |
----------------------------------
-Customers
-Employees
-Managers
-Executives</pre>
-      </section>
+        <section class="section reveal delay-2">
+          <div class="kicker">Launch Plan</div>
+          <h2>From zero to deployed intelligence in one week</h2>
+          <div class="split" style="margin-top: 0.8rem;">
+            <ul class="timeline">
+              <li>
+                <strong>Day 1 - Connect sources</strong>
+                <span>Bring in SharePoint, websites, SOP docs, and policies into a controlled knowledge catalog.</span>
+              </li>
+              <li>
+                <strong>Day 2 - Compile runtime</strong>
+                <span>Generate a knowledge bundle with retrieval signals, process graphs, and role views.</span>
+              </li>
+              <li>
+                <strong>Day 3 - Pilot audience launch</strong>
+                <span>Deploy to customer or support teams first and validate confidence + coverage.</span>
+              </li>
+            </ul>
+            <ul class="timeline">
+              <li>
+                <strong>Day 4 - Tune with telemetry</strong>
+                <span>Use unanswered questions and intent trends to close content and process gaps.</span>
+              </li>
+              <li>
+                <strong>Day 5 - Scale access</strong>
+                <span>Roll out role-aware runtime to managers and execs with stronger governance controls.</span>
+              </li>
+              <li>
+                <strong>Week 2 - Expand automations</strong>
+                <span>Add action-driven process execution and approval-aware operating workflows.</span>
+              </li>
+            </ul>
+          </div>
+        </section>
 
-      <section>
-        <h2>Runtime Diagnostics</h2>
-        <p>Confirms browser startup warmup for bundle load, model artifact prefetch, and PGlite initialization.</p>
-        <pre id="runtimeDiagnostics">Initializing runtime diagnostics...</pre>
-      </section>
-    </main>
+        <section class="section reveal delay-3">
+          <div class="kicker">Pricing</div>
+          <h2>Simple packaging for pilots and enterprise rollouts</h2>
+          <div class="pricing" style="margin-top: 0.8rem;">
+            <article class="plan">
+              <h3>Starter</h3>
+              <div class="price">$399<span style="font-size:0.9rem;font-family:'Manrope',sans-serif;">/mo</span></div>
+              <ul>
+                <li>1 tenant runtime</li>
+                <li>Core ingest and compile</li>
+                <li>Customer-facing assistant</li>
+              </ul>
+            </article>
+            <article class="plan popular">
+              <h3>Growth</h3>
+              <div class="price">$1,490<span style="font-size:0.9rem;font-family:'Manrope',sans-serif;">/mo</span></div>
+              <ul>
+                <li>Multi-audience runtime</li>
+                <li>Source monitoring + sync</li>
+                <li>Advanced analytics + governance</li>
+              </ul>
+            </article>
+            <article class="plan">
+              <h3>Enterprise</h3>
+              <div class="price">Custom</div>
+              <ul>
+                <li>Private deployment options</li>
+                <li>SSO and custom policies</li>
+                <li>Dedicated onboarding support</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section reveal delay-4">
+          <div class="kicker">Trust Center</div>
+          <h2>Runtime transparency your buyers can validate in real time</h2>
+          <div class="trust-row" style="margin-top: 0.8rem;">
+            <div class="diag">
+              <h3 style="margin-bottom:0.5rem;">Live Runtime Diagnostics</h3>
+              <pre id="runtimeDiagnostics">Initializing runtime diagnostics...</pre>
+            </div>
+            <div class="diag" style="background:#fff7f2;border-color:#ffd9c5;">
+              <h3 style="margin-bottom:0.5rem;">Enterprise Signals</h3>
+              <pre>{
+  "data_governance": "enabled",
+  "source_monitoring": "active",
+  "audience_controls": ["public", "internal", "confidential", "executive"],
+  "deployment": "customer-ready"
+}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="footer-cta reveal delay-4">
+          <div>
+            <h2>Ready to sell this inside your first three target accounts?</h2>
+            <p>Stand up your pilot runtime, import source knowledge, and launch to stakeholders this week.</p>
+          </div>
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+            <a class="btn primary" href="/signup">Create your KnowledgeOS</a>
+            <a class="btn ghost" href="/admin">Open console</a>
+          </div>
+        </section>
+      </main>
+    </div>
     <script src="/knowledgeos-ai.js" data-bundle-url="/bundles/knowledgeos.bundle.json" data-title="KnowledgeOS Assistant"></script>
     <script>
       async function renderRuntimeDiagnostics() {

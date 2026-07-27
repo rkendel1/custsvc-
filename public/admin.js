@@ -246,7 +246,37 @@ function wireCompile() {
   });
 }
 
+function wireConsoleWizard() {
+  const panes = [...document.querySelectorAll('.wizard-step')];
+  const prev = document.getElementById('prevAdminStep');
+  const next = document.getElementById('nextAdminStep');
+  if (!panes.length || !prev || !next) return;
+
+  let step = 1;
+
+  function render() {
+    panes.forEach((pane, index) => {
+      pane.classList.toggle('active', index + 1 === step);
+    });
+    prev.style.visibility = step === 1 ? 'hidden' : 'visible';
+    next.textContent = step === panes.length ? 'Review Ready' : 'Next';
+  }
+
+  prev.addEventListener('click', () => {
+    step = Math.max(1, step - 1);
+    render();
+  });
+
+  next.addEventListener('click', () => {
+    step = Math.min(panes.length, step + 1);
+    render();
+  });
+
+  render();
+}
+
 function main() {
+  wireConsoleWizard();
   wireTextDocForm();
   wireUrlDocForm();
   wirePdfDocForm();

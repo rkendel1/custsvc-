@@ -97,6 +97,24 @@ Run the stack:
 docker compose up --build
 ```
 
+Or via npm scripts:
+
+```bash
+npm run docker:up
+```
+
+Stop the stack:
+
+```bash
+npm run docker:down
+```
+
+View live logs:
+
+```bash
+npm run docker:logs
+```
+
 Endpoints:
 
 - `http://127.0.0.1:3000` app

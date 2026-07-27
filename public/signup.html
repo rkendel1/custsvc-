@@ -4,41 +4,333 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KnowledgeOS Signup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      form { max-width: 560px; }
-      label { display: block; margin: 0.7rem 0; }
-      input, select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-      button { margin-top: 1rem; padding: 0.6rem 1rem; }
-      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+      :root {
+        --ink: #1d1f2b;
+        --muted: #5f667d;
+        --panel: #ffffff;
+        --line: #dbe2f1;
+        --brand: #1254ff;
+        --canvas: #f6f8fc;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(1100px 500px at 10% -10%, #f8f2dc 0%, transparent 62%),
+          radial-gradient(900px 480px at 85% 0%, #d7e7ff 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 2.5rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .wordmark {
+        font-family: 'Sora', sans-serif;
+        font-weight: 800;
+        font-size: 1.2rem;
+      }
+
+      .wordmark span { color: var(--brand); }
+
+      .topbar a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .layout {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 1rem;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 1rem;
+      }
+
+      .steps {
+        list-style: none;
+        margin: 0.8rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .steps li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.7rem;
+        background: #fff;
+      }
+
+      .steps strong { display: block; margin-bottom: 0.2rem; }
+      .steps span { color: var(--muted); font-size: 0.9rem; }
+
+      .step-pane { display: none; }
+      .step-pane.active { display: block; }
+
+      label {
+        display: block;
+        margin-top: 0.65rem;
+        font-weight: 700;
+        font-size: 0.93rem;
+      }
+
+      input, select, textarea {
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.6rem 0.65rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      .target-grid {
+        margin-top: 0.4rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.45rem;
+      }
+
+      .target-grid label {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.45rem 0.5rem;
+        background: #fff;
+      }
+
+      .target-grid input { width: auto; margin: 0; }
+
+      .wizard-nav {
+        margin-top: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.62rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #1254ff, #2f88ff);
+        color: #fff;
+      }
+
+      .btn-ghost {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .chips { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.5rem; }
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.3rem 0.6rem;
+        font-size: 0.82rem;
+        color: #3d4870;
+      }
+
+      pre {
+        background: #f4f7ff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin-top: 0.8rem;
+        overflow: auto;
+      }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .target-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <h1>Create your KnowledgeOS account</h1>
-    <form id="signupForm">
-      <label>Name <input name="name" required /></label>
-      <label>Email <input type="email" name="email" required /></label>
-      <label>Company <input name="company" required /></label>
-      <label>Company Size
-        <select name="companySize" required>
-          <option value="">Select</option>
-          <option>1-50</option>
-          <option>51-200</option>
-          <option>201-500</option>
-          <option>500+</option>
-        </select>
-      </label>
-      <label>Primary Use Case <input name="primaryUseCase" placeholder="Customer Website" required /></label>
-      <button type="submit">Create Account</button>
-    </form>
-    <pre id="signupOutput">Submit to provision your tenant.</pre>
+    <div class="shell">
+      <header class="topbar">
+        <div class="wordmark">Knowledge<span>OS</span></div>
+        <a href="/">Back to site</a>
+      </header>
+
+      <div class="layout">
+        <section class="panel">
+          <h2>Launch Wizard</h2>
+          <p style="color: var(--muted);">Set up your account, connect targets, and start onboarding in one guided flow.</p>
+          <ul class="steps">
+            <li><strong>Step 1. Company profile</strong><span>Who you are and what you want to deploy first.</span></li>
+            <li><strong>Step 2. Target systems</strong><span>Select all integrations you plan to connect.</span></li>
+            <li><strong>Step 3. Confirm and provision</strong><span>Create tenant and jump directly to onboarding.</span></li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">Create your KnowledgeOS account</h1>
+          <form id="signupForm">
+            <div class="step-pane active" data-step="1">
+              <label>Name <input name="name" required /></label>
+              <label>Email <input type="email" name="email" required /></label>
+              <label>Company <input name="company" required /></label>
+              <label>Company Size
+                <select name="companySize" required>
+                  <option value="">Select</option>
+                  <option>1-50</option>
+                  <option>51-200</option>
+                  <option>201-500</option>
+                  <option>500+</option>
+                </select>
+              </label>
+              <label>Primary Use Case <input name="primaryUseCase" placeholder="Customer Website" required /></label>
+              <label>Deployment Profile
+                <select name="deploymentProfile">
+                  <option value="BOTH" selected>BOTH</option>
+                  <option value="CUSTOMER">CUSTOMER</option>
+                  <option value="EMPLOYEE">EMPLOYEE</option>
+                  <option value="PRIVATE_ENTERPRISE">PRIVATE_ENTERPRISE</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="step-pane" data-step="2">
+              <h3 style="font-size:1rem;">Select target systems to connect</h3>
+              <p style="color: var(--muted); margin: 0.35rem 0 0.4rem; font-size: 0.92rem;">These selections are passed into onboarding so setup can guide connectors.</p>
+              <div class="target-grid" id="targetGrid">
+                <label><input type="checkbox" name="targets" value="SHAREPOINT" /> SharePoint</label>
+                <label><input type="checkbox" name="targets" value="WEBSITE" /> Website</label>
+                <label><input type="checkbox" name="targets" value="CONFLUENCE" /> Confluence</label>
+                <label><input type="checkbox" name="targets" value="GOOGLE_DRIVE" /> Google Drive</label>
+                <label><input type="checkbox" name="targets" value="NOTION" /> Notion</label>
+                <label><input type="checkbox" name="targets" value="SLACK" /> Slack</label>
+                <label><input type="checkbox" name="targets" value="ZENDESK" /> Zendesk</label>
+                <label><input type="checkbox" name="targets" value="SALESFORCE" /> Salesforce</label>
+                <label><input type="checkbox" name="targets" value="S3" /> S3</label>
+                <label><input type="checkbox" name="targets" value="GITHUB" /> GitHub</label>
+              </div>
+              <div class="chips" id="targetSummary"></div>
+            </div>
+
+            <div class="step-pane" data-step="3">
+              <h3 style="font-size:1rem;">Review and provision</h3>
+              <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">We will create your tenant and route you directly to the onboarding wizard.</p>
+              <pre id="reviewPanel">Review will appear here before submit.</pre>
+            </div>
+
+            <div class="wizard-nav">
+              <button id="prevStep" type="button" class="btn-ghost">Back</button>
+              <button id="nextStep" type="button" class="btn-primary">Next</button>
+              <button id="submitSignup" type="submit" class="btn-primary" style="display:none;">Create Account</button>
+            </div>
+          </form>
+          <pre id="signupOutput">Complete the wizard to provision your tenant.</pre>
+        </section>
+      </div>
+    </div>
 
     <script>
       const form = document.getElementById('signupForm');
       const output = document.getElementById('signupOutput');
+      const panes = [...document.querySelectorAll('.step-pane')];
+      const prevStep = document.getElementById('prevStep');
+      const nextStep = document.getElementById('nextStep');
+      const submitSignup = document.getElementById('submitSignup');
+      const reviewPanel = document.getElementById('reviewPanel');
+      const targetSummary = document.getElementById('targetSummary');
+      let step = 1;
+
+      function selectedTargets() {
+        return [...document.querySelectorAll('input[name="targets"]:checked')].map((item) => item.value);
+      }
+
+      function updateTargetSummary() {
+        const targets = selectedTargets();
+        targetSummary.innerHTML = '';
+        if (!targets.length) {
+          const fallback = document.createElement('span');
+          fallback.className = 'chip';
+          fallback.textContent = 'No explicit targets selected yet';
+          targetSummary.appendChild(fallback);
+          return;
+        }
+        for (const target of targets) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = target;
+          targetSummary.appendChild(chip);
+        }
+      }
+
+      function renderReview() {
+        const payload = Object.fromEntries(new FormData(form).entries());
+        payload.targets = selectedTargets();
+        reviewPanel.textContent = JSON.stringify(payload, null, 2);
+      }
+
+      function renderStep() {
+        panes.forEach((pane, index) => {
+          pane.classList.toggle('active', index + 1 === step);
+        });
+        prevStep.style.visibility = step === 1 ? 'hidden' : 'visible';
+        nextStep.style.display = step === panes.length ? 'none' : 'inline-flex';
+        submitSignup.style.display = step === panes.length ? 'inline-flex' : 'none';
+        if (step === 3) renderReview();
+      }
+
+      prevStep.addEventListener('click', () => {
+        step = Math.max(1, step - 1);
+        renderStep();
+      });
+
+      nextStep.addEventListener('click', () => {
+        step = Math.min(panes.length, step + 1);
+        renderStep();
+      });
+
+      document.querySelectorAll('input[name="targets"]').forEach((node) => {
+        node.addEventListener('change', updateTargetSummary);
+      });
+
+      updateTargetSummary();
+      renderStep();
+
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const payload = Object.fromEntries(new FormData(form).entries());
+        payload.targets = selectedTargets();
+        payload.primaryUseCase = `${payload.primaryUseCase} | Targets: ${payload.targets.join(', ') || 'none'}`;
         const response = await fetch('/api/signup', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },

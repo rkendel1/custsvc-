@@ -917,13 +917,38 @@
     });
 
     const header = document.createElement('div');
-    header.textContent = widgetTitle;
     Object.assign(header.style, {
       background: '#111827',
       color: '#fff',
       padding: '0.65rem 0.8rem',
       fontWeight: 'bold',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     });
+
+    const headerTitle = document.createElement('span');
+    headerTitle.textContent = widgetTitle;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close assistant');
+    close.textContent = 'x';
+    Object.assign(close.style, {
+      border: 'none',
+      background: 'transparent',
+      color: '#fff',
+      fontSize: '16px',
+      lineHeight: '1',
+      cursor: 'pointer',
+      padding: '0',
+      marginLeft: '0.5rem',
+    });
+    close.addEventListener('click', () => {
+      panel.style.display = 'none';
+    });
+    header.appendChild(headerTitle);
+    header.appendChild(close);
 
     const messages = document.createElement('div');
     Object.assign(messages.style, {

@@ -4,166 +4,337 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KnowledgeOS Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; color: #111827; }
-      section { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-      label { display: block; margin-top: 0.5rem; font-weight: 600; }
-      input, select, textarea, button { width: 100%; margin-top: 0.25rem; padding: 0.5rem; box-sizing: border-box; }
-      button { cursor: pointer; }
-      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-      pre { background: #f9fafb; padding: 0.75rem; border-radius: 8px; overflow: auto; }
+      :root {
+        --ink: #1d1f2b;
+        --muted: #5f667d;
+        --panel: #ffffff;
+        --line: #dbe2f1;
+        --brand: #1254ff;
+        --canvas: #f6f8fc;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(1200px 520px at 12% -10%, #f8f2dc 0%, transparent 62%),
+          radial-gradient(900px 480px at 85% 0%, #d7e7ff 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell { max-width: 1240px; margin: 0 auto; padding: 1.2rem 1rem 2.5rem; }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .wordmark { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.2rem; }
+      .wordmark span { color: var(--brand); }
+      .topbar a { text-decoration: none; color: var(--muted); font-weight: 600; }
+
+      .layout {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 1rem;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 1rem;
+      }
+
+      .step-list {
+        list-style: none;
+        margin: 0.8rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .step-list li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.65rem;
+        background: #fff;
+      }
+
+      .step-list strong { display: block; margin-bottom: 0.2rem; }
+      .step-list span { color: var(--muted); font-size: 0.9rem; }
+
+      .wizard-step { display: none; }
+      .wizard-step.active { display: block; }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.8rem;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.8rem;
+        background: #fff;
+      }
+
+      label {
+        display: block;
+        margin-top: 0.55rem;
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      input, select, textarea {
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.58rem 0.65rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.62rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .btn-primary { background: linear-gradient(135deg, #1254ff, #2f88ff); color: #fff; }
+      .btn-ghost { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+
+      .inline-actions {
+        margin-top: 0.6rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .wizard-nav {
+        margin-top: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+
+      pre {
+        background: #f4f7ff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin-top: 0.6rem;
+        overflow: auto;
+      }
+
+      .output-grid {
+        margin-top: 0.8rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.8rem;
+      }
+
+      @media (max-width: 1000px) {
+        .layout { grid-template-columns: 1fr; }
+        .card-grid, .output-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <h1>KnowledgeOS Console</h1>
+    <div class="shell">
+      <header class="topbar">
+        <div class="wordmark">Knowledge<span>OS</span></div>
+        <a href="/">Back to site</a>
+      </header>
 
-    <section>
-      <h2>Knowledge Object</h2>
-      <form id="textDocForm">
-        <label>Title <input name="title" required /></label>
-        <label>Summary <input name="summary" /></label>
-        <label>Owner <input name="owner" placeholder="owner@company.com" /></label>
-        <label>Department <input name="department" placeholder="Support" /></label>
-        <label>Type
-          <select name="type">
-            <option value="TEXT">TEXT</option>
-            <option value="MARKDOWN">MARKDOWN</option>
-            <option value="FAQ">FAQ</option>
-            <option value="POLICY">POLICY</option>
-          </select>
-        </label>
-        <label>Visibility
-          <select name="visibility">
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="INTERNAL" selected>INTERNAL</option>
-            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-            <option value="EXECUTIVE">EXECUTIVE</option>
-          </select>
-        </label>
-        <label>Audience
-          <select name="audience">
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="INTERNAL" selected>INTERNAL</option>
-            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-            <option value="EXECUTIVE">EXECUTIVE</option>
-          </select>
-        </label>
-        <label>Tags (comma-separated) <input name="tags" placeholder="refunds, billing" /></label>
-        <label>Relationships (JSON array) <textarea name="relationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
-        <label>Review frequency (days) <input name="review_frequency" type="number" min="1" value="90" /></label>
-        <label>Reviewer confidence (0-1) <input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
-        <label>Body <textarea name="body" rows="6" required></textarea></label>
-        <button type="submit">Save knowledge object</button>
-      </form>
-    </section>
+      <div class="layout">
+        <section class="panel">
+          <h2>Admin Launch Wizard</h2>
+          <p style="color: var(--muted);">Complete guided setup, connect targets, import knowledge, and deploy with confidence.</p>
+          <ul class="step-list">
+            <li><strong>Step 1. Connect targets</strong><span>Register SharePoint, website, and all enterprise systems.</span></li>
+            <li><strong>Step 2. Import knowledge</strong><span>Add text, URL, PDF, and bulk content in one place.</span></li>
+            <li><strong>Step 3. Validate + deploy</strong><span>Compile bundle, review graph health, and launch.</span></li>
+          </ul>
+        </section>
 
-    <section>
-      <h2>Add URL</h2>
-      <form id="urlDocForm">
-        <label>URL <input name="url" type="url" placeholder="https://example.com/help" required /></label>
-        <label>Title override <input name="title" /></label>
-        <label>URL content (paste page text/markdown)
-          <textarea name="content" rows="5" required></textarea>
-        </label>
-        <label>Visibility
-          <select name="visibility">
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="INTERNAL">INTERNAL</option>
-            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-            <option value="EXECUTIVE">EXECUTIVE</option>
-          </select>
-        </label>
-        <button type="submit">Save URL knowledge object</button>
-      </form>
-    </section>
+        <section class="panel">
+          <h1 style="font-size:1.65rem; margin-bottom: 0.55rem;">KnowledgeOS Console</h1>
 
-    <section>
-      <h2>Add PDF</h2>
-      <form id="pdfDocForm" enctype="multipart/form-data">
-        <label>Title override <input name="title" /></label>
-        <label>Visibility
-          <select name="visibility">
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="INTERNAL">INTERNAL</option>
-            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-            <option value="EXECUTIVE">EXECUTIVE</option>
-          </select>
-        </label>
-        <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
-        <button type="submit">Save PDF knowledge object</button>
-      </form>
-    </section>
+          <div class="wizard-step active" data-step="1">
+            <h3 style="font-size:1rem;">Step 1 - Connect and monitor all targets</h3>
+            <div class="card-grid" style="margin-top: 0.7rem;">
+              <div class="card">
+                <h3 style="font-size:0.98rem;">Connect Source</h3>
+                <form id="sourceForm">
+                  <label>Name <input name="name" placeholder="Support SharePoint" required /></label>
+                  <label>Type
+                    <select name="type">
+                      <option value="SHAREPOINT">SHAREPOINT</option>
+                      <option value="WEBSITE">WEBSITE</option>
+                      <option value="CONFLUENCE">CONFLUENCE</option>
+                      <option value="GOOGLE_DRIVE">GOOGLE_DRIVE</option>
+                      <option value="NOTION">NOTION</option>
+                      <option value="SLACK">SLACK</option>
+                      <option value="ZENDESK">ZENDESK</option>
+                      <option value="SALESFORCE">SALESFORCE</option>
+                      <option value="S3">S3</option>
+                      <option value="GITHUB">GITHUB</option>
+                      <option value="GENERIC">GENERIC</option>
+                    </select>
+                  </label>
+                  <label>Site URL <input name="site_url" type="url" placeholder="https://contoso.sharepoint.com/sites/support" /></label>
+                  <label>Poll interval minutes <input name="poll_minutes" type="number" min="5" value="60" /></label>
+                  <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Register source</button>
+                </form>
+              </div>
+              <div class="card">
+                <h3 style="font-size:0.98rem;">Source Monitoring</h3>
+                <div class="inline-actions">
+                  <button id="refreshSources" class="btn-ghost">Refresh sources</button>
+                </div>
+                <label>Source ID to sync <input id="syncSourceId" placeholder="source-..." /></label>
+                <label>Optional sync documents JSON array
+                  <textarea id="syncDocuments" rows="4" placeholder='[{"title":"New FAQ","body":"..."}]'></textarea>
+                </label>
+                <button id="syncSourceBtn" class="btn-primary" style="margin-top: 0.6rem;">Run source sync</button>
+                <pre id="sourcesOutput">No sources loaded.</pre>
+              </div>
+            </div>
+          </div>
 
-    <section>
-      <h2>Bulk Import Knowledge</h2>
-      <form id="bulkDocForm">
-        <label>Items JSON array
-          <textarea name="items" rows="8" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]' required></textarea>
-        </label>
-        <button type="submit">Bulk import</button>
-      </form>
-    </section>
+          <div class="wizard-step" data-step="2">
+            <h3 style="font-size:1rem;">Step 2 - Import and organize knowledge</h3>
+            <div class="card-grid" style="margin-top: 0.7rem;">
+              <div class="card">
+                <h3 style="font-size:0.98rem;">Knowledge Object</h3>
+                <form id="textDocForm">
+                  <label>Title <input name="title" required /></label>
+                  <label>Summary <input name="summary" /></label>
+                  <label>Owner <input name="owner" placeholder="owner@company.com" /></label>
+                  <label>Department <input name="department" placeholder="Support" /></label>
+                  <label>Type
+                    <select name="type">
+                      <option value="TEXT">TEXT</option>
+                      <option value="MARKDOWN">MARKDOWN</option>
+                      <option value="FAQ">FAQ</option>
+                      <option value="POLICY">POLICY</option>
+                    </select>
+                  </label>
+                  <label>Visibility
+                    <select name="visibility">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL" selected>INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <label>Audience
+                    <select name="audience">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL" selected>INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <label>Tags (comma-separated) <input name="tags" placeholder="refunds, billing" /></label>
+                  <label>Relationships (JSON array) <textarea name="relationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
+                  <label>Review frequency (days) <input name="review_frequency" type="number" min="1" value="90" /></label>
+                  <label>Reviewer confidence (0-1) <input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
+                  <label>Body <textarea name="body" rows="6" required></textarea></label>
+                  <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Save knowledge object</button>
+                </form>
+              </div>
+              <div class="card">
+                <h3 style="font-size:0.98rem;">Bulk + URL + PDF</h3>
+                <form id="bulkDocForm">
+                  <label>Items JSON array
+                    <textarea name="items" rows="6" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]' required></textarea>
+                  </label>
+                  <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Bulk import</button>
+                </form>
+                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.9rem 0;" />
+                <form id="urlDocForm">
+                  <label>URL <input name="url" type="url" placeholder="https://example.com/help" required /></label>
+                  <label>Title override <input name="title" /></label>
+                  <label>URL content
+                    <textarea name="content" rows="4" required></textarea>
+                  </label>
+                  <label>Visibility
+                    <select name="visibility">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL">INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <button type="submit" class="btn-ghost" style="margin-top: 0.6rem;">Save URL object</button>
+                </form>
+                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.9rem 0;" />
+                <form id="pdfDocForm" enctype="multipart/form-data">
+                  <label>Title override <input name="title" /></label>
+                  <label>Visibility
+                    <select name="visibility">
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL">INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="EXECUTIVE">EXECUTIVE</option>
+                    </select>
+                  </label>
+                  <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
+                  <button type="submit" class="btn-ghost" style="margin-top: 0.6rem;">Save PDF object</button>
+                </form>
+              </div>
+            </div>
+          </div>
 
-    <section class="row">
-      <div>
-        <h2>Connect Source</h2>
-        <form id="sourceForm">
-          <label>Name <input name="name" placeholder="Support SharePoint" required /></label>
-          <label>Type
-            <select name="type">
-              <option value="SHAREPOINT">SHAREPOINT</option>
-              <option value="WEBSITE">WEBSITE</option>
-              <option value="CONFLUENCE">CONFLUENCE</option>
-              <option value="GOOGLE_DRIVE">GOOGLE_DRIVE</option>
-              <option value="GENERIC">GENERIC</option>
-            </select>
-          </label>
-          <label>Site URL <input name="site_url" type="url" placeholder="https://contoso.sharepoint.com/sites/support" /></label>
-          <label>Poll interval minutes <input name="poll_minutes" type="number" min="5" value="60" /></label>
-          <button type="submit">Register source</button>
-        </form>
+          <div class="wizard-step" data-step="3">
+            <h3 style="font-size:1rem;">Step 3 - Compile, validate, and deploy</h3>
+            <div class="inline-actions" style="margin-top: 0.7rem;">
+              <button id="compileBtn" class="btn-primary">Compile knowledgeos.bundle.json</button>
+              <button id="refreshDocs" class="btn-ghost">Refresh knowledge objects</button>
+              <button id="refreshAnalytics" class="btn-ghost">Refresh analytics</button>
+            </div>
+            <div class="output-grid">
+              <div>
+                <h3 style="font-size:0.95rem; margin-top:0.7rem;">Compile Output</h3>
+                <pre id="compileOutput">Not compiled yet.</pre>
+                <h3 style="font-size:0.95rem; margin-top:0.7rem;">Graph View</h3>
+                <pre id="graphOutput">Compile a bundle to inspect relationship graph data.</pre>
+              </div>
+              <div>
+                <h3 style="font-size:0.95rem; margin-top:0.7rem;">All Objects</h3>
+                <pre id="docsOutput">No knowledge objects loaded.</pre>
+                <h3 style="font-size:0.95rem; margin-top:0.7rem;">Review Queue</h3>
+                <pre id="reviewOutput">Compile a bundle to inspect stale/due/orphaned counts.</pre>
+                <h3 style="font-size:0.95rem; margin-top:0.7rem;">Tenant Dashboard Analytics</h3>
+                <pre id="analyticsOutput">No analytics loaded.</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <button id="prevAdminStep" type="button" class="btn-ghost">Back</button>
+            <button id="nextAdminStep" type="button" class="btn-primary">Next</button>
+          </div>
+        </section>
       </div>
-      <div>
-        <h2>Source Monitoring</h2>
-        <button id="refreshSources">Refresh sources</button>
-        <label>Source ID to sync <input id="syncSourceId" placeholder="source-..." /></label>
-        <label>Optional sync documents JSON array
-          <textarea id="syncDocuments" rows="4" placeholder='[{"title":"New FAQ","body":"..."}]'></textarea>
-        </label>
-        <button id="syncSourceBtn">Run source sync</button>
-        <pre id="sourcesOutput">No sources loaded.</pre>
-      </div>
-    </section>
-
-    <section class="row">
-      <div>
-        <h2>Compile bundle</h2>
-        <button id="compileBtn">Compile knowledgeos.bundle.json</button>
-        <pre id="compileOutput">Not compiled yet.</pre>
-      </div>
-      <div>
-        <h2>All Objects</h2>
-        <button id="refreshDocs">Refresh knowledge objects</button>
-        <pre id="docsOutput">No knowledge objects loaded.</pre>
-      </div>
-    </section>
-
-    <section class="row">
-      <div>
-        <h2>Graph View</h2>
-        <pre id="graphOutput">Compile a bundle to inspect relationship graph data.</pre>
-      </div>
-      <div>
-        <h2>Review Queue</h2>
-        <pre id="reviewOutput">Compile a bundle to inspect stale/due/orphaned counts.</pre>
-      </div>
-    </section>
-
-    <section>
-      <h2>Tenant Dashboard Analytics</h2>
-      <button id="refreshAnalytics">Refresh analytics</button>
-      <pre id="analyticsOutput">No analytics loaded.</pre>
-    </section>
+    </div>
 
     <script src="/admin.js"></script>
   </body>
