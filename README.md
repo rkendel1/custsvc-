@@ -194,6 +194,30 @@ KnowledgeOS runs locally or in cloud environments such as Fly.io with managed Po
 - Health endpoint is available at `/health`
 - Production requires `SOURCE_SECRET_KEY`
 
+### Deployment reliability and data safety
+
+To keep deployments consistent and avoid accidental data drift/loss:
+
+- The server binds to `0.0.0.0` on port `8080` by default.
+- If Postgres is configured, startup retries database initialization before giving up.
+- In production, Postgres is required on startup by default. If unavailable, startup fails rather than silently writing lifecycle data to ephemeral JSON.
+- During shutdown (`SIGTERM`/`SIGINT`), lifecycle storage is flushed before process exit.
+
+Environment controls:
+
+- `PG_REQUIRE_ON_STARTUP=true|false`
+     Default: `true` in production, `false` otherwise.
+     When `true`, app fails startup if Postgres lifecycle storage cannot initialize.
+- `PG_ALLOW_JSON_FALLBACK=true|false`
+     Default: `false`.
+     When `true`, app may fallback to JSON lifecycle storage if Postgres is unavailable.
+- `PG_CONNECT_RETRIES=<number>`
+     Default: `8`.
+     Number of lifecycle init retry attempts on startup.
+- `PG_CONNECT_RETRY_DELAY_MS=<number>`
+     Default: `1500`.
+     Base backoff delay used between retries.
+
 ## Quick Start
 
 ```bash
