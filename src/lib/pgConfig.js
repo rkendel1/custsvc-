@@ -51,6 +51,7 @@ function resolveSslConfig(databaseUrl = '') {
   const inlineCaBase64 = String(process.env.DATABASE_SSL_CA_BASE64 || '').trim();
   const caFilePath = String(process.env.PGSSLROOTCERT || '').trim();
   const rejectUnauthorizedOverride = process.env.PGSSL_REJECT_UNAUTHORIZED;
+  const strictRequireCa = parseBoolean(process.env.PGSSL_STRICT_REQUIRE_CA, false);
   let rejectUnauthorized = parseBoolean(rejectUnauthorizedOverride, true);
 
   let ca = '';
@@ -72,7 +73,8 @@ function resolveSslConfig(databaseUrl = '') {
 
   if (!ca) {
     // libpq `require` does encryption without CA verification. Keep strict verification for verify-full.
-    if (!rejectUnauthorizedOverride && ['require', 'prefer', 'allow'].includes(sslMode)) {
+    // If strict CA mode is enabled, respect explicit rejectUnauthorized settings.
+    if (!strictRequireCa && ['require', 'prefer', 'allow'].includes(sslMode)) {
       rejectUnauthorized = false;
     }
     return { rejectUnauthorized };

@@ -218,6 +218,16 @@ Environment controls:
      Default: `1500`.
      Base backoff delay used between retries.
 
+Postgres TLS behavior:
+
+- `PGSSLMODE=verify-full`:
+     Enforces full CA validation (recommended when CA is configured correctly).
+- `PGSSLMODE=require`:
+     Uses encrypted TLS and, by default, allows startup even when CA material is unavailable (to avoid deploy downtime from missing cert paths).
+- `PGSSL_STRICT_REQUIRE_CA=true|false`:
+     Default: `false`.
+     When `true`, `require` mode keeps strict CA verification semantics and may fail startup if CA is missing.
+
 ## Quick Start
 
 ```bash
