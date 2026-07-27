@@ -224,7 +224,7 @@
             <li><strong>Step 1. Deployment profile</strong><span>Define runtime rollout and audiences.</span></li>
             <li><strong>Step 2. Connect all targets</strong><span>Register SharePoint, website, and any additional systems.</span></li>
             <li><strong>Step 3. Import content</strong><span>Bulk ingest knowledge for first compile.</span></li>
-            <li><strong>Step 4. Compile + deploy</strong><span>Generate bundle and launch your runtime.</span></li>
+            <li><strong>Step 4. Ready to launch</strong><span>We finalize setup and confirm your assistant is ready.</span></li>
           </ul>
         </section>
 
@@ -308,14 +308,13 @@
           </div>
 
           <div class="wizard-pane" data-step="4">
-            <h3 style="font-size:1rem;">Compile and deploy</h3>
-            <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">Run onboarding checkpoint, compile intelligence, and deploy runtime output.</p>
+            <h3 style="font-size:1rem;">Ready to go</h3>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">Click once and we will complete setup in the background, then confirm your site assistant is live-ready.</p>
             <div class="inline-actions">
-              <button id="compileBtn" class="btn-primary">Run Compile Step</button>
-              <button id="deployBtn" class="btn-ghost">Deploy Runtime</button>
+              <button id="finalizeReadyBtn" class="btn-primary">Finish setup and mark ready</button>
             </div>
             <label style="margin-top:0.72rem;">Simple embed script
-              <textarea id="embedScript" rows="6" readonly placeholder="Deploy runtime to generate your embed script."></textarea>
+              <textarea id="embedScript" rows="6" readonly placeholder="Finish setup to generate your embed script."></textarea>
             </label>
             <button id="copyEmbedBtn" type="button" class="btn-ghost" style="margin-top:0.5rem;">Copy embed script</button>
           </div>
@@ -350,6 +349,7 @@
       const startOnboardingBtn = document.getElementById('startOnboardingBtn');
       const embedScript = document.getElementById('embedScript');
       const copyEmbedBtn = document.getElementById('copyEmbedBtn');
+      const finalizeReadyBtn = document.getElementById('finalizeReadyBtn');
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
       const nextStep = document.getElementById('nextStep');
@@ -393,7 +393,7 @@
           return;
         }
         if (!tenantId) {
-          embedScript.value = 'Deploy runtime to generate your embed script.';
+          embedScript.value = 'Finish setup to generate your embed script.';
           return;
         }
         const origin = window.location.origin;
@@ -447,8 +447,8 @@
 
       copyEmbedBtn?.addEventListener('click', async () => {
         const value = String(embedScript?.value || '').trim();
-        if (!value || value === 'Deploy runtime to generate your embed script.') {
-          output.textContent = 'Deploy runtime first to generate your embed script.';
+        if (!value || value === 'Finish setup to generate your embed script.') {
+          output.textContent = 'Finish setup first to generate your embed script.';
           return;
         }
         try {
@@ -634,15 +634,33 @@
           },
           body: JSON.stringify(payload),
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Request failed');
+        const text = await response.text();
+        let data = {};
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (_error) {
+            const preview = text.slice(0, 160).replace(/\s+/g, ' ');
+            throw new Error(`Unexpected non-JSON response (${response.status}): ${preview}`);
+          }
+        }
+        if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
         return data;
       }
 
       async function getJson(url) {
         const response = await fetch(url, { headers: authHeader() });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Request failed');
+        const text = await response.text();
+        let data = {};
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (_error) {
+            const preview = text.slice(0, 160).replace(/\s+/g, ' ');
+            throw new Error(`Unexpected non-JSON response (${response.status}): ${preview}`);
+          }
+        }
+        if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
         return data;
       }
 
@@ -715,31 +733,20 @@
         }
       });
 
-      document.getElementById('compileBtn').addEventListener('click', async () => {
+      finalizeReadyBtn?.addEventListener('click', async () => {
         try {
-          if (!requireSessionTokenFor('Compile checkpoint')) return;
-          const data = await postJson('/api/onboarding', {
+          if (!requireSessionTokenFor('Final setup')) return;
+
+          finalizeReadyBtn.disabled = true;
+          finalizeReadyBtn.textContent = 'Finalizing...';
+
+          await postJson('/api/onboarding', {
             tenant_id: tenantId,
             step: 'compile-intelligence',
             deploymentChoice: document.getElementById('deploymentChoice').value,
             importSources: selectedTargets(),
             audiences: parseAudiences(),
           });
-          output.textContent = JSON.stringify(data, null, 2);
-        } catch (error) {
-          output.textContent = error.message;
-        }
-      });
-
-      document.getElementById('deployBtn').addEventListener('click', async () => {
-        try {
-          if (!requireSessionTokenFor('Runtime deploy')) return;
-          const tenant = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
-            headers: authHeader(),
-          }).then((r) => r.json());
-
-          if (tenant.error) throw new Error(tenant.error);
-
           const data = await fetch('/api/deploy', {
             method: 'POST',
             headers: {
@@ -755,10 +762,21 @@
             if (!response.ok) throw new Error(body.error || 'Deployment failed');
             return body;
           });
+
           updateEmbedScript(String(data?.outputs?.embed_code || ''));
-          output.textContent = JSON.stringify(data, null, 2);
+
+          output.textContent = [
+            'Ready to go:',
+            `- Tenant: ${tenantId}`,
+            `- Runtime URL: ${data?.outputs?.runtime_url || 'ready'}`,
+            '- Status: Connected and deployment-ready',
+            '- Next: Copy the embed script and add it to your site.',
+          ].join('\n');
         } catch (error) {
           output.textContent = error.message;
+        } finally {
+          finalizeReadyBtn.disabled = false;
+          finalizeReadyBtn.textContent = 'Finish setup and mark ready';
         }
       });
 

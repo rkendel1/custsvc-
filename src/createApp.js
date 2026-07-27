@@ -161,11 +161,7 @@ const SOURCE_TEMPLATES = {
   },
   WEBSITE: {
     display_name: 'Website',
-    fields: [
-      { key: 'start_path', label: 'Start path', required: false, input_type: 'text' },
-      { key: 'crawl_depth', label: 'Crawl depth', required: false, input_type: 'number' },
-      { key: 'user_agent', label: 'User agent', required: false, input_type: 'text' },
-    ],
+    fields: [],
   },
   CONFLUENCE: {
     display_name: 'Confluence',
