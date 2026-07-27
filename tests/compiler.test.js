@@ -33,6 +33,9 @@ test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
   assert.equal(bundle.chunks[0].audience, 'PUBLIC');
   assert.ok(bundle.chunks[0].tf.within > 0);
   assert.equal(bundle.metadata.company, 'TestCo');
+  assert.equal(bundle.processCount, 0);
+  assert.ok(bundle.process_graph && Array.isArray(bundle.process_graph.nodes));
+  assert.ok(bundle.role_views && bundle.role_views.Customer);
 });
 
 test('compileBundle parses FAQ JSON arrays into chunks', () => {
@@ -237,4 +240,14 @@ test('bundle keeps v2-compatible knowledge and chunk fields', () => {
   assert.ok(Array.isArray(bundle.chunks));
   assert.ok(Array.isArray(bundle.relationships));
   assert.ok(bundle.graph && bundle.indexes && bundle.review_schedule);
+});
+
+test('bundle exposes v3 format with explicit v2 compatibility markers', () => {
+  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], { processes: [] });
+  assert.equal(bundle.version, 3);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
+  assert.ok(bundle.metadata && typeof bundle.metadata.knowledgeCount === 'number');
+  assert.ok(Array.isArray(bundle.knowledge));
+  assert.ok(Array.isArray(bundle.chunks));
 });

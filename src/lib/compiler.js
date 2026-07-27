@@ -365,12 +365,13 @@ function calculateReviewSchedule(knowledge) {
 
 function normalizeStepType(value) {
   const normalized = String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
-  if (PROCESS_STEP_TYPES.has(normalized)) return normalized;
-  return 'COLLECT_DATA';
+  if (PROCESS_STEP_TYPES.has(normalized)) return { type: normalized, valid: true };
+  return { type: 'COLLECT_DATA', valid: false };
 }
 
 function normalizeProcessStep(step, index) {
   const id = String(step?.id || `step-${index + 1}`);
+  const stepType = normalizeStepType(step?.type);
   const next = step?.next;
   const nextSteps = Array.isArray(next)
     ? next.map((item) => String(item || '').trim()).filter(Boolean)
@@ -381,7 +382,8 @@ function normalizeProcessStep(step, index) {
     id,
     title: String(step?.title || `Step ${index + 1}`),
     description: String(step?.description || ''),
-    type: normalizeStepType(step?.type),
+    type: stepType.type,
+    step_type_valid: stepType.valid,
     actor: step?.actor || null,
     required_role: step?.required_role || null,
     required_capability: step?.required_capability || null,
@@ -480,6 +482,7 @@ function validateProcesses(processes, knowledge) {
     missing_capabilities: [],
     invalid_links: [],
     cycles: [],
+    invalid_step_types: [],
   };
 
   for (const process of safeProcesses) {
@@ -495,6 +498,9 @@ function validateProcesses(processes, knowledge) {
     for (const step of process.steps) {
       if (step.type !== 'FINISH' && step.next.length === 0) {
         issues.dead_ends.push({ processId: process.id, stepId: step.id });
+      }
+      if (!step.step_type_valid) {
+        issues.invalid_step_types.push({ processId: process.id, stepId: step.id, type: step.type });
       }
       if ((step.type === 'DECISION' || step.type === 'BRANCH') && step.next.length < 2) {
         issues.branch_errors.push({ processId: process.id, stepId: step.id });
@@ -613,7 +619,7 @@ function compileBundle(documents, options = {}) {
     role_views: roleViews,
     review_schedule: reviewSchedule,
     review: {
-      knowledge: reviewSchedule,
+      knowledge_schedule: reviewSchedule,
       processes: processValidation,
     },
     graph,

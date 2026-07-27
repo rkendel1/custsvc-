@@ -56,12 +56,12 @@ test('runtime supports branch, rollback, and finish completion', () => {
   execution = branch(bundle, execution, 'approve');
   assert.equal(execution.currentStepId, 'approve');
 
-  execution = rollback(bundle, execution);
+  execution = rollback(execution);
   assert.equal(execution.currentStepId, 'decision');
 
   execution = branch(bundle, execution, 'approve');
-  execution = completeStep(bundle, execution);
-  execution = completeStep(bundle, execution);
+  execution = completeStep(bundle, execution, { capabilities: ['Upload', 'Email'] });
+  execution = completeStep(bundle, execution, { capabilities: ['Upload', 'Email'] });
   assert.equal(execution.status, 'COMPLETED');
   assert.equal(execution.currentStepId, 'finish');
 });

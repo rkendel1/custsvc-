@@ -4,6 +4,10 @@ function buildStepMap(process) {
   return map;
 }
 
+function normalizeStepType(value) {
+  return String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
+}
+
 function startProcess(bundle, processId, context = {}) {
   const process = (bundle?.processes || []).find((item) => item.id === processId);
   if (!process) throw new Error('process not found');
@@ -59,7 +63,7 @@ function completeStep(bundle, execution, payload = {}) {
   const steps = buildStepMap(process);
   const current = steps.get(execution.currentStepId);
   const nextStepId = current.next[0] || null;
-  const isFinished = current.type === 'FINISH' || !nextStepId;
+  const isFinished = normalizeStepType(current.type) === 'FINISH' || !nextStepId;
   return {
     ...execution,
     status: isFinished ? 'COMPLETED' : execution.status,
@@ -69,7 +73,7 @@ function completeStep(bundle, execution, payload = {}) {
   };
 }
 
-function rollback(bundle, execution) {
+function rollback(execution) {
   const history = [...execution.history];
   const previous = history.pop();
   if (!previous) return execution;
@@ -91,14 +95,16 @@ function simulateProcess(bundle, processId, options = {}) {
   const process = (bundle?.processes || []).find((item) => item.id === processId);
   if (!process) throw new Error('process not found');
   const stepCount = process.steps.length;
-  const approvals = process.steps.filter((step) => step.type === 'APPROVAL').length;
+  const approvals = process.steps.filter((step) => normalizeStepType(step.type) === 'APPROVAL').length;
   const estimatedMinutes = process.steps.reduce(
     (sum, step) => sum + (Number.isFinite(step.expected_duration) ? step.expected_duration : 0),
     0,
   );
   const warnings = [];
-  if (!approvals) warnings.push('No approval step detected');
-  if (options.role && process.roles.length && !process.roles.includes(options.role)) warnings.push('Role mismatch for process');
+  if (!approvals) warnings.push('No approval steps detected');
+  if (options.role && process.roles.length && !process.roles.includes(options.role)) {
+    warnings.push(`Role '${options.role}' not in process roles: ${process.roles.join(', ')}`);
+  }
   return { processId, stepCount, approvals, estimatedMinutes, warnings };
 }
 

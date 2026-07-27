@@ -37,6 +37,10 @@
     return 'INTERNAL';
   }
 
+  function normalizeStepType(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
+  }
+
   function roleAudiences(ctxRole, ctxPermissions = []) {
     const roleValue = String(ctxRole || 'Customer').toLowerCase();
     const perms = new Set((ctxPermissions || []).map((x) => String(x).toLowerCase()));
@@ -183,6 +187,31 @@
       if (!best || score > best.score) best = { chunk, score };
     }
 
+    if (best && best.score >= minAnswerConfidence) {
+      const fresh = freshnessScore(best.chunk);
+      const agreement = relationshipAgreement(best.chunk, bundle);
+      const reviewerConfidence = Number(best.chunk.confidence || 0.7);
+      const confidence = Number((
+        best.score * confidenceWeights.semantic +
+        fresh * confidenceWeights.freshness +
+        agreement * confidenceWeights.agreement +
+        reviewerConfidence * confidenceWeights.reviewer
+      ).toFixed(3));
+      return {
+        answer: best.chunk.text,
+        score: best.score,
+        confidence,
+        confidenceBreakdown: {
+          semantic: Number(best.score.toFixed(3)),
+          freshness: Number(fresh.toFixed(3)),
+          agreement: Number(agreement.toFixed(3)),
+          reviewer: Number(reviewerConfidence.toFixed(3)),
+        },
+        topChunkId: best.chunk.id,
+        answered: true,
+      };
+    }
+
     function getProcess(bundle, processId) {
       return (bundle?.processes || []).find((item) => item.id === processId) || null;
     }
@@ -238,7 +267,7 @@
       const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
       const nextStepId = current?.next?.[0] || null;
       execution.history.push({ stepId: execution.currentStepId, action: 'COMPLETE', at: new Date().toISOString() });
-      if (!nextStepId || current?.type === 'FINISH') {
+      if (!nextStepId || normalizeStepType(current?.type) === 'FINISH') {
         execution.status = 'COMPLETED';
         execution.completedAt = new Date().toISOString();
         return execution;
@@ -262,8 +291,10 @@
     function rollback(executionId) {
       const execution = state.executions[executionId];
       if (!execution) throw new Error('execution not found');
-      const previous = execution.history.pop();
+      const history = [...execution.history];
+      const previous = history.pop();
       if (!previous) return execution;
+      execution.history = history;
       execution.status = 'ACTIVE';
       execution.currentStepId = previous.stepId;
       execution.completedAt = null;
@@ -276,31 +307,6 @@
       execution.status = 'CANCELLED';
       execution.cancelledAt = new Date().toISOString();
       return execution;
-    }
-
-    if (best && best.score >= minAnswerConfidence) {
-      const fresh = freshnessScore(best.chunk);
-      const agreement = relationshipAgreement(best.chunk, bundle);
-      const reviewerConfidence = Number(best.chunk.confidence || 0.7);
-      const confidence = Number((
-        best.score * confidenceWeights.semantic +
-        fresh * confidenceWeights.freshness +
-        agreement * confidenceWeights.agreement +
-        reviewerConfidence * confidenceWeights.reviewer
-      ).toFixed(3));
-      return {
-        answer: best.chunk.text,
-        score: best.score,
-        confidence,
-        confidenceBreakdown: {
-          semantic: Number(best.score.toFixed(3)),
-          freshness: Number(fresh.toFixed(3)),
-          agreement: Number(agreement.toFixed(3)),
-          reviewer: Number(reviewerConfidence.toFixed(3)),
-        },
-        topChunkId: best.chunk.id,
-        answered: true,
-      };
     }
 
     const fallback = await remoteFallback(question);
