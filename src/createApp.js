@@ -559,7 +559,13 @@ function resolveTenantId(req) {
 }
 
 function resolveScopedTenantId(req) {
-  return String(req.tenantId || resolveTenantId(req) || 'public');
+  const scopedFromMiddleware = String(req.tenantId || '').trim();
+  if (scopedFromMiddleware) return scopedFromMiddleware;
+
+  const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
+  if (identityTenantId) return identityTenantId;
+
+  return String(resolveTenantId(req) || 'public');
 }
 
 function base64urlEncode(input) {
@@ -1002,7 +1008,14 @@ function requireTenantOrSession(storage) {
       return next();
     }
 
-    const tenantId = resolveTenantId(req);
+    const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
+    const requestedTenantId = String(resolveTenantId(req) || '').trim();
+
+    if (identityTenantId && requestedTenantId && identityTenantId !== requestedTenantId) {
+      return res.status(403).json({ error: 'tenant scope mismatch' });
+    }
+
+    const tenantId = identityTenantId || requestedTenantId;
     if (tenantId) {
       req.tenantId = String(tenantId);
       return next();

@@ -638,6 +638,12 @@
       }
 
       async function requireSessionTokenFor(actionLabel) {
+        await ensureTenantScope();
+        if (!tenantId) {
+          setStatus('Action needed', `${actionLabel} requires a tenant scope. Refresh access or enter your workspace id.`);
+          return false;
+        }
+
         if (hasSessionToken()) {
           const stillValid = await validateCurrentTenantSession();
           if (stillValid) return true;
@@ -959,8 +965,41 @@
         }
       }
 
+      async function ensureTenantScope() {
+        if (tenantId) return tenantId;
+
+        const requestedTenantId = String(onboardingTenantInput?.value || '').trim();
+        if (requestedTenantId) {
+          tenantId = requestedTenantId;
+          renderTenantLine();
+          updateUrlState();
+          updateEmbedScript();
+          return tenantId;
+        }
+
+        try {
+          const response = await fetch('/api/access/status');
+          const access = await response.json();
+          const tenantFromAuth = String(access?.authenticated_tenant_id || '').trim();
+          if (tenantFromAuth) {
+            tenantId = tenantFromAuth;
+            if (onboardingTenantInput) onboardingTenantInput.value = tenantFromAuth;
+            renderTenantLine();
+            updateUrlState();
+            updateEmbedScript();
+          }
+        } catch (_error) {
+          // Keep current tenant scope if access status is unavailable.
+        }
+
+        return tenantId;
+      }
+
       function authHeader() {
-        return sessionToken ? { 'x-session-token': sessionToken } : {};
+        const headers = {};
+        if (sessionToken) headers['x-session-token'] = sessionToken;
+        if (tenantId) headers['x-tenant-id'] = tenantId;
+        return headers;
       }
 
       const LOCAL_EMBEDDING_NORMALIZER = 20;
@@ -1069,6 +1108,7 @@
       }
 
       async function uploadPdfKnowledge(file, visibility) {
+        await ensureTenantScope();
         const formData = new FormData();
         formData.set('file', file, file.name);
         formData.set('tenant_id', tenantId);
@@ -1090,6 +1130,7 @@
       }
 
       async function postJson(url, payload, options = {}) {
+        await ensureTenantScope();
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -1132,6 +1173,7 @@
       }
 
       async function getJson(url, options = {}) {
+        await ensureTenantScope();
         const response = await fetch(url, { headers: authHeader() });
         const text = await response.text();
         let data = {};
