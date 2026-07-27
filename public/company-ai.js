@@ -18,6 +18,20 @@
     .map((x) => x.trim())
     .filter(Boolean);
 
+  function resolveApiBaseFromBundleUrl() {
+    if (apiBase) return apiBase;
+    if (!tenantId) return '';
+    if (!String(bundleUrl || '').includes('/api/embed/bundle')) return '';
+    try {
+      const parsed = new URL(bundleUrl, window.location.href);
+      return parsed.origin;
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  const effectiveApiBase = resolveApiBaseFromBundleUrl();
+
   const state = {
     bundle: null,
     history: [],
@@ -57,14 +71,14 @@
       expiresAt: 0,
     },
   };
-    async function getEmbedSessionToken() {
-      if (!tenantId || !apiBase) return null;
+    async function getEmbedSessionToken(forceRefresh = false) {
+      if (!tenantId || !effectiveApiBase) return null;
       const now = Date.now();
-      if (state.embedSession.token && state.embedSession.expiresAt - now > 5_000) {
+      if (!forceRefresh && state.embedSession.token && state.embedSession.expiresAt - now > 5_000) {
         return state.embedSession.token;
       }
 
-      const response = await fetch(`${apiBase}/api/embed/session?tenant_id=${encodeURIComponent(tenantId)}`);
+      const response = await fetch(`${effectiveApiBase}/api/embed/session?tenant_id=${encodeURIComponent(tenantId)}`);
       if (!response.ok) {
         throw new Error(`Unable to establish secure embed session (${response.status})`);
       }
@@ -688,14 +702,22 @@
       }
     }
 
-    const headers = {};
-    if (tenantId && bundleUrl.includes('/api/embed/bundle')) {
-      const token = await getEmbedSessionToken();
-      if (token) headers['x-embed-token'] = token;
+    async function fetchBundleOnce(forceSessionRefresh = false) {
+      const headers = {};
+      if (tenantId && bundleUrl.includes('/api/embed/bundle')) {
+        const token = await getEmbedSessionToken(forceSessionRefresh);
+        if (token) headers['x-embed-token'] = token;
+      }
+      return fetch(bundleUrl, { headers, cache: 'no-store' });
     }
 
     try {
-      const response = await fetch(bundleUrl, { headers, cache: 'no-store' });
+      let response = await fetchBundleOnce(false);
+      if (response.status === 401 && tenantId && bundleUrl.includes('/api/embed/bundle')) {
+        state.embedSession.token = null;
+        state.embedSession.expiresAt = 0;
+        response = await fetchBundleOnce(true);
+      }
       if (!response.ok) throw new Error(`Could not load bundle (${response.status})`);
       state.bundle = await response.json();
       localStorage.setItem(cacheKey, JSON.stringify(state.bundle));
@@ -1262,29 +1284,39 @@
   }
 
   async function searchViaEmbedApi(query, options = {}) {
-    if (!apiBase || !tenantId) return [];
+    if (!effectiveApiBase || !tenantId) return [];
     const input = String(query || '').trim();
     if (!input) return [];
 
     try {
-      const token = await getEmbedSessionToken();
-      if (!token) return [];
+      async function requestSearch(forceSessionRefresh = false) {
+        const token = await getEmbedSessionToken(forceSessionRefresh);
+        if (!token) return null;
+        return fetch(`${effectiveApiBase}/api/embed/search`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-embed-token': token,
+          },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            query: input,
+            limit: Number(options.limit || 5),
+            role: options.context?.role || state.context.role,
+            department: options.context?.department || state.context.department,
+            permissions: options.context?.permissions || state.context.permissions,
+          }),
+        });
+      }
 
-      const response = await fetch(`${apiBase}/api/embed/search`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-embed-token': token,
-        },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          query: input,
-          limit: Number(options.limit || 5),
-          role: options.context?.role || state.context.role,
-          department: options.context?.department || state.context.department,
-          permissions: options.context?.permissions || state.context.permissions,
-        }),
-      });
+      let response = await requestSearch(false);
+      if (!response) return [];
+      if (response.status === 401) {
+        state.embedSession.token = null;
+        state.embedSession.expiresAt = 0;
+        response = await requestSearch(true);
+        if (!response) return [];
+      }
       if (!response.ok) return [];
       const payload = await response.json();
       const matches = Array.isArray(payload?.matches) ? payload.matches : [];
