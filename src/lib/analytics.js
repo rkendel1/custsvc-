@@ -38,7 +38,7 @@ function buildAnalytics(telemetryEvents) {
     totalEvents += 1;
 
     if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;
-    const normalizedIntent = intent || classifyIntent(question);
+    const normalizedIntent = intent || (question ? classifyIntent(question) : 'general');
     intentCounts[normalizedIntent] = (intentCounts[normalizedIntent] || 0) + 1;
     const role = String(event.role || 'Customer');
     roleUsage[role] = (roleUsage[role] || 0) + 1;

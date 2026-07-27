@@ -43,6 +43,8 @@ test('aiRuntime supports classify, extract, and stream lifecycle', async () => {
 test('aiRuntime enforces model action permission boundaries', async () => {
   const runtime = createAIRuntime({ allowedActions: ['ask_question'] });
   await runtime.initialize({ models: [{ id: 'm1', type: 'llm', runtime: 'wasm' }] });
+  const allowed = await runtime.runAction('ask_question', { message: 'Need more detail' });
+  assert.equal(allowed.ok, true);
   await assert.rejects(() => runtime.runAction('start_process', { processId: 'refund_process' }), /not permitted/i);
 });
 

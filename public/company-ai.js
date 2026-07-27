@@ -41,9 +41,6 @@
     billing_question: 0.86,
     general_question: 0.72,
   };
-  const intentProcessMap = {
-    refund_request: 'refund_process',
-  };
 
   function normalizeAudience(value) {
     const item = String(value || '').toUpperCase();
@@ -337,7 +334,7 @@
           reviewer: Number(reviewerConfidence.toFixed(3)),
         },
         intent: intentResult.intent,
-        process_started: Boolean(intentProcessMap[intentResult.intent]),
+        process_started: false,
         topChunkId: best.chunk.id,
         answered: true,
       };

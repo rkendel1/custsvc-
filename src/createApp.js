@@ -264,7 +264,7 @@ function createApp(options = {}) {
       duration,
       includeContent,
     } = req.body || {};
-    if (!question && !intent) return res.status(400).json({ error: 'question or intent is required' });
+    if (!question && !intent) return res.status(400).json({ error: 'at least one of question or intent is required' });
 
     const events = storage.listTelemetry();
     const event = {

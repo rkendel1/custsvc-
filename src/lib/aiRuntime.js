@@ -28,11 +28,11 @@ function inferIntent(question) {
 function extractFields(text) {
   const input = String(text || '');
   // Lightweight extraction for local runtime hints (not strict RFC email validation).
-  const email = input.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || null;
+  const email = input.match(/[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/i)?.[0] || null;
   const amount = input.match(/amount[\s:]*([\$]\d+(?:\.\d{2})?)/i)?.[1]
     || input.match(/([\$]\d+(?:\.\d{2})?)/)?.[1]
     || null;
-  const orderId = input.match(/\b(?:order|ticket|case)[\s#:.-]*([a-z0-9-]{4,})/i)?.[1] || null;
+  const orderId = input.match(/(?:order|ticket|case)[\s#:.-]*([a-z0-9-]{4,})/i)?.[1] || null;
   return { email, amount, orderId };
 }
 
