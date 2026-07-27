@@ -242,6 +242,7 @@
             <div id="sourceCredentialFields"></div>
             <div class="inline-actions">
               <button id="connectSourceBtn" class="btn-primary">Connect Source</button>
+              <button id="testSourceBtn" class="btn-ghost">Test Connection</button>
               <button id="refreshSourceMonitorBtn" class="btn-ghost">Refresh Source Monitor</button>
             </div>
           </div>
@@ -449,6 +450,18 @@
             credentials,
           };
           const data = await postJson('/api/sources', payload);
+          output.textContent = JSON.stringify(data, null, 2);
+          document.getElementById('testSourceBtn').dataset.sourceId = data.source?.source_id || '';
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
+
+      document.getElementById('testSourceBtn').addEventListener('click', async () => {
+        try {
+          const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || '').trim();
+          if (!sourceId) throw new Error('Connect a source first to run a live test');
+          const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, { tenant_id: tenantId });
           output.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
           output.textContent = error.message;

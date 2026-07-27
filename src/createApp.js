@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const net = require('net');
 const pdfParse = require('pdf-parse');
-const { randomUUID } = require('crypto');
+const { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } = require('crypto');
 const { compileBundle, normalizeVisibility } = require('./lib/compiler');
 const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
@@ -258,6 +258,62 @@ function normalizeSourceConfig(config) {
   return output;
 }
 
+function isSensitiveConfigKey(key) {
+  return /(secret|token|password|key)/i.test(String(key || ''));
+}
+
+function getSourceCryptoKey() {
+  const secret = String(process.env.SOURCE_SECRET_KEY || '').trim();
+  if (!secret) return null;
+  return createHash('sha256').update(secret).digest();
+}
+
+function encryptSourceSecret(value) {
+  const plain = String(value || '');
+  if (!plain) return '';
+  const key = getSourceCryptoKey();
+  if (!key) return plain;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `enc:v1:${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function decryptSourceSecret(value) {
+  const text = String(value || '');
+  if (!text.startsWith('enc:v1:')) return text;
+  const key = getSourceCryptoKey();
+  if (!key) return '';
+  try {
+    const [, , ivB64, tagB64, dataB64] = text.split(':');
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
+    decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+    const decrypted = Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64')), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (_error) {
+    return '';
+  }
+}
+
+function encryptSourceConfig(config) {
+  const safeConfig = normalizeSourceConfig(config);
+  const encrypted = {};
+  for (const [key, value] of Object.entries(safeConfig)) {
+    encrypted[key] = isSensitiveConfigKey(key) ? encryptSourceSecret(value) : value;
+  }
+  return encrypted;
+}
+
+function decryptSourceConfig(config) {
+  const safeConfig = normalizeSourceConfig(config);
+  const decrypted = {};
+  for (const [key, value] of Object.entries(safeConfig)) {
+    decrypted[key] = isSensitiveConfigKey(key) ? decryptSourceSecret(value) : value;
+  }
+  return decrypted;
+}
+
 function validateSourceConfig(type, config) {
   const normalizedType = normalizeSourceType(type);
   const template = getSourceTemplate(normalizedType);
@@ -277,10 +333,9 @@ function validateSourceConfig(type, config) {
 
 function redactSourceConfig(config) {
   const safeConfig = normalizeSourceConfig(config);
-  const sensitivePattern = /(secret|token|password|key)/i;
   const redacted = {};
   for (const [key, value] of Object.entries(safeConfig)) {
-    if (sensitivePattern.test(key)) {
+    if (isSensitiveConfigKey(key)) {
       redacted[key] = value ? '***' : '';
     } else {
       redacted[key] = value;
@@ -292,6 +347,11 @@ function redactSourceConfig(config) {
 function sourceHealth(source) {
   const status = String(source?.status || 'connected').toLowerCase();
   if (status !== 'connected') return status;
+
+  const decryptedConfig = decryptSourceConfig(source?.config || {});
+  const validation = validateSourceConfig(source?.type || 'GENERIC', decryptedConfig);
+  if (!validation.ok) return 'misconfigured';
+
   const lastSyncAt = source?.last_sync_at ? Date.parse(source.last_sync_at) : null;
   const pollMinutes = Number(source?.poll_minutes || 60);
   if (!lastSyncAt || !Number.isFinite(lastSyncAt)) return 'pending';
@@ -559,6 +619,10 @@ function createApp(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const companyName = options.companyName || 'KnowledgeOS';
   const storage = options.storage || createStorage(rootDir);
+
+  if (process.env.NODE_ENV === 'production' && !String(process.env.SOURCE_SECRET_KEY || '').trim()) {
+    throw new Error('SOURCE_SECRET_KEY is required in production for connector credential encryption');
+  }
 
   ensureDemoTenant(storage);
   ensureDefaultBundle(storage, companyName);
@@ -893,7 +957,7 @@ function createApp(options = {}) {
       site_url: site_url ? String(site_url) : null,
       poll_minutes: Math.max(5, Number(poll_minutes || 60)),
       status: 'connected',
-      config: configValidation.config,
+      config: encryptSourceConfig(configValidation.config),
       last_sync_at: null,
       last_sync_status: 'never',
       last_sync_error: null,
@@ -908,6 +972,126 @@ function createApp(options = {}) {
         ...source,
         config: redactSourceConfig(source.config),
         health: sourceHealth(source),
+      },
+    });
+  });
+
+  app.patch('/api/sources/:sourceId', writeLimiter, (req, res) => {
+    const sourceId = req.params.sourceId;
+    const tenantId = resolveTenantId(req) || 'public';
+    const sources = listData(storage, 'listSources');
+    const index = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (index < 0) return res.status(404).json({ error: 'source not found' });
+
+    const existing = sources[index];
+    const nextName = req.body?.name !== undefined ? String(req.body.name || '').trim() : existing.name;
+    if (!nextName) return res.status(400).json({ error: 'name cannot be empty' });
+
+    const nextType = req.body?.type ? normalizeSourceType(req.body.type) : existing.type;
+    const nextSiteUrl = req.body?.site_url !== undefined ? String(req.body.site_url || '').trim() : String(existing.site_url || '');
+    if (nextSiteUrl && !isValidHttpUrl(nextSiteUrl)) {
+      return res.status(400).json({ error: 'site_url must be public http(s) and not private/internal' });
+    }
+
+    const existingConfig = decryptSourceConfig(existing.config || {});
+    const incomingConfig = {
+      ...(typeof req.body?.config === 'object' && req.body?.config ? req.body.config : {}),
+      ...(typeof req.body?.credentials === 'object' && req.body?.credentials ? req.body.credentials : {}),
+    };
+    const mergedConfig = { ...existingConfig, ...incomingConfig };
+    const configValidation = validateSourceConfig(nextType, mergedConfig);
+    if (!configValidation.ok) {
+      return res.status(400).json({
+        error: `missing required credentials: ${configValidation.missing.join(', ')}`,
+        missing: configValidation.missing,
+      });
+    }
+
+    const updated = {
+      ...existing,
+      name: nextName,
+      type: configValidation.type,
+      site_url: nextSiteUrl || null,
+      poll_minutes:
+        req.body?.poll_minutes !== undefined
+          ? Math.max(5, Number(req.body.poll_minutes || existing.poll_minutes || 60))
+          : existing.poll_minutes,
+      status: req.body?.status ? String(req.body.status).toLowerCase() : existing.status,
+      config: encryptSourceConfig(configValidation.config),
+      updated_at: new Date().toISOString(),
+    };
+    sources[index] = updated;
+    saveData(storage, 'saveSources', sources);
+
+    return res.json({
+      source: {
+        ...updated,
+        config: redactSourceConfig(updated.config),
+        health: sourceHealth(updated),
+      },
+    });
+  });
+
+  app.post('/api/sources/:sourceId/test', writeLimiter, async (req, res) => {
+    const sourceId = req.params.sourceId;
+    const tenantId = resolveTenantId(req) || 'public';
+    const sources = listData(storage, 'listSources');
+    const source = sources.find((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (!source) return res.status(404).json({ error: 'source not found' });
+
+    const decryptedConfig = decryptSourceConfig(source.config || {});
+    const validation = validateSourceConfig(source.type, decryptedConfig);
+    if (!validation.ok) {
+      return res.status(400).json({
+        ok: false,
+        source_id: source.source_id,
+        status: 'misconfigured',
+        missing: validation.missing,
+      });
+    }
+
+    const targetUrl = source.site_url || decryptedConfig.instance_url || decryptedConfig.base_url || null;
+    let connectivity = { ok: true, reason: 'credentials_validated' };
+    if (targetUrl) {
+      try {
+        const parsed = new URL(targetUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          connectivity = { ok: false, reason: 'unsupported_protocol' };
+        } else if (isPrivateHost(parsed.hostname)) {
+          connectivity = { ok: false, reason: 'private_host_not_allowed' };
+        } else {
+          const port = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80));
+          connectivity = await probeTcp({ host: parsed.hostname, port }, 1500);
+        }
+      } catch (_error) {
+        connectivity = { ok: false, reason: 'invalid_target_url' };
+      }
+    }
+
+    const nextStatus = connectivity.ok ? 'connected' : 'degraded';
+    const nextSyncStatus = connectivity.ok ? source.last_sync_status || 'ready' : 'error';
+    const updated = {
+      ...source,
+      status: nextStatus,
+      last_sync_error: connectivity.ok ? null : connectivity.reason,
+      last_sync_status: nextSyncStatus,
+      updated_at: new Date().toISOString(),
+    };
+    const index = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (index >= 0) {
+      sources[index] = updated;
+      saveData(storage, 'saveSources', sources);
+    }
+
+    return res.json({
+      ok: connectivity.ok,
+      source_id: source.source_id,
+      status: connectivity.ok ? 'healthy' : 'degraded',
+      connectivity,
+      source: {
+        ...updated,
+        config: redactSourceConfig(updated.config),
+        health: sourceHealth(updated),
       },
     });
   });
@@ -953,7 +1137,7 @@ function createApp(options = {}) {
     saveData(storage, 'saveSources', sources);
 
     res.json({
-      source: { ...updated, health: sourceHealth(updated) },
+      source: { ...updated, config: redactSourceConfig(updated.config), health: sourceHealth(updated) },
       synced_count: syncedCount,
     });
   });

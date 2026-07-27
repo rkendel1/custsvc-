@@ -213,7 +213,11 @@
                 <label>Optional sync documents JSON array
                   <textarea id="syncDocuments" rows="4" placeholder='[{"title":"New FAQ","body":"..."}]'></textarea>
                 </label>
-                <button id="syncSourceBtn" class="btn-primary" style="margin-top: 0.6rem;">Run source sync</button>
+                <div class="inline-actions" style="margin-top: 0.6rem;">
+                  <button id="syncSourceBtn" class="btn-primary">Run source sync</button>
+                  <button id="testSourceBtn" class="btn-ghost">Test connection</button>
+                  <button id="updateSourceBtn" class="btn-ghost">Rotate credentials</button>
+                </div>
                 <pre id="sourcesOutput">No sources loaded.</pre>
               </div>
             </div>

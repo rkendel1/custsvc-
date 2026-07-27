@@ -270,6 +270,78 @@ function wireSourceSync() {
   });
 }
 
+function collectSourceCredentialsFromForm() {
+  const credentials = {};
+  document.querySelectorAll('#sourceCredentialFields input[name^="cred__"]').forEach((input) => {
+    credentials[input.name.slice(6)] = input.value || '';
+  });
+  return credentials;
+}
+
+function wireSourceTest() {
+  const button = document.getElementById('testSourceBtn');
+  if (!button) return;
+
+  button.addEventListener('click', async () => {
+    const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
+    if (!sourceId) {
+      alert('source id is required');
+      return;
+    }
+
+    try {
+      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      document.getElementById('sourcesOutput').textContent = format(data);
+      await refreshSources();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
+function wireSourceUpdate() {
+  const button = document.getElementById('updateSourceBtn');
+  const form = document.getElementById('sourceForm');
+  if (!button || !form) return;
+
+  button.addEventListener('click', async () => {
+    const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
+    if (!sourceId) {
+      alert('source id is required');
+      return;
+    }
+
+    const formData = new FormData(form);
+    const payload = {
+      credentials: collectSourceCredentialsFromForm(),
+    };
+    const name = String(formData.get('name') || '').trim();
+    const type = String(formData.get('type') || '').trim();
+    const siteUrl = String(formData.get('site_url') || '').trim();
+    const pollMinutes = Number(formData.get('poll_minutes') || 60);
+    if (name) payload.name = name;
+    if (type) payload.type = type;
+    if (siteUrl) payload.site_url = siteUrl;
+    if (Number.isFinite(pollMinutes)) payload.poll_minutes = pollMinutes;
+
+    try {
+      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      document.getElementById('sourcesOutput').textContent = format(data);
+      await refreshSources();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
 function wireCompile() {
   const button = document.getElementById('compileBtn');
   const output = document.getElementById('compileOutput');
@@ -336,6 +408,8 @@ async function bootstrapAdmin() {
   wireBulkDocForm();
   wireSourceForm();
   wireSourceSync();
+  wireSourceTest();
+  wireSourceUpdate();
   wireCompile();
 
   document.getElementById('refreshDocs').addEventListener('click', refreshDocuments);

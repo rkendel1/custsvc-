@@ -13,6 +13,27 @@ function startServer(app) {
   });
 }
 
+test('createApp requires SOURCE_SECRET_KEY in production', () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousSecret = process.env.SOURCE_SECRET_KEY;
+  process.env.NODE_ENV = 'production';
+  delete process.env.SOURCE_SECRET_KEY;
+  try {
+    assert.throws(() => createApp({ rootDir: os.tmpdir(), storage: { writeBundle: () => ({ bundleFileName: 'bundle.json' }) } }));
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+    if (previousSecret === undefined) {
+      delete process.env.SOURCE_SECRET_KEY;
+    } else {
+      process.env.SOURCE_SECRET_KEY = previousSecret;
+    }
+  }
+});
+
 test('telemetry endpoint accepts privacy-preserving payload without question content', async (t) => {
   const telemetry = [];
   const storage = {
@@ -282,4 +303,147 @@ test('source creation enforces required credentials and redacts sensitive fields
   const listed = await listResponse.json();
   assert.equal(listResponse.status, 200);
   assert.equal(listed.sources[0].config.client_secret, '***');
+});
+
+test('source update rotates credentials and keeps sensitive fields redacted', async (t) => {
+  const sources = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'SharePoint Docs',
+      type: 'SHAREPOINT',
+      tenant_id: 'public',
+      credentials: {
+        tenant_id: 'tenant-1',
+        site_id: 'site-1',
+        client_id: 'client-1',
+        client_secret: 'old-secret',
+      },
+    }),
+  });
+  const created = await createResponse.json();
+  assert.equal(createResponse.status, 201);
+
+  const updateResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'public',
+      name: 'SharePoint Docs Rotated',
+      credentials: {
+        client_secret: 'new-secret',
+      },
+    }),
+  });
+  const updated = await updateResponse.json();
+  assert.equal(updateResponse.status, 200);
+  assert.equal(updated.source.name, 'SharePoint Docs Rotated');
+  assert.equal(updated.source.config.client_secret, '***');
+});
+
+test('source test endpoint validates connector state and updates source status', async (t) => {
+  const sources = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Confluence KB',
+      type: 'CONFLUENCE',
+      tenant_id: 'public',
+      credentials: {
+        workspace: 'acme',
+        email: 'admin@example.com',
+        api_token: 'token-123',
+      },
+    }),
+  });
+  const created = await createResponse.json();
+  assert.equal(createResponse.status, 201);
+
+  const testResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tenant_id: 'public' }),
+  });
+  const tested = await testResponse.json();
+  assert.equal(testResponse.status, 200);
+  assert.equal(tested.ok, true);
+  assert.equal(tested.source.health === 'pending' || tested.source.health === 'healthy', true);
+});
+
+test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configured', async (t) => {
+  const originalSecret = process.env.SOURCE_SECRET_KEY;
+  process.env.SOURCE_SECRET_KEY = 'test-secret-key-material';
+  t.after(() => {
+    if (originalSecret === undefined) {
+      delete process.env.SOURCE_SECRET_KEY;
+    } else {
+      process.env.SOURCE_SECRET_KEY = originalSecret;
+    }
+  });
+
+  const sources = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'GitHub Docs',
+      type: 'GITHUB',
+      tenant_id: 'public',
+      credentials: {
+        org_or_owner: 'acme',
+        token: 'ghp_123456',
+      },
+    }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.source.config.token, '***');
+  assert.equal(String(sources[0].config.token || '').startsWith('enc:v1:'), true);
 });

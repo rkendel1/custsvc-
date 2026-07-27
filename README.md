@@ -97,6 +97,12 @@ Run the stack:
 docker compose up --build
 ```
 
+Production secret management:
+
+- Set `SOURCE_SECRET_KEY` for connector credential encryption at rest.
+- In `NODE_ENV=production`, app startup fails fast if `SOURCE_SECRET_KEY` is missing.
+- Recommended: use a 32+ character random secret sourced from your secret manager.
+
 Or via npm scripts:
 
 ```bash
@@ -165,7 +171,10 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `POST /api/documents/url`
 - `POST /api/documents/pdf` (multipart file upload)
 - `GET /api/sources`
+- `GET /api/sources/templates`
 - `POST /api/sources`
+- `PATCH /api/sources/:sourceId`
+- `POST /api/sources/:sourceId/test`
 - `POST /api/sources/:sourceId/sync`
 - `POST /api/compile`
 - `POST /api/telemetry`
