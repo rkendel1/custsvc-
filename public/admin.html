@@ -46,6 +46,9 @@
       <form id="urlDocForm">
         <label>URL <input name="url" type="url" placeholder="https://example.com/help" required /></label>
         <label>Title override <input name="title" /></label>
+        <label>URL content (paste page text/markdown)
+          <textarea name="content" rows="5" required></textarea>
+        </label>
         <label>Visibility
           <select name="visibility">
             <option value="BOTH">BOTH</option>
@@ -53,7 +56,7 @@
             <option value="INTERNAL">INTERNAL</option>
           </select>
         </label>
-        <button type="submit">Fetch and save URL</button>
+        <button type="submit">Save URL document</button>
       </form>
     </section>
 

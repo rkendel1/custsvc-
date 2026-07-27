@@ -17,9 +17,16 @@ function stripHtml(text) {
 
 function createRateLimiter({ max = 120, windowMs = 60_000 } = {}) {
   const buckets = new Map();
+  let requestCount = 0;
   return (req, res, next) => {
     const key = `${req.ip}:${req.path}`;
     const now = Date.now();
+    requestCount += 1;
+    if (requestCount % 500 === 0) {
+      for (const [bucketKey, bucket] of buckets.entries()) {
+        if (now > bucket.resetAt) buckets.delete(bucketKey);
+      }
+    }
     const record = buckets.get(key) || { count: 0, resetAt: now + windowMs };
     if (now > record.resetAt) {
       record.count = 0;
@@ -54,13 +61,10 @@ function isPrivateHost(hostname) {
   return host === '::1' || host.startsWith('fc00:') || host.startsWith('fd00:') || host.startsWith('fe80:');
 }
 
-function parseAndValidateExternalUrl(rawUrl, allowedHosts) {
+function isValidHttpUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-    if (isPrivateHost(parsed.hostname)) return false;
-    if (!allowedHosts.has(parsed.hostname.toLowerCase())) return false;
-    return parsed;
+    return ['http:', 'https:'].includes(parsed.protocol) && !isPrivateHost(parsed.hostname);
   } catch (_e) {
     return false;
   }
@@ -74,12 +78,6 @@ function createApp(options = {}) {
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() });
   const writeLimiter = createRateLimiter();
-  const allowedFetchHosts = new Set(
-    String(process.env.ALLOWED_FETCH_HOSTS || '')
-      .split(',')
-      .map((x) => x.trim().toLowerCase())
-      .filter(Boolean),
-  );
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -113,35 +111,28 @@ function createApp(options = {}) {
     return res.status(201).json({ document });
   });
 
-  app.post('/api/documents/url', writeLimiter, async (req, res) => {
-    const { url, title, visibility = 'BOTH' } = req.body || {};
+  app.post('/api/documents/url', writeLimiter, (req, res) => {
+    const { url, title, content, visibility = 'BOTH' } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
-    if (allowedFetchHosts.size === 0) {
-      return res.status(400).json({ error: 'URL ingestion is disabled until ALLOWED_FETCH_HOSTS is configured.' });
+    if (!content) {
+      return res.status(400).json({ error: 'content is required for URL ingestion in this secure mode' });
     }
-
-    const validatedUrl = parseAndValidateExternalUrl(url, allowedFetchHosts);
-    if (!validatedUrl) {
-      return res.status(400).json({ error: 'url must be public http(s), non-private, and in ALLOWED_FETCH_HOSTS' });
+    if (!isValidHttpUrl(url)) {
+      return res.status(400).json({ error: 'url must be public http(s) and not private/internal' });
     }
 
     try {
-      const response = await fetch(validatedUrl.toString());
-      if (!response.ok) {
-        return res.status(400).json({ error: `failed to fetch url (${response.status})` });
-      }
-      const html = await response.text();
-      const text = stripHtml(html);
-      if (!text) return res.status(400).json({ error: 'fetched content was empty' });
+      const text = stripHtml(content);
+      if (!text) return res.status(400).json({ error: 'content was empty after sanitization' });
 
       const docs = storage.listDocuments();
       const document = {
         id: `doc-${randomUUID()}`,
-        title: title || `URL: ${validatedUrl.toString()}`,
+        title: title || `URL: ${url}`,
         content: text,
         type: 'URL',
         visibility: normalizeVisibility(visibility),
-        sourceUrl: validatedUrl.toString(),
+        sourceUrl: String(url),
         createdAt: new Date().toISOString(),
       };
       docs.push(document);
