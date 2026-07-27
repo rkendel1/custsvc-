@@ -155,7 +155,7 @@
 
       .preview {
         width: 100%;
-        min-height: 420px;
+        min-height: 700px;
         border: 1px solid var(--line);
         border-radius: 10px;
         background: #fff;
@@ -189,11 +189,8 @@
         <section class="panel">
           <h1 style="font-size:1.35rem;">Test Assistant With Your Data</h1>
           <p style="margin:0.42rem 0 0; color: var(--muted);">
-            Enter your tenant and run one preview. Then ask a test question below.
+            Your signed-in workspace is used automatically. Run one preview, then ask a test question below.
           </p>
-
-          <label for="tenantIdInput">Tenant ID (auto from sign-in)</label>
-          <input id="tenantIdInput" placeholder="acme" />
 
           <label for="embedScriptInput">Embed script</label>
           <textarea id="embedScriptInput" placeholder="Paste the full script tag from onboarding."></textarea>
@@ -228,7 +225,6 @@
 
     <script>
       const params = new URLSearchParams(window.location.search);
-      const tenantIdInput = document.getElementById('tenantIdInput');
       const embedScriptInput = document.getElementById('embedScriptInput');
       const loadBtn = document.getElementById('loadBtn');
       const runBtn = document.getElementById('runBtn');
@@ -240,6 +236,7 @@
       const status = document.getElementById('status');
       const previewFrame = document.getElementById('previewFrame');
       const dashboardLink = document.getElementById('dashboardLink');
+      let activeTenantId = '';
 
       function setStatus(title, lines = []) {
         const safeLines = Array.isArray(lines) ? lines : [String(lines || '')];
@@ -260,7 +257,19 @@
         const safeTenant = normalizeTenant(tenantId);
         if (!safeTenant) return '';
         const origin = window.location.origin;
-        return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}" data-api-base="${origin}" data-title="Ask ${safeTenant}"><\\/script>`;
+        const cacheBustedBundleUrl = `${origin}/api/embed/bundle?tenant_id=${encodeURIComponent(safeTenant)}&v=${Date.now()}`;
+        return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}" data-api-base="${origin}" data-bundle-url="${cacheBustedBundleUrl}" data-title="Ask ${safeTenant}"><\\/script>`;
+      }
+
+      function setActiveTenant(value) {
+        const tenant = normalizeTenant(value);
+        activeTenantId = tenant;
+        if (tenant) {
+          localStorage.setItem('knowledgeos_last_workspace', tenant);
+          localStorage.setItem('knowledgeos_active_tenant_id', tenant);
+        }
+        updateLinks(tenant);
+        return tenant;
       }
 
       function parseEmbedConfig(rawScript, fallbackTenantId = '') {
@@ -269,13 +278,16 @@
         const tenantId = normalizeTenant(tenantFromScript || fallbackTenantId);
         const srcMatch = scriptText.match(/src\s*=\s*['\"]([^'\"]+)['\"]/i);
         const apiBaseMatch = scriptText.match(/data-api-base\s*=\s*['\"]([^'\"]+)['\"]/i);
+        const bundleUrlMatch = scriptText.match(/data-bundle-url\s*=\s*['\"]([^'\"]+)['\"]/i);
         const titleMatch = scriptText.match(/data-title\s*=\s*['\"]([^'\"]+)['\"]/i);
         const src = String(srcMatch?.[1] || `${window.location.origin}/embed.js`).trim();
         const apiBase = String(apiBaseMatch?.[1] || window.location.origin).trim();
+        const bundleUrl = String(bundleUrlMatch?.[1] || '').trim();
         const title = String(titleMatch?.[1] || (tenantId ? `Ask ${tenantId}` : 'KnowledgeOS Assistant')).trim();
         return {
           src,
           apiBase,
+          bundleUrl,
           tenantId,
           title,
         };
@@ -335,15 +347,12 @@
           const tenantFromAuth = normalizeTenant(data?.authenticated_tenant_id || '');
           if (!tenantFromAuth) return '';
 
-          tenantIdInput.value = tenantFromAuth;
-          tenantIdInput.readOnly = true;
-          localStorage.setItem('knowledgeos_active_tenant_id', tenantFromAuth);
+          setActiveTenant(tenantFromAuth);
 
           if (!String(embedScriptInput.value || '').trim()) {
             embedScriptInput.value = buildEmbedScript(tenantFromAuth);
           }
 
-          updateLinks(tenantFromAuth);
           saveState();
           return tenantFromAuth;
         } catch (_error) {
@@ -353,23 +362,23 @@
 
       function saveState() {
         localStorage.setItem('knowledgeos_embed_test_script', String(embedScriptInput.value || ''));
-        const tenant = normalizeTenant(tenantIdInput.value);
-        localStorage.setItem('knowledgeos_last_workspace', tenant);
-        if (tenant) localStorage.setItem('knowledgeos_active_tenant_id', tenant);
+        if (activeTenantId) {
+          localStorage.setItem('knowledgeos_last_workspace', activeTenantId);
+          localStorage.setItem('knowledgeos_active_tenant_id', activeTenantId);
+        }
       }
 
       function loadState() {
         const tenantFromQuery = String(params.get('tenant_id') || '').trim();
         const savedTenant = String(localStorage.getItem('knowledgeos_active_tenant_id') || localStorage.getItem('knowledgeos_last_workspace') || '').trim();
-        tenantIdInput.value = tenantFromQuery || savedTenant;
+        setActiveTenant(tenantFromQuery || savedTenant);
 
         const savedScript = String(localStorage.getItem('knowledgeos_embed_test_script') || '').trim();
         embedScriptInput.value = savedScript;
 
-        if (!embedScriptInput.value && tenantIdInput.value) {
-          embedScriptInput.value = buildEmbedScript(tenantIdInput.value);
+        if (!embedScriptInput.value && activeTenantId) {
+          embedScriptInput.value = buildEmbedScript(activeTenantId);
         }
-        updateLinks(tenantIdInput.value);
       }
 
       function setAnswer(title, lines = []) {
@@ -415,13 +424,19 @@
           return;
         }
 
-        const config = parseEmbedConfig(script, tenantIdInput.value);
+        const config = parseEmbedConfig(script, activeTenantId);
+        if (activeTenantId) {
+          config.tenantId = activeTenantId;
+        }
         if (!config.tenantId) {
-          setStatus('Action needed', 'Tenant ID is missing. Enter a tenant and reload preview.');
+          setStatus('Action needed', 'Signed-in workspace not found. Sign in and reload this page.');
           return;
         }
 
-        tenantIdInput.value = config.tenantId;
+        setActiveTenant(config.tenantId);
+        if (!config.bundleUrl) {
+          config.bundleUrl = `${config.apiBase}/api/embed/bundle?tenant_id=${encodeURIComponent(config.tenantId)}&v=${Date.now()}`;
+        }
         updateLinks(config.tenantId);
 
         const preflight = await preflightEmbedRuntime(config);
@@ -439,6 +454,7 @@
           src: config.src,
           tenantId: config.tenantId,
           apiBase: config.apiBase,
+          bundleUrl: config.bundleUrl,
           title: config.title,
         });
         const scriptOpenTag = '<script>';
@@ -472,6 +488,7 @@
         tag.src = String(cfg.src || '${window.location.origin}/embed.js');
         if (cfg.tenantId) tag.dataset.tenantId = String(cfg.tenantId);
         if (cfg.apiBase) tag.dataset.apiBase = String(cfg.apiBase);
+        if (cfg.bundleUrl) tag.dataset.bundleUrl = String(cfg.bundleUrl);
         if (cfg.title) tag.dataset.title = String(cfg.title);
         (document.head || document.body || document.documentElement).appendChild(tag);
       })();
@@ -535,13 +552,13 @@
       }
 
       loadBtn.addEventListener('click', async () => {
-        const tenantId = normalizeTenant(tenantIdInput.value || extractTenantFromScript(embedScriptInput.value));
+        const tenantId = normalizeTenant(activeTenantId || extractTenantFromScript(embedScriptInput.value));
         if (!tenantId) {
-          setStatus('Action needed', 'Enter a tenant id first.');
+          setStatus('Action needed', 'Signed-in workspace not found. Sign in and reload this page.');
           return;
         }
         embedScriptInput.value = buildEmbedScript(tenantId);
-        tenantIdInput.value = tenantId;
+        setActiveTenant(tenantId);
         updateLinks(tenantId);
         saveState();
         await runSandbox();
@@ -577,16 +594,11 @@
         setStatus('Cleared', 'Script and preview were cleared.');
       });
 
-      tenantIdInput.addEventListener('change', () => {
-        updateLinks(tenantIdInput.value);
-        saveState();
-      });
-
       embedScriptInput.addEventListener('change', saveState);
 
       loadState();
       hydrateTenantFromAuth().finally(() => {
-        if (embedScriptInput.value || tenantIdInput.value) {
+        if (embedScriptInput.value || activeTenantId) {
           setStatus('Ready to test', 'Click Load assistant preview to verify your latest server data.');
         }
       });

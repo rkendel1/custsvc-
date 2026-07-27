@@ -1492,6 +1492,20 @@ function createApp(options = {}) {
     return { ok: true, deployment, provisioned: true };
   }
 
+  function rebuildTenantBundle(tenantId) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return null;
+
+    const tenants = listData(storage, 'listTenants');
+    const tenant = tenants.find((item) => item.tenant_id === normalizedTenantId);
+    const docs = listData(storage, 'listDocuments').filter((doc) => doc.tenant_id === normalizedTenantId);
+    const bundle = compileBundle(docs, {
+      company: tenant?.company_name || normalizedTenantId || companyName,
+    });
+    storage.writeBundle(`${normalizedTenantId}.knowledgeos.bundle.json`, bundle);
+    return bundle;
+  }
+
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.locals.consolePasswordState = consolePasswordState;
@@ -1895,6 +1909,7 @@ function createApp(options = {}) {
     docs.push(document);
     saveData(storage, 'saveDocuments', docs);
     await upsertVectorDocument(document);
+    rebuildTenantBundle(tenantId);
 
     return res.status(201).json({ document });
   });
@@ -1922,6 +1937,7 @@ function createApp(options = {}) {
     }
 
     saveData(storage, 'saveDocuments', docs);
+    rebuildTenantBundle(tenantId);
     return res.status(201).json({
       inserted_count: inserted.length,
       rejected_count: rejected.length,
@@ -1962,6 +1978,7 @@ function createApp(options = {}) {
       docs.push(document);
       saveData(storage, 'saveDocuments', docs);
       await upsertVectorDocument(document);
+      rebuildTenantBundle(tenantId);
       return res.status(201).json({ document });
     } catch (error) {
       return res.status(500).json({ error: `unable to process URL content: ${error.message}` });
@@ -1994,6 +2011,7 @@ function createApp(options = {}) {
       docs.push(document);
       saveData(storage, 'saveDocuments', docs);
       await upsertVectorDocument(document);
+      rebuildTenantBundle(tenantId);
       return res.status(201).json({ document });
     } catch (error) {
       return res.status(500).json({ error: `unable to parse pdf: ${error.message}` });
@@ -2372,6 +2390,7 @@ function createApp(options = {}) {
         syncedCount += 1;
       }
       saveData(storage, 'saveDocuments', docs);
+      rebuildTenantBundle(tenantId);
     }
 
     const updated = {

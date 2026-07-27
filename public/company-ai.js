@@ -251,25 +251,33 @@
 
     const cacheScope = `${window.location.origin}:${bundleUrl}`;
     const cacheKey = `knowledgeos:${simpleHash(cacheScope)}`;
+    let cachedBundle = null;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {
-        state.bundle = JSON.parse(cached);
+        cachedBundle = JSON.parse(cached);
       } catch (_e) {
         // ignore bad cache
       }
     }
 
-    if (!state.bundle) {
-      const headers = {};
-      if (tenantId && bundleUrl.includes('/api/embed/bundle')) {
-        const token = await getEmbedSessionToken();
-        if (token) headers['x-embed-token'] = token;
-      }
-      const response = await fetch(bundleUrl, { headers });
+    const headers = {};
+    if (tenantId && bundleUrl.includes('/api/embed/bundle')) {
+      const token = await getEmbedSessionToken();
+      if (token) headers['x-embed-token'] = token;
+    }
+
+    try {
+      const response = await fetch(bundleUrl, { headers, cache: 'no-store' });
       if (!response.ok) throw new Error(`Could not load bundle (${response.status})`);
       state.bundle = await response.json();
       localStorage.setItem(cacheKey, JSON.stringify(state.bundle));
+    } catch (error) {
+      if (cachedBundle) {
+        state.bundle = cachedBundle;
+      } else {
+        throw error;
+      }
     }
 
     return state.bundle;
@@ -972,12 +980,16 @@
     const close = document.createElement('button');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close assistant');
-    close.textContent = 'x';
+    close.textContent = 'X';
     Object.assign(close.style, {
-      border: 'none',
-      background: 'transparent',
+      border: '1px solid rgba(255,255,255,0.45)',
+      background: 'rgba(255,255,255,0.14)',
       color: '#fff',
-      fontSize: '16px',
+      width: '24px',
+      height: '24px',
+      borderRadius: '999px',
+      fontSize: '14px',
+      fontWeight: '700',
       lineHeight: '1',
       cursor: 'pointer',
       padding: '0',
