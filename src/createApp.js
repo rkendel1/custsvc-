@@ -107,18 +107,50 @@ function createApp(options = {}) {
   });
 
   app.post('/api/documents', writeLimiter, (req, res) => {
-    const { title, content, type = 'TEXT', visibility = 'BOTH' } = req.body || {};
-    if (!title || !content) {
-      return res.status(400).json({ error: 'title and content are required' });
+    const {
+      title,
+      content,
+      body,
+      type = 'TEXT',
+      visibility = 'INTERNAL',
+      owner = null,
+      department = null,
+      audience = null,
+      classification = null,
+      status = 'ACTIVE',
+      tags = [],
+      relationships = [],
+      citations = [],
+      summary = null,
+      last_reviewed = null,
+      review_frequency = null,
+      confidence = 0.7,
+    } = req.body || {};
+    const normalizedBody = String(body || content || '').trim();
+    if (!title || !normalizedBody) {
+      return res.status(400).json({ error: 'title and body/content are required' });
     }
 
     const docs = storage.listDocuments();
     const document = {
       id: `doc-${randomUUID()}`,
       title: String(title),
-      content: String(content),
+      content: normalizedBody,
+      body: normalizedBody,
+      summary: summary ? String(summary) : null,
       type: String(type).toUpperCase(),
       visibility: normalizeVisibility(visibility),
+      owner,
+      department,
+      audience,
+      classification,
+      status,
+      tags,
+      relationships,
+      citations,
+      last_reviewed,
+      review_frequency,
+      confidence,
       createdAt: new Date().toISOString(),
     };
     docs.push(document);
@@ -128,7 +160,7 @@ function createApp(options = {}) {
   });
 
   app.post('/api/documents/url', writeLimiter, (req, res) => {
-    const { url, title, content, visibility = 'BOTH' } = req.body || {};
+    const { url, title, content, visibility = 'PUBLIC', owner = null, department = null } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
     if (!content) {
       return res.status(400).json({ error: 'content is required for URL ingestion in this secure mode' });
@@ -146,8 +178,12 @@ function createApp(options = {}) {
         id: `doc-${randomUUID()}`,
         title: title || `URL: ${url}`,
         content: text,
+        body: text,
         type: 'URL',
         visibility: normalizeVisibility(visibility),
+        audience: 'PUBLIC',
+        owner,
+        department,
         sourceUrl: String(url),
         createdAt: new Date().toISOString(),
       };
@@ -175,8 +211,10 @@ function createApp(options = {}) {
         id: `doc-${randomUUID()}`,
         title,
         content: parsed.text.trim(),
+        body: parsed.text.trim(),
         type: 'PDF',
         visibility,
+        audience: visibility,
         createdAt: new Date().toISOString(),
       };
       docs.push(document);
@@ -201,13 +239,19 @@ function createApp(options = {}) {
         company: bundle.company,
         generatedAt: bundle.generatedAt,
         documentCount: bundle.documentCount,
+        knowledgeCount: bundle.knowledgeCount,
         chunkCount: bundle.chunkCount,
+        relationships: bundle.relationships.length,
+        contradictions: bundle.contradictions.length,
+        duplicates: bundle.duplicates.length,
+        review_schedule: bundle.review_schedule,
+        confidence: bundle.confidence,
       },
     });
   });
 
   app.post('/api/telemetry', writeLimiter, (req, res) => {
-    const { question, answered, score, topChunkId } = req.body || {};
+    const { question, answered, score, topChunkId, role, department, permissions, confidence } = req.body || {};
     if (!question) return res.status(400).json({ error: 'question is required' });
 
     const events = storage.listTelemetry();
@@ -217,6 +261,10 @@ function createApp(options = {}) {
       answered: Boolean(answered),
       score: Number(score || 0),
       topChunkId: topChunkId || null,
+      role: role || 'Customer',
+      department: department || null,
+      permissions: Array.isArray(permissions) ? permissions : [],
+      confidence: Number(confidence || 0),
     });
     storage.saveTelemetry(events);
     res.status(201).json({ ok: true });

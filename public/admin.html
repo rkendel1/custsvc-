@@ -15,12 +15,15 @@
     </style>
   </head>
   <body>
-    <h1>Company Intelligence Admin</h1>
+    <h1>Company Intelligence Workbench</h1>
 
     <section>
-      <h2>Add text/markdown/faq/policy</h2>
+      <h2>Knowledge Object</h2>
       <form id="textDocForm">
         <label>Title <input name="title" required /></label>
+        <label>Summary <input name="summary" /></label>
+        <label>Owner <input name="owner" placeholder="owner@company.com" /></label>
+        <label>Department <input name="department" placeholder="Support" /></label>
         <label>Type
           <select name="type">
             <option value="TEXT">TEXT</option>
@@ -31,13 +34,26 @@
         </label>
         <label>Visibility
           <select name="visibility">
-            <option value="BOTH">BOTH</option>
             <option value="PUBLIC">PUBLIC</option>
             <option value="INTERNAL">INTERNAL</option>
+            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+            <option value="EXECUTIVE">EXECUTIVE</option>
           </select>
         </label>
+        <label>Audience
+          <select name="audience">
+            <option value="PUBLIC">PUBLIC</option>
+            <option value="INTERNAL" selected>INTERNAL</option>
+            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+            <option value="EXECUTIVE">EXECUTIVE</option>
+          </select>
+        </label>
+        <label>Tags (comma-separated) <input name="tags" placeholder="refunds, billing" /></label>
+        <label>Relationships (JSON array) <textarea name="relationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
+        <label>Review frequency (days) <input name="review_frequency" type="number" min="1" value="90" /></label>
+        <label>Reviewer confidence (0-1) <input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
         <label>Content <textarea name="content" rows="6" required></textarea></label>
-        <button type="submit">Save document</button>
+        <button type="submit">Save knowledge object</button>
       </form>
     </section>
 
@@ -51,9 +67,10 @@
         </label>
         <label>Visibility
           <select name="visibility">
-            <option value="BOTH">BOTH</option>
             <option value="PUBLIC">PUBLIC</option>
             <option value="INTERNAL">INTERNAL</option>
+            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+            <option value="EXECUTIVE">EXECUTIVE</option>
           </select>
         </label>
         <button type="submit">Save URL document</button>
@@ -66,9 +83,10 @@
         <label>Title override <input name="title" /></label>
         <label>Visibility
           <select name="visibility">
-            <option value="BOTH">BOTH</option>
             <option value="PUBLIC">PUBLIC</option>
             <option value="INTERNAL">INTERNAL</option>
+            <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+            <option value="EXECUTIVE">EXECUTIVE</option>
           </select>
         </label>
         <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
@@ -83,14 +101,25 @@
         <pre id="compileOutput">Not compiled yet.</pre>
       </div>
       <div>
-        <h2>Documents</h2>
+        <h2>All Objects</h2>
         <button id="refreshDocs">Refresh documents</button>
         <pre id="docsOutput">No documents loaded.</pre>
       </div>
     </section>
 
+    <section class="row">
+      <div>
+        <h2>Graph View</h2>
+        <pre id="graphOutput">Compile a bundle to inspect relationship graph data.</pre>
+      </div>
+      <div>
+        <h2>Review Queue</h2>
+        <pre id="reviewOutput">Compile a bundle to inspect stale/due/orphaned counts.</pre>
+      </div>
+    </section>
+
     <section>
-      <h2>Analytics</h2>
+      <h2>Coverage & Confidence Analytics</h2>
       <button id="refreshAnalytics">Refresh analytics</button>
       <pre id="analyticsOutput">No analytics loaded.</pre>
     </section>

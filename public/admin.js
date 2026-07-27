@@ -22,6 +22,17 @@ function format(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function parseMaybeJsonArray(value) {
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
 async function refreshDocuments() {
   const output = document.getElementById('docsOutput');
   try {
@@ -48,6 +59,13 @@ function wireTextDocForm() {
     event.preventDefault();
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
+    payload.tags = String(payload.tags || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    payload.relationships = parseMaybeJsonArray(payload.relationships);
+    payload.review_frequency = Number(payload.review_frequency || 90);
+    payload.confidence = Number(payload.confidence || 0.7);
 
     try {
       await requestJson('/api/documents', {
@@ -106,6 +124,8 @@ function wirePdfDocForm() {
 function wireCompile() {
   const button = document.getElementById('compileBtn');
   const output = document.getElementById('compileOutput');
+  const graphOutput = document.getElementById('graphOutput');
+  const reviewOutput = document.getElementById('reviewOutput');
   button.addEventListener('click', async () => {
     try {
       const data = await requestJson('/api/compile', {
@@ -114,8 +134,16 @@ function wireCompile() {
         body: JSON.stringify({ name: 'company.intelligence.bundle.json' }),
       });
       output.textContent = format(data);
+      graphOutput.textContent = format({
+        relationships: data.bundleSummary.relationships,
+        duplicates: data.bundleSummary.duplicates,
+        contradictions: data.bundleSummary.contradictions,
+      });
+      reviewOutput.textContent = format(data.bundleSummary.review_schedule || {});
     } catch (error) {
       output.textContent = error.message;
+      graphOutput.textContent = error.message;
+      reviewOutput.textContent = error.message;
     }
   });
 }

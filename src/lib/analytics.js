@@ -23,6 +23,9 @@ function buildAnalytics(telemetryEvents) {
   const unansweredByQuestion = {};
   const intentCounts = {};
   const missingKeywords = {};
+  const roleUsage = {};
+  const departmentUsage = {};
+  const confidenceBuckets = { high: 0, medium: 0, low: 0 };
 
   for (const event of events) {
     const question = String(event.question || '').trim();
@@ -31,6 +34,14 @@ function buildAnalytics(telemetryEvents) {
     byQuestion[question] = (byQuestion[question] || 0) + 1;
     const intent = classifyIntent(question);
     intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+    const role = String(event.role || 'Customer');
+    roleUsage[role] = (roleUsage[role] || 0) + 1;
+    const department = String(event.department || 'Unknown');
+    departmentUsage[department] = (departmentUsage[department] || 0) + 1;
+    const confidence = Number(event.confidence || 0);
+    if (confidence >= 0.75) confidenceBuckets.high += 1;
+    else if (confidence >= 0.4) confidenceBuckets.medium += 1;
+    else confidenceBuckets.low += 1;
 
     if (!event.answered) {
       unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
@@ -52,6 +63,9 @@ function buildAnalytics(telemetryEvents) {
     topQuestions: topEntries(byQuestion, 10),
     topUnansweredQuestions: topEntries(unansweredByQuestion, 10),
     intents: topEntries(intentCounts, 10),
+    roleUsage: topEntries(roleUsage, 10),
+    departmentUsage: topEntries(departmentUsage, 10),
+    confidence: confidenceBuckets,
     recommendations: topEntries(missingKeywords, 8).map((item) => ({
       topic: item.value,
       signalStrength: item.count,
