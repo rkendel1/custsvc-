@@ -219,7 +219,7 @@
       const loginPane = document.getElementById('loginPane');
       const signupPane = document.getElementById('signupPane');
       const params = new URLSearchParams(window.location.search);
-      const next = params.get('next') || '/admin';
+      const requestedNext = String(params.get('next') || '').trim();
 
       function setStatus(message) {
         status.textContent = String(message || '');
@@ -236,6 +236,23 @@
           : 'Use your workspace credentials to sign in.';
       }
 
+      function sanitizeRequestedNext(value) {
+        const candidate = String(value || '').trim();
+        if (!candidate || candidate === '/') return '';
+        if (!candidate.startsWith('/')) return '';
+        if (candidate.startsWith('//')) return '';
+        if (candidate.startsWith('/access.html')) return '';
+        return candidate;
+      }
+
+      function resolveRedirectUrl(serverNextUrl, fallback) {
+        const serverNext = String(serverNextUrl || '').trim();
+        if (serverNext.startsWith('/') && !serverNext.startsWith('//')) return serverNext;
+        const requested = sanitizeRequestedNext(requestedNext);
+        if (requested) return requested;
+        return fallback;
+      }
+
       async function getAccessStatus() {
         const response = await fetch('/api/access/status');
         const text = await response.text();
@@ -245,11 +262,21 @@
       async function refreshStatus() {
         try {
           const state = await getAccessStatus();
+          const authenticatedTenantId = String(state?.authenticated_tenant_id || '').trim().toLowerCase();
+          if (authenticatedTenantId) {
+            localStorage.setItem('knowledgeos_active_tenant_id', authenticatedTenantId);
+          }
           if (state.signup_required) {
             introText.textContent = 'Create your workspace account to continue.';
             passwordHelp.textContent = 'Use your workspace ID, work email, and password to create your account.';
             setMode('signup');
             setStatus('Create your account to continue.');
+            return;
+          }
+
+          if (state.authenticated) {
+            setStatus('You are already logged in. Redirecting...');
+            window.location.href = resolveRedirectUrl(state?.next_url, '/admin.html');
             return;
           }
 
@@ -265,13 +292,8 @@
             setStatus('Create your account to continue.');
             return;
           }
-          if (state.authenticated) {
-            setStatus('You are already logged in. Redirecting...');
-            window.location.href = next;
-          } else {
-            setMode('login');
-            setStatus('Enter your credentials to sign in.');
-          }
+          setMode('login');
+          setStatus('Enter your credentials to sign in.');
         } catch (_error) {
           setStatus('Could not check access state.');
         }
@@ -289,6 +311,7 @@
         }
         if (workEmail) localStorage.setItem('knowledgeos_last_email', workEmail);
         if (workspaceId) localStorage.setItem('knowledgeos_last_workspace', workspaceId);
+        if (workspaceId) localStorage.setItem('knowledgeos_active_tenant_id', workspaceId.toLowerCase());
 
         const response = await fetch('/api/access/login', {
           method: 'POST',
@@ -311,7 +334,7 @@
 
         setStatus('Access granted.');
         await refreshStatus();
-        window.location.href = next;
+        window.location.href = resolveRedirectUrl(body?.next_url, '/admin.html');
       });
 
       passwordForm.addEventListener('submit', async (event) => {
@@ -364,9 +387,10 @@
         workEmailInput.value = signupWorkEmail;
         localStorage.setItem('knowledgeos_last_email', signupWorkEmail);
         localStorage.setItem('knowledgeos_last_workspace', signupWorkspaceId);
+        localStorage.setItem('knowledgeos_active_tenant_id', signupWorkspaceId.toLowerCase());
         setStatus('Account created. You are signed in.');
         await refreshStatus();
-        window.location.href = next;
+        window.location.href = String(body?.next_url || `/onboarding.html?tenant_id=${encodeURIComponent(signupWorkspaceId.toLowerCase())}`);
       });
 
       {

@@ -685,6 +685,7 @@
           throw new Error('Could not start onboarding session.');
         }
 
+        localStorage.setItem('knowledgeos_active_tenant_id', tenantId.toLowerCase());
         setSessionToken(nextSessionToken);
         renderTenantLine();
         updateEmbedScript();
@@ -971,6 +972,7 @@
         const requestedTenantId = String(onboardingTenantInput?.value || '').trim();
         if (requestedTenantId) {
           tenantId = requestedTenantId;
+          localStorage.setItem('knowledgeos_active_tenant_id', tenantId.toLowerCase());
           renderTenantLine();
           updateUrlState();
           updateEmbedScript();
@@ -983,6 +985,7 @@
           const tenantFromAuth = String(access?.authenticated_tenant_id || '').trim();
           if (tenantFromAuth) {
             tenantId = tenantFromAuth;
+            localStorage.setItem('knowledgeos_active_tenant_id', tenantId.toLowerCase());
             if (onboardingTenantInput) onboardingTenantInput.value = tenantFromAuth;
             renderTenantLine();
             updateUrlState();

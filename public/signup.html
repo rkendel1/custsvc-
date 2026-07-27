@@ -357,6 +357,10 @@
 
           embedScript.style.display = 'block';
           embedScript.textContent = data.embed_script || '';
+          const createdTenantId = String(data?.tenant?.tenant_id || '').trim().toLowerCase();
+          if (createdTenantId) {
+            localStorage.setItem('knowledgeos_active_tenant_id', createdTenantId);
+          }
           setStatus('Workspace ready', [
             `Tenant: ${data?.tenant?.tenant_id || 'created'}`,
             `Starter intelligence added: ${data?.seeded?.added ?? 0} item(s)` ,

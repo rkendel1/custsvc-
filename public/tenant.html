@@ -311,6 +311,13 @@
         try {
           const response = await fetch('/api/access/status');
           const data = await response.json();
+          const tenantFromAuth = String(data?.authenticated_tenant_id || '').trim().toLowerCase();
+          if (tenantFromAuth && !tenantIdInput.value.trim()) {
+            tenantIdInput.value = tenantFromAuth;
+          }
+          if (tenantFromAuth) {
+            localStorage.setItem('knowledgeos_active_tenant_id', tenantFromAuth);
+          }
           if (!data.password_required) {
             setAuthState('Access: open', true);
             return;
@@ -331,15 +338,22 @@
       }
 
       async function loadDashboard() {
-        const tenantId = tenantIdInput.value.trim();
+        const fallbackTenantId = String(localStorage.getItem('knowledgeos_active_tenant_id') || '').trim();
+        const tenantId = tenantIdInput.value.trim() || fallbackTenantId;
         const sessionToken = sessionTokenInput.value.trim();
         if (!tenantId) {
           setStatus('Missing tenant', 'Tenant ID is required.');
           return;
         }
 
+        tenantIdInput.value = tenantId;
+        localStorage.setItem('knowledgeos_active_tenant_id', tenantId.toLowerCase());
+
         const response = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
-          headers: sessionToken ? { 'x-session-token': sessionToken } : {},
+          headers: {
+            ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
+            'x-tenant-id': tenantId,
+          },
         });
 
         const text = await response.text();

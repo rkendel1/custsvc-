@@ -1,5 +1,11 @@
 const adminParams = new URLSearchParams(window.location.search);
 const adminSessionToken = adminParams.get('session_token') || localStorage.getItem('knowledgeos_admin_session_token') || '';
+let adminTenantId = adminParams.get('tenant_id') || localStorage.getItem('knowledgeos_active_tenant_id') || '';
+
+if (adminTenantId) {
+  adminTenantId = String(adminTenantId).trim().toLowerCase();
+  localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
+}
 
 if (adminSessionToken) {
   localStorage.setItem('knowledgeos_admin_session_token', adminSessionToken);
@@ -9,6 +15,9 @@ async function requestJson(url, options = {}) {
   const headers = {
     ...(options.headers || {}),
   };
+  if (adminTenantId && !headers['x-tenant-id']) {
+    headers['x-tenant-id'] = adminTenantId;
+  }
   if (adminSessionToken && !headers.authorization && !headers['x-session-token']) {
     headers['x-session-token'] = adminSessionToken;
   }
@@ -57,6 +66,11 @@ function setAuthState(text, isAuthenticated) {
 async function refreshAccessStatus() {
   try {
     const status = await requestJson('/api/access/status');
+    const tenantFromAuth = String(status?.authenticated_tenant_id || '').trim().toLowerCase();
+    if (tenantFromAuth && tenantFromAuth !== adminTenantId) {
+      adminTenantId = tenantFromAuth;
+      localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
+    }
     if (!status.password_required) {
       setAuthState('Access: open', true);
       return;

@@ -102,6 +102,7 @@ test('access credentials support signup and require full login credentials', asy
 
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-access-'));
   const tenants = [];
+  const onboarding = [];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -112,6 +113,13 @@ test('access credentials support signup and require full login credentials', asy
       tenants.length = 0;
       tenants.push(...nextTenants);
     },
+    listOnboarding: () => [...onboarding],
+    saveOnboarding: (nextOnboarding) => {
+      onboarding.length = 0;
+      onboarding.push(...nextOnboarding);
+    },
+    listDeployments: () => [],
+    saveDeployments: () => {},
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
 
@@ -129,6 +137,9 @@ test('access credentials support signup and require full login credentials', asy
     }),
   });
   assert.equal(signupResponse.status, 201);
+  const signupBody = await signupResponse.json();
+  assert.equal(typeof signupBody.next_url, 'string');
+  assert.equal(signupBody.next_url.includes('/onboarding.html?tenant_id=acme'), true);
 
   const statusResponse = await fetch(`${baseUrl}/api/access/status`);
   const statusBody = await statusResponse.json();
@@ -152,6 +163,25 @@ test('access credentials support signup and require full login credentials', asy
     }),
   });
   assert.equal(loginResponse.status, 200);
+  const loginBody = await loginResponse.json();
+  assert.equal(typeof loginBody.next_url, 'string');
+  assert.equal(loginBody.next_url.includes('/onboarding.html?tenant_id=acme'), true);
+
+  onboarding.push({ tenant_id: 'acme', step: 'compile-intelligence' });
+
+  const onboardedLoginResponse = await fetch(`${baseUrl}/api/access/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'acme',
+      email: 'owner@acme.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(onboardedLoginResponse.status, 200);
+  const onboardedLoginBody = await onboardedLoginResponse.json();
+  assert.equal(typeof onboardedLoginBody.next_url, 'string');
+  assert.equal(onboardedLoginBody.next_url.includes('/admin.html?tenant_id=acme'), true);
 });
 
 test('onboarding standards endpoint returns canonical option sets', async (t) => {

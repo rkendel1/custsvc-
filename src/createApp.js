@@ -568,6 +568,40 @@ function resolveScopedTenantId(req) {
   return String(resolveTenantId(req) || 'public');
 }
 
+function isTenantOnboarded(storage, tenantId) {
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId) return false;
+
+  const onboarding = listData(storage, 'listOnboarding');
+  const tenantOnboarding = onboarding.find((item) => String(item?.tenant_id || '').trim() === normalizedTenantId);
+  const step = String(tenantOnboarding?.step || '').trim().toLowerCase();
+  const onboardingComplete = new Set([
+    'quickstart-complete',
+    'compile-intelligence',
+    'ready',
+    'completed',
+    'done',
+  ]);
+  if (onboardingComplete.has(step)) return true;
+
+  const deployments = listData(storage, 'listDeployments');
+  return deployments.some((item) => String(item?.tenant_id || '').trim() === normalizedTenantId);
+}
+
+function resolvePostAuthNextUrl(storage, tenantId, { forceOnboarding = false } = {}) {
+  const normalizedTenantId = String(tenantId || '').trim().toLowerCase();
+  const hasTenant = Boolean(normalizedTenantId);
+  const onboardingUrl = hasTenant
+    ? `/onboarding.html?tenant_id=${encodeURIComponent(normalizedTenantId)}`
+    : '/onboarding.html';
+  if (forceOnboarding) return onboardingUrl;
+
+  const dashboardUrl = hasTenant
+    ? `/admin.html?tenant_id=${encodeURIComponent(normalizedTenantId)}`
+    : '/admin.html';
+  return isTenantOnboarded(storage, normalizedTenantId) ? dashboardUrl : onboardingUrl;
+}
+
 function base64urlEncode(input) {
   return Buffer.from(String(input || ''), 'utf8').toString('base64url');
 }
@@ -1399,6 +1433,19 @@ function createApp(options = {}) {
   app.locals.consolePasswordState = consolePasswordState;
   app.locals.accessCredentialState = accessCredentialState;
 
+  app.use('/api', (req, res, next) => {
+    const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
+    if (!identityTenantId) return next();
+
+    const requestedTenantId = String(resolveTenantId(req) || '').trim();
+    if (requestedTenantId && requestedTenantId !== identityTenantId) {
+      return res.status(403).json({ error: 'tenant scope mismatch' });
+    }
+
+    req.tenantId = identityTenantId;
+    return next();
+  });
+
   function requireConsoleAccess(req, res, next) {
     if (isConsoleAuthorized(req)) return next();
     return res.status(401).json({ error: 'password authentication required' });
@@ -1460,6 +1507,9 @@ function createApp(options = {}) {
   app.get('/api/access/status', (_req, res) => {
     const credentialsEnabled = accessCredentialState.hasCredentials();
     const identity = resolveConsoleAccessIdentity(_req);
+    const nextUrl = identity?.tenant_id
+      ? resolvePostAuthNextUrl(storage, identity.tenant_id)
+      : '/onboarding.html';
     res.json({
       password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
@@ -1468,6 +1518,7 @@ function createApp(options = {}) {
       signup_required: !credentialsEnabled,
       authenticated_tenant_id: identity?.tenant_id || null,
       authenticated_email: identity?.email || null,
+      next_url: nextUrl,
     });
   });
 
@@ -1492,7 +1543,12 @@ function createApp(options = {}) {
         return res.status(500).json({ error: 'console auth secret is not configured' });
       }
       setConsoleAuthCookie(res, token);
-      return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString(), auth_mode: 'credentials' });
+      return res.json({
+        ok: true,
+        expires_at: new Date(expiresAt).toISOString(),
+        auth_mode: 'credentials',
+        next_url: resolvePostAuthNextUrl(storage, verified.tenant_id),
+      });
     }
 
     if (!shouldRequireConsolePassword(req)) {
@@ -1509,7 +1565,7 @@ function createApp(options = {}) {
       return res.status(500).json({ error: 'console auth secret is not configured' });
     }
     setConsoleAuthCookie(res, token);
-    return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString() });
+    return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString(), next_url: '/admin.html' });
   });
 
   app.post('/api/access/signup', (req, res) => {
@@ -1600,6 +1656,7 @@ function createApp(options = {}) {
       created_workspace: createdTenant,
       expires_at: new Date(expiresAt).toISOString(),
       auth_mode: 'credentials',
+      next_url: resolvePostAuthNextUrl(storage, upserted.tenant_id, { forceOnboarding: true }),
     });
   });
 
