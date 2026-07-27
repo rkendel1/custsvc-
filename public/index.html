@@ -3,20 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Company Intelligence Runtime Demo</title>
+    <title>KnowledgeOS</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      code { background: #f3f4f6; padding: 0.2rem 0.35rem; border-radius: 4px; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #111827; background: #f9fafb; }
+      main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+      section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
+      h1 { font-size: 2rem; margin: 0.25rem 0; }
+      .cta { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+      .cta a { text-decoration: none; border: 1px solid #111827; padding: 0.6rem 1rem; border-radius: 8px; color: #111827; font-weight: 700; }
+      .formula { font-size: 1.2rem; font-weight: 700; }
+      pre { white-space: pre-wrap; background: #f3f4f6; padding: 0.85rem; border-radius: 8px; }
     </style>
   </head>
   <body>
-    <h1>Company Intelligence Runtime</h1>
-    <p>This page demonstrates the embeddable browser-native assistant runtime.</p>
-    <p>
-      1) Open <a href="/admin">/admin</a> to upload documents and compile a bundle.<br />
-      2) Return here and ask questions in the widget.
-    </p>
+    <main>
+      <section>
+        <p>KnowledgeOS</p>
+        <h1>Your company's intelligence, deployed everywhere.</h1>
+        <p>Turn documents, processes, and expertise into a private AI runtime for customers and employees.</p>
+        <div class="cta">
+          <a href="/signup">Create your KnowledgeOS</a>
+          <a href="/demo">See Demo</a>
+        </div>
+      </section>
 
-    <script src="/company-ai.js" data-bundle-url="/bundles/company.intelligence.bundle.json" data-api-base=""></script>
+      <section>
+        <h2>Companies have knowledge everywhere</h2>
+        <p>PDFs · Docs · Wikis · CRM · Email · Slack · SOPs</p>
+        <p>People cannot find it. Processes are inconsistent. Answers vary.</p>
+      </section>
+
+      <section>
+        <h2>Solution</h2>
+        <p class="formula">Knowledge + AI Runtime + Processes + Roles + Integrations = KnowledgeOS</p>
+      </section>
+
+      <section>
+        <h2>Architecture</h2>
+<pre>Your Knowledge
+       |
+Knowledge Compiler
+       |
+KnowledgeOS Runtime
+       |
+---------------------------------
+Customers
+Employees
+Managers
+Executives</pre>
+      </section>
+    </main>
+    <script src="/knowledgeos-ai.js" data-bundle-url="/bundles/knowledgeos.bundle.json" data-title="KnowledgeOS Assistant"></script>
   </body>
 </html>

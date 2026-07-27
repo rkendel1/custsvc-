@@ -6,9 +6,9 @@ const rootDir = path.resolve(__dirname, '..');
 
 const app = createApp({
   rootDir,
-  companyName: process.env.COMPANY_NAME || 'Acme Intelligence',
+  companyName: process.env.COMPANY_NAME || 'KnowledgeOS',
 });
 
 app.listen(PORT, () => {
-  console.log(`Company Intelligence Runtime listening on http://localhost:${PORT}`);
+  console.log(`KnowledgeOS listening on http://localhost:${PORT}`);
 });

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Signup</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      form { max-width: 560px; }
+      label { display: block; margin: 0.7rem 0; }
+      input, select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+      button { margin-top: 1rem; padding: 0.6rem 1rem; }
+      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Create your KnowledgeOS account</h1>
+    <form id="signupForm">
+      <label>Name <input name="name" required /></label>
+      <label>Email <input type="email" name="email" required /></label>
+      <label>Company <input name="company" required /></label>
+      <label>Company Size
+        <select name="companySize" required>
+          <option value="">Select</option>
+          <option>1-50</option>
+          <option>51-200</option>
+          <option>201-500</option>
+          <option>500+</option>
+        </select>
+      </label>
+      <label>Primary Use Case <input name="primaryUseCase" placeholder="Customer Website" required /></label>
+      <button type="submit">Create Account</button>
+    </form>
+    <pre id="signupOutput">Submit to provision your tenant.</pre>
+
+    <script>
+      const form = document.getElementById('signupForm');
+      const output = document.getElementById('signupOutput');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const payload = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          output.textContent = data.error || 'Signup failed';
+          return;
+        }
+        output.textContent = JSON.stringify(data, null, 2);
+        window.location.href = data.onboarding_url;
+      });
+    </script>
+  </body>
+</html>

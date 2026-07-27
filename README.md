@@ -1,4 +1,4 @@
-# Company Intelligence Runtime
+# KnowledgeOS
 
 This repository defines a **browser-native organizational intelligence platform**, not just a customer service chatbot.
 
@@ -75,12 +75,16 @@ npm start
 
 Open:
 
-- `http://localhost:3000/admin` to ingest docs and compile
-- `http://localhost:3000/` to use the widget
+- `http://localhost:3000/` landing page
+- `http://localhost:3000/demo` interactive demo (seeded `Acme Manufacturing`)
+- `http://localhost:3000/signup` self-service signup
+- `http://localhost:3000/onboarding?tenant_id=<tenant>` onboarding wizard
+- `http://localhost:3000/tenant` tenant dashboard
+- `http://localhost:3000/admin` KnowledgeOS Console
 
 Note: URL ingestion uses secure mode: provide the source URL plus pasted page content.
 
-## API surface (MVP)
+## API surface
 
 - `GET /health`
 - `GET /api/documents`
@@ -90,6 +94,13 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `POST /api/compile`
 - `POST /api/telemetry`
 - `GET /api/admin/analytics`
+- `POST /api/signup`
+- `POST /api/tenants`
+- `GET /api/tenant`
+- `POST /api/onboarding`
+- `POST /api/deploy`
+- `GET /api/deployment/status`
+- `GET /api/demo`
 
 ## Positioning
 

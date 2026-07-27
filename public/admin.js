@@ -131,7 +131,7 @@ function wireCompile() {
       const data = await requestJson('/api/compile', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'company.intelligence.bundle.json' }),
+        body: JSON.stringify({ name: 'knowledgeos.bundle.json' }),
       });
       output.textContent = format(data);
       graphOutput.textContent = format({

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Onboarding</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      button { margin-top: 0.5rem; padding: 0.55rem 0.9rem; }
+      .step { border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.75rem; }
+      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>KnowledgeOS Onboarding Wizard</h1>
+    <p id="tenantLine"></p>
+    <div class="step"><strong>Step 1:</strong> Company Profile</div>
+    <div class="step"><strong>Step 2:</strong> Choose Deployment (Customer Website / Employee Knowledge / Both / Private Enterprise)</div>
+    <div class="step"><strong>Step 3:</strong> Import Knowledge (Upload documents / Paste content / Import URL / Connect sources)</div>
+    <div class="step"><strong>Step 4:</strong> Define Audience (Customers / Employees / Managers / Executives)</div>
+    <div class="step"><strong>Step 5:</strong> Compile Intelligence</div>
+    <button id="compileBtn">Run Step 5</button>
+    <div class="step"><strong>Step 6:</strong> Deploy</div>
+    <button id="deployBtn">Deploy Runtime</button>
+    <pre id="output">Ready.</pre>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const tenantId = params.get('tenant_id') || '';
+      const sessionToken = params.get('session_token') || '';
+      const output = document.getElementById('output');
+      document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
+
+      function authHeader() {
+        return sessionToken ? { 'x-session-token': sessionToken } : {};
+      }
+
+      async function postJson(url, payload) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...authHeader(),
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      }
+
+      document.getElementById('compileBtn').addEventListener('click', async () => {
+        try {
+          const data = await postJson('/api/onboarding', {
+            tenant_id: tenantId,
+            step: 'compile-intelligence',
+            deploymentChoice: 'Both',
+            importSources: ['Upload documents', 'Import URL'],
+            audiences: ['Customers', 'Employees', 'Managers', 'Executives'],
+          });
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
+
+      document.getElementById('deployBtn').addEventListener('click', async () => {
+        try {
+          const tenant = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
+            headers: authHeader(),
+          }).then((r) => r.json());
+
+          if (tenant.error) throw new Error(tenant.error);
+
+          const data = await fetch('/api/deploy', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              ...authHeader(),
+            },
+            body: JSON.stringify({
+              tenant_id: tenantId,
+              audiences: ['Customers', 'Employees', 'Managers', 'Executives'],
+            }),
+          }).then(async (response) => {
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || 'Deployment failed');
+            return body;
+          });
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
+    </script>
+  </body>
+</html>

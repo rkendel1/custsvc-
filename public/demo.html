@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Demo</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      button { margin-right: 0.5rem; margin-bottom: 0.5rem; }
+      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>KnowledgeOS Interactive Demo</h1>
+    <p>Seeded tenant: <strong>Acme Manufacturing</strong></p>
+    <div>
+      <button data-view="customer">Customer View</button>
+      <button data-view="support">Support View</button>
+      <button data-view="manager">Manager View</button>
+      <button data-view="executive">Executive View</button>
+    </div>
+    <pre id="demoOutput">Loading demo...</pre>
+
+    <script>
+      const output = document.getElementById('demoOutput');
+      let demo = null;
+
+      function show(view) {
+        if (!demo) return;
+        output.textContent = JSON.stringify(demo.views[view], null, 2);
+      }
+
+      async function load() {
+        const response = await fetch('/api/demo');
+        demo = await response.json();
+        show('customer');
+      }
+
+      document.querySelectorAll('button[data-view]').forEach((button) => {
+        button.addEventListener('click', () => show(button.dataset.view));
+      });
+
+      load().catch((error) => {
+        output.textContent = error.message;
+      });
+    </script>
+  </body>
+</html>
