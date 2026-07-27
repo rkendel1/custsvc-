@@ -290,6 +290,21 @@
 
           <div class="wizard-pane active" data-step="1">
             <h3 style="font-size:1rem;">Deployment and audiences</h3>
+            <label>Company size
+              <select id="companySizeChoice">
+                <option value="1-50" selected>1-50 employees</option>
+                <option value="51-200">51-200 employees</option>
+                <option value="201-500">201-500 employees</option>
+                <option value="500+">500+ employees</option>
+              </select>
+            </label>
+            <label>Primary use case
+              <select id="primaryUseCaseChoice">
+                <option value="Customer Website" selected>Customer Website</option>
+                <option value="Internal Copilot">Internal Copilot</option>
+                <option value="Both">Both</option>
+              </select>
+            </label>
             <label>Deployment profile
               <select id="deploymentChoice">
                 <option value="BOTH" selected>BOTH</option>
@@ -298,9 +313,15 @@
                 <option value="PRIVATE_ENTERPRISE">PRIVATE_ENTERPRISE</option>
               </select>
             </label>
-            <label>Audiences (comma-separated)
-              <input id="audienceInput" value="Customers, Employees, Managers, Executives" />
-            </label>
+            <p style="color: var(--muted); margin: 0.45rem 0 0.2rem; font-size: 0.92rem;">Choose audiences</p>
+            <div class="target-grid" id="audienceGrid">
+              <label><input type="checkbox" value="Customers" checked /> Customers</label>
+              <label><input type="checkbox" value="Employees" checked /> Employees</label>
+              <label><input type="checkbox" value="Managers" /> Managers</label>
+              <label><input type="checkbox" value="Executives" /> Executives</label>
+              <label><input type="checkbox" value="Partners" /> Partners</label>
+              <label><input type="checkbox" value="Developers" /> Developers</label>
+            </div>
           </div>
 
           <div class="wizard-pane" data-step="2">
@@ -502,8 +523,8 @@
             name,
             email,
             company,
-            companySize: '1-50',
-            primaryUseCase: 'Customer Website',
+            companySize: document.getElementById('companySizeChoice').value,
+            primaryUseCase: document.getElementById('primaryUseCaseChoice').value,
             deploymentProfile: document.getElementById('deploymentChoice').value,
           });
 
@@ -577,10 +598,10 @@
       refreshAccessStatus();
 
       function parseAudiences() {
-        return String(document.getElementById('audienceInput').value || '')
-          .split(',')
-          .map((value) => value.trim())
+        const selected = [...document.querySelectorAll('#audienceGrid input:checked')]
+          .map((item) => String(item.value || '').trim())
           .filter(Boolean);
+        return selected.length ? selected : ['Customers', 'Employees'];
       }
 
       function selectedTargets() {

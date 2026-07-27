@@ -152,12 +152,21 @@ function normalizeSourceType(value) {
 const ALLOWED_COMPANY_SIZES = ['1-50', '51-200', '201-500', '500+'];
 const ALLOWED_PRIMARY_USE_CASES = ['Customer Website', 'Internal Copilot', 'Both'];
 const ALLOWED_DEPLOYMENT_PROFILES = ['BOTH', 'CUSTOMER', 'EMPLOYEE', 'PRIVATE_ENTERPRISE'];
+const ALLOWED_AUDIENCES = ['Customers', 'Employees', 'Managers', 'Executives', 'Partners', 'Developers'];
 
 function normalizeSelection(value, allowed, fallback = '') {
   const input = String(value || '').trim();
   if (!input) return fallback;
   const match = allowed.find((item) => String(item).toLowerCase() === input.toLowerCase());
   return match || fallback;
+}
+
+function normalizeSelectionList(values, allowed, fallback = []) {
+  const inputList = Array.isArray(values) ? values : [];
+  const normalized = inputList
+    .map((item) => normalizeSelection(item, allowed))
+    .filter(Boolean);
+  return normalized.length ? [...new Set(normalized)] : fallback;
 }
 
 const SOURCE_TEMPLATES = {
@@ -251,6 +260,8 @@ function getSourceTemplate(type) {
   const normalized = normalizeSourceType(type);
   return SOURCE_TEMPLATES[normalized] || SOURCE_TEMPLATES.GENERIC;
 }
+
+const ALLOWED_IMPORT_SOURCES = Object.keys(SOURCE_TEMPLATES);
 
 function normalizeSourceConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return {};
@@ -1931,6 +1942,7 @@ function createApp(options = {}) {
     const selectedCompanySize = normalizeSelection(companySize, ALLOWED_COMPANY_SIZES, '1-50');
     const selectedPrimaryUseCase = normalizeSelection(primaryUseCase, ALLOWED_PRIMARY_USE_CASES, 'Customer Website');
     const selectedDeploymentProfile = normalizeSelection(deploymentProfile, ALLOWED_DEPLOYMENT_PROFILES, 'BOTH');
+    const selectedAudiences = normalizeSelectionList(audiences, ALLOWED_AUDIENCES, ['Customers', 'Employees']);
 
     let tenant;
     try {
@@ -2006,11 +2018,11 @@ function createApp(options = {}) {
         name: String(name),
         email: String(email).toLowerCase(),
       },
-      deployment_choice: deploymentProfile,
+      deployment_choice: selectedDeploymentProfile,
       company_size: selectedCompanySize,
       primary_use_case: selectedPrimaryUseCase,
       import_sources: ['WEBSITE'],
-      audiences: Array.isArray(audiences) && audiences.length ? audiences : ['Customers', 'Employees'],
+      audiences: selectedAudiences,
       updated_at: new Date().toISOString(),
     };
     onboarding.push(onboardingState);
@@ -2132,6 +2144,9 @@ function createApp(options = {}) {
       primaryUseCase = 'Customer Website',
       deploymentProfile = 'BOTH',
     } = req.body || {};
+    const selectedCompanySize = normalizeSelection(companySize, ALLOWED_COMPANY_SIZES, '1-50');
+    const selectedPrimaryUseCase = normalizeSelection(primaryUseCase, ALLOWED_PRIMARY_USE_CASES, 'Customer Website');
+    const selectedDeploymentProfile = normalizeSelection(deploymentProfile, ALLOWED_DEPLOYMENT_PROFILES, 'BOTH');
 
     const requestedTenantId = String(tenant_id || '').trim();
     const tenants = listData(storage, 'listTenants');
@@ -2200,9 +2215,9 @@ function createApp(options = {}) {
       tenant = provisionTenant({
         companyName: safeCompany,
         ownerEmail: safeEmail,
-        companySize,
-        primaryUseCase,
-        deploymentProfile,
+        companySize: selectedCompanySize,
+        primaryUseCase: selectedPrimaryUseCase,
+        deploymentProfile: selectedDeploymentProfile,
       });
     } catch (error) {
       return res.status(400).json({ error: error.message });
@@ -2285,13 +2300,16 @@ function createApp(options = {}) {
   app.post('/api/onboarding', writeLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const { step, companyProfile, deploymentChoice, importSources, audiences } = req.body || {};
     const onboarding = listData(storage, 'listOnboarding');
+    const selectedDeploymentChoice = normalizeSelection(deploymentChoice, ALLOWED_DEPLOYMENT_PROFILES, 'BOTH');
+    const selectedImportSources = normalizeSelectionList(importSources, ALLOWED_IMPORT_SOURCES, ['WEBSITE']);
+    const selectedAudiences = normalizeSelectionList(audiences, ALLOWED_AUDIENCES, ['Customers', 'Employees']);
     const nextState = {
       tenant_id: req.tenantId,
       step: step || 'company-profile',
       company_profile: companyProfile || null,
-      deployment_choice: deploymentChoice || null,
-      import_sources: importSources || [],
-      audiences: audiences || ['Customers', 'Employees'],
+      deployment_choice: selectedDeploymentChoice,
+      import_sources: selectedImportSources,
+      audiences: selectedAudiences,
       updated_at: new Date().toISOString(),
     };
 
@@ -2331,11 +2349,22 @@ function createApp(options = {}) {
       return res.status(404).json({ error: 'tenant not found' });
     }
 
+    const selectedDeploymentProfile = normalizeSelection(
+      req.body?.deployment_profile || tenant.deployment_profile,
+      ALLOWED_DEPLOYMENT_PROFILES,
+      'BOTH',
+    );
+    const selectedAudiences = normalizeSelectionList(
+      req.body?.audiences,
+      ALLOWED_AUDIENCES,
+      tenant.audiences || ['Customers', 'Employees'],
+    );
+
     const deployment = createDeployment({
       tenantId: req.tenantId,
       companyName: tenant.company_name,
-      deploymentProfile: req.body?.deployment_profile || tenant.deployment_profile || 'BOTH',
-      audiences: req.body?.audiences || tenant.audiences,
+      deploymentProfile: selectedDeploymentProfile,
+      audiences: selectedAudiences,
     });
 
     const deployments = listData(storage, 'listDeployments');
