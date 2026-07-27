@@ -235,6 +235,12 @@
       || normalized.includes('view work get in touch')
       || normalized.includes('knowledgeos is live on this page')
       || normalized.includes('use the ask button to ask questions')
+      || normalized.includes('live trythissoftware')
+      || normalized.includes('backendvoid')
+      || normalized.includes('web3 digital assets')
+      || normalized.includes('run button for the internet')
+      || normalized.includes('hide your secrets within your messages')
+      || normalized.includes('local-first privacy web workers wasm')
     );
   }
 
@@ -275,26 +281,102 @@
     return null;
   }
 
+  function extractQuestionKeywords(question) {
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'about', 'does', 'have', 'what', 'how', 'many',
+      'much', 'tell', 'me', 'is', 'are', 'in', 'on', 'at', 'to', 'of', 'a', 'an', 'it', 'as', 'by', 'be', 'has', 'who',
+    ]);
+    return tokenize(question).filter((token) => token.length > 2 && !stopWords.has(token));
+  }
+
+  function isLikelyPromotionalNoise(line) {
+    const normalized = String(line || '').toLowerCase();
+    const noiseMarkers = [
+      'live',
+      'try this',
+      'trythissoftware',
+      'run button',
+      'zero infrastructure',
+      'saas without servers',
+      'hide secrets',
+      'product',
+      'platform',
+    ];
+    let hits = 0;
+    for (const marker of noiseMarkers) {
+      if (normalized.includes(marker)) hits += 1;
+    }
+    return hits >= 2;
+  }
+
+  function scoreSentence(question, sentence) {
+    const normalizedQuestion = String(question || '').toLowerCase();
+    const normalizedSentence = String(sentence || '').toLowerCase();
+    const questionKeywords = extractQuestionKeywords(normalizedQuestion);
+    const sentenceTokens = new Set(tokenize(normalizedSentence));
+
+    let overlap = 0;
+    for (const token of questionKeywords) {
+      if (sentenceTokens.has(token)) overlap += 1;
+    }
+
+    let score = overlap * 3;
+    if (normalizedQuestion.includes('randy') && normalizedSentence.includes('randy')) score += 3;
+    if (normalizedQuestion.includes('experience') && normalizedSentence.includes('year')) score += 3;
+    if (normalizedQuestion.includes('project management') && normalizedSentence.includes('project')) score += 3;
+    if (normalizedQuestion.includes('project management') && normalizedSentence.includes('program management')) score += 2;
+    if (/\b\d+\+?\s+years?\b/i.test(sentence)) score += 2;
+    if (isLikelyPromotionalNoise(sentence)) score -= 4;
+    if (isLikelyBoilerplateLine(sentence)) score -= 6;
+    return score;
+  }
+
+  function chooseBestSentences(question, corpusText, limit = 3) {
+    const seen = new Set();
+    const candidates = splitIntoSentences(corpusText)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !isLikelyBoilerplateLine(line))
+      .map((line) => ({ line, score: scoreSentence(question, line) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const selected = [];
+    for (const item of candidates) {
+      const key = item.line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      selected.push(item.line);
+      if (selected.length >= limit) break;
+    }
+    return selected;
+  }
+
+  function buildExperienceAnswer(question, corpusText) {
+    const normalizedQuestion = String(question || '').toLowerCase();
+    if (!normalizedQuestion.includes('experience')) return null;
+
+    const sentences = chooseBestSentences(question, corpusText, 6);
+    for (const sentence of sentences) {
+      const yearsMatch = sentence.match(/\b(\d+\+?)\s+years?\b/i);
+      if (!yearsMatch?.[1]) continue;
+
+      if (normalizedQuestion.includes('project management') || normalizedQuestion.includes('program management')) {
+        return `Randy has ${yearsMatch[1]} years of experience, including hands-on project and program management.`;
+      }
+      return `Randy has ${yearsMatch[1]} years of experience.`;
+    }
+    return null;
+  }
+
   function formatDeterministicAnswer(question, chunkText) {
     const yearsAnswer = extractYearsExperience(question, chunkText);
     if (yearsAnswer) return yearsAnswer;
 
-    const questionTokens = new Set(tokenize(question));
-    const candidates = splitIntoSentences(chunkText)
-      .filter((line) => !isLikelyBoilerplateLine(line))
-      .map((line) => {
-        const lineTokens = tokenize(line);
-        let overlap = 0;
-        for (const token of lineTokens) {
-          if (questionTokens.has(token)) overlap += 1;
-        }
-        return {
-          line,
-          score: overlap + Math.min(line.length / 160, 1),
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.line);
+    const experienceAnswer = buildExperienceAnswer(question, chunkText);
+    if (experienceAnswer) return experienceAnswer;
+
+    const candidates = chooseBestSentences(question, chunkText, 6);
 
     const picked = [];
     for (const line of candidates) {
@@ -1015,7 +1097,7 @@
     const bundle = await loadBundle();
     initializeAiIfNeeded(bundle);
     const intentResult = detectIntent(question);
-    const results = await search(question, { limit: 1 });
+    const results = await search(question, { limit: 5 });
     const best = results[0] || null;
 
     if (best && best.score >= minAnswerConfidence && state.ai.mode === AI_MODE.LOCAL) {
@@ -1050,7 +1132,8 @@
         agreement * confidenceWeights.agreement +
         reviewerConfidence * confidenceWeights.reviewer
       ).toFixed(3));
-      const formattedAnswer = formatDeterministicAnswer(question, best.chunk.text || '');
+      const evidenceCorpus = results.map((item) => String(item?.chunk?.text || '')).join('\n');
+      const formattedAnswer = formatDeterministicAnswer(question, evidenceCorpus || best.chunk.text || '');
       return {
         answer: formattedAnswer,
         score: best.score,
