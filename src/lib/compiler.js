@@ -570,7 +570,7 @@ function defaultModelManifest() {
     },
     checksum: {
       algorithm: 'sha256',
-      value: '',
+      value: null,
     },
     requirements: {
       memory_mb: 1024,
@@ -599,8 +599,8 @@ function normalizeModelManifest(model = {}) {
       ...(model.requirements || {}),
     },
     capabilities: Array.isArray(model.capabilities) && model.capabilities.length
-      ? model.capabilities.map((item) => String(item))
-      : [...fallback.capabilities],
+      ? [...model.capabilities].map((item) => String(item))
+      : [...fallback.capabilities].map((item) => String(item)),
   };
 }
 

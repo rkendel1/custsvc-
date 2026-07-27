@@ -21,6 +21,16 @@ test('aiRuntime falls back to retrieval-only when no model is present', async ()
   assert.match(response.answer, /Known answer/i);
 });
 
+test('aiRuntime runs local generation path when model is available', async () => {
+  const runtime = createAIRuntime();
+  await runtime.initialize({
+    models: [{ id: 'company-assistant-small', type: 'llm', runtime: 'wasm' }],
+  });
+  const response = await runtime.generate({ question: 'billing help', context: [{ text: 'Billing policy answer' }] });
+  assert.equal(response.mode, 'local-llm');
+  assert.match(response.answer, /Billing policy answer/i);
+});
+
 test('aiRuntime supports classify, extract, and stream lifecycle', async () => {
   const runtime = createAIRuntime();
   await runtime.initialize({
@@ -47,6 +57,13 @@ test('aiRuntime enforces model action permission boundaries', async () => {
   const allowed = await runtime.runAction('ask_question', { message: 'Need more detail' });
   assert.equal(allowed.ok, true);
   await assert.rejects(() => runtime.runAction('start_process', { processId: 'refund_process' }), /not permitted/i);
+});
+
+test('aiRuntime default allowed actions include complete_step', async () => {
+  const runtime = createAIRuntime();
+  await runtime.initialize({ models: [{ id: 'm1', type: 'llm', runtime: 'wasm' }] });
+  const result = await runtime.runAction('complete_step', { executionId: 'e1' });
+  assert.equal(result.ok, true);
 });
 
 test('aiRuntime telemetry defaults to privacy-preserving payload', async () => {

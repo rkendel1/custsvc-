@@ -1,3 +1,5 @@
+const EMBEDDING_NORMALIZATION_FACTOR = 20;
+
 function createDefaultAdapter() {
   return {
     async initialize(model) {
@@ -8,13 +10,14 @@ function createDefaultAdapter() {
       return { text: first?.text || String(prompt || '') };
     },
     async embed(text) {
-      return String(text || '').split(/\W+/).filter(Boolean).map((token) => token.length / 20);
+      return String(text || '').split(/\W+/).filter(Boolean)
+        .map((token) => token.length / EMBEDDING_NORMALIZATION_FACTOR);
     },
     async classify(text) {
       const q = String(text || '').toLowerCase();
-      if (q.includes('refund')) return { label: 'refund_request', confidence: 0.96 };
-      if (q.includes('billing') || q.includes('invoice')) return { label: 'billing_question', confidence: 0.86 };
-      return { label: 'general_question', confidence: 0.72 };
+      if (q.includes('refund')) return { intent: 'refund_request', confidence: 0.96 };
+      if (q.includes('billing') || q.includes('invoice')) return { intent: 'billing_question', confidence: 0.86 };
+      return { intent: 'general_question', confidence: 0.72 };
     },
     async extract(text) {
       const input = String(text || '');

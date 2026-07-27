@@ -36,6 +36,15 @@
     REMOTE_FALLBACK: 'REMOTE_FALLBACK',
     DISABLED: 'DISABLED',
   };
+  // 4GB is the minimum threshold used by the runtime for selecting medium local models.
+  const MIN_MEMORY_GB_FOR_MEDIUM_MODEL = 4;
+
+  function normalizeAiMode(value) {
+    const candidate = String(value || AI_MODE.LOCAL).toUpperCase();
+    return AI_MODE[candidate] ? candidate : AI_MODE.LOCAL;
+  }
+
+  state.ai.mode = normalizeAiMode(state.ai.mode);
   const audiencePriority = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, EXECUTIVE: 3 };
   const confidenceWeights = {
     // Weighted toward retrieval relevance while still incorporating governance signals.
@@ -304,7 +313,7 @@
   function initializeAiIfNeeded(bundle) {
     if (state.ai.initialized) return;
     state.ai.model = (bundle?.models || []).find((item) => item.runtime === 'wasm' && item.type === 'llm') || null;
-    state.ai.mode = AI_MODE[state.ai.mode] ? state.ai.mode : AI_MODE.LOCAL;
+    state.ai.mode = normalizeAiMode(state.ai.mode);
     state.ai.initialized = true;
   }
 
@@ -314,7 +323,9 @@
       wasm_simd: true,
       webgpu: Boolean(navigator.gpu),
       memory_available_mb: Math.round(Number(navigator.deviceMemory || 4) * 1024),
-      recommended_model: Number(navigator.deviceMemory || 4) >= 8 ? 'company-assistant-medium' : 'company-assistant-small',
+      recommended_model: Number(navigator.deviceMemory || 4) >= MIN_MEMORY_GB_FOR_MEDIUM_MODEL
+        ? 'company-assistant-medium'
+        : 'company-assistant-small',
     };
   }
 
@@ -341,7 +352,7 @@
   function removeModel(modelId) {
     const id = modelId || state.ai.model?.id;
     if (!id) return { removed: false };
-    delete state.ai.modelStatus[id];
+    state.ai.modelStatus[id] = null;
     if (state.ai.model?.id === id) state.ai.model = null;
     return { removed: true, id };
   }

@@ -69,7 +69,7 @@ function canRunLocally(model, compatibility) {
   const requiredMemory = Number(model?.requirements?.memory_mb || 0);
   if (requiredMemory && requiredMemory > Number(compatibility.memory_available_mb || 0)) return false;
   if (model?.requirements?.wasm_simd && !compatibility.wasm_simd) return false;
-  if (!model?.requirements?.webgpu_optional && model?.requirements?.webgpu_required && !compatibility.webgpu) return false;
+  if (model?.requirements?.webgpu_required && !compatibility.webgpu) return false;
   return true;
 }
 
@@ -79,9 +79,9 @@ function pickBestModel(models = [], compatibility = detectAICompatibility(), pre
   const localModels = models.filter((item) => item.type === 'llm' && item.runtime === 'wasm');
   const compatible = localModels.filter((item) => canRunLocally(item, compatibility));
   if (!compatible.length) return null;
-  compatible.sort((a, b) => Number(a?.requirements?.memory_mb || 0) - Number(b?.requirements?.memory_mb || 0));
-  if (compatibility.memory_available_mb >= 4096) return compatible[compatible.length - 1];
-  return compatible[0];
+  const sorted = [...compatible].sort((a, b) => Number(a?.requirements?.memory_mb || 0) - Number(b?.requirements?.memory_mb || 0));
+  if (compatibility.memory_available_mb >= 4096) return sorted[sorted.length - 1];
+  return sorted[0];
 }
 
 function createAIRuntime(options = {}) {
@@ -249,7 +249,8 @@ function createAIRuntime(options = {}) {
     return { action, payload, ok: true };
   }
 
-  function buildTelemetry({ intent, confidence, knowledgeGap = false, processStarted = false, duration = 0 }, telemetryOptions = {}) {
+  function buildTelemetry(telemetryData = {}, options = {}) {
+    const { intent, confidence, knowledgeGap = false, processStarted = false, duration = 0 } = telemetryData;
     const entry = {
       intent: String(intent || 'general_question'),
       confidence: Number(confidence || 0),
@@ -257,7 +258,7 @@ function createAIRuntime(options = {}) {
       process_started: Boolean(processStarted),
       duration: Number(duration || 0),
     };
-    if (telemetryOptions.includeContent && telemetryOptions.question) entry.question = String(telemetryOptions.question);
+    if (options.includeContent && options.question) entry.question = String(options.question);
     return entry;
   }
 

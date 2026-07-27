@@ -13,7 +13,13 @@ function parseSizeToBytes(size) {
   if (!match) return 0;
   const value = Number(match[1]);
   const unit = match[2] || 'b';
-  const multiplier = unit === 'gb' ? 1024 ** 3 : unit === 'mb' ? 1024 ** 2 : unit === 'kb' ? 1024 : 1;
+  const unitMultipliers = {
+    b: 1,
+    kb: 1024,
+    mb: 1024 ** 2,
+    gb: 1024 ** 3,
+  };
+  const multiplier = unitMultipliers[unit] || 1;
   return Math.round(value * multiplier);
 }
 
@@ -92,7 +98,7 @@ function createModelManager(options = {}) {
   function verifyModel(modelId) {
     const model = models.get(modelId);
     const current = getModelStatus(modelId);
-    const hasChecksum = Boolean(model?.checksum?.algorithm && model?.checksum?.value !== undefined);
+    const hasChecksum = Boolean(model?.checksum?.algorithm && String(model?.checksum?.value || '').trim());
     return {
       id: modelId,
       ok: Boolean(current.downloaded && hasChecksum),
