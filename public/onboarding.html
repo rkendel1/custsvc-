@@ -235,10 +235,37 @@
         margin: 0;
       }
 
+      .auth-grid {
+        margin-top: 0.6rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.65rem;
+      }
+
+      .auth-card {
+        border: 1px solid #d8e2ff;
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.65rem;
+      }
+
+      .auth-card h4 {
+        margin: 0;
+        font-family: 'Sora', sans-serif;
+        font-size: 0.95rem;
+      }
+
+      .auth-card p {
+        margin: 0.3rem 0 0;
+        color: #4f5f88;
+        font-size: 0.85rem;
+      }
+
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
         .target-grid { grid-template-columns: 1fr; }
         .token-grid { grid-template-columns: 1fr; }
+        .auth-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -277,14 +304,23 @@
         <section class="panel">
           <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">Launch your assistant in minutes</h1>
           <div id="tokenBanner" class="token-banner" style="display:none;">
-            <p>
-              Start here and we will create your secure workspace automatically.
-            </p>
-            <div class="token-grid">
-              <input id="onboardingNameInput" placeholder="Your name" />
-              <input id="onboardingEmailInput" type="email" placeholder="Work email" />
-              <input id="onboardingCompanyInput" placeholder="Company name" />
-              <button id="startOnboardingBtn" type="button" class="btn-primary">Start secure onboarding</button>
+            <p>Sign in to continue onboarding, or create a workspace first.</p>
+            <div class="auth-grid">
+              <div class="auth-card">
+                <h4>Create account</h4>
+                <p>Create a new workspace and start onboarding.</p>
+                <input id="signupNameInput" placeholder="Your name (optional)" />
+                <input id="signupEmailInput" type="email" placeholder="Work email (optional)" />
+                <input id="signupCompanyInput" placeholder="Company name (optional)" />
+                <button id="signupOnboardingBtn" type="button" class="btn-primary" style="margin-top:0.55rem; width:100%;">Create account and continue</button>
+              </div>
+              <div class="auth-card">
+                <h4>Sign in</h4>
+                <p>Resume an existing workspace onboarding session.</p>
+                <input id="signinTenantInput" placeholder="Workspace ID (tenant id)" />
+                <input id="signinEmailInput" type="email" placeholder="Work email (optional)" />
+                <button id="signinOnboardingBtn" type="button" class="btn-ghost" style="margin-top:0.55rem; width:100%;">Sign in to onboarding</button>
+              </div>
             </div>
           </div>
 
@@ -410,10 +446,13 @@
         .filter(Boolean);
       const output = document.getElementById('output');
       const tokenBanner = document.getElementById('tokenBanner');
-      const onboardingNameInput = document.getElementById('onboardingNameInput');
-      const onboardingEmailInput = document.getElementById('onboardingEmailInput');
-      const onboardingCompanyInput = document.getElementById('onboardingCompanyInput');
-      const startOnboardingBtn = document.getElementById('startOnboardingBtn');
+      const signupNameInput = document.getElementById('signupNameInput');
+      const signupEmailInput = document.getElementById('signupEmailInput');
+      const signupCompanyInput = document.getElementById('signupCompanyInput');
+      const signupOnboardingBtn = document.getElementById('signupOnboardingBtn');
+      const signinTenantInput = document.getElementById('signinTenantInput');
+      const signinEmailInput = document.getElementById('signinEmailInput');
+      const signinOnboardingBtn = document.getElementById('signinOnboardingBtn');
       const embedScript = document.getElementById('embedScript');
       const copyEmbedBtn = document.getElementById('copyEmbedBtn');
       const finalizeReadyBtn = document.getElementById('finalizeReadyBtn');
@@ -504,7 +543,7 @@
 
       function requireSessionTokenFor(actionLabel) {
         if (!hasSessionToken()) {
-          setStatus('Action needed', `${actionLabel} requires onboarding. Use Start secure onboarding above.`);
+          setStatus('Action needed', `${actionLabel} requires sign-in. Use Create account or Sign in above.`);
           updateTokenBanner();
           return false;
         }
@@ -526,14 +565,29 @@
         }
       }
 
-      startOnboardingBtn?.addEventListener('click', async () => {
-        try {
-          const name = String(onboardingNameInput?.value || '').trim() || 'Onboarding User';
-          const email = String(onboardingEmailInput?.value || '').trim();
-          const company = String(onboardingCompanyInput?.value || '').trim();
+      async function applyOnboardingSession(data, successTitle) {
+        tenantId = String(data?.tenant?.tenant_id || '').trim();
+        sessionToken = String(data?.session?.token || '').trim();
+        if (!tenantId || !sessionToken) {
+          throw new Error('Could not start onboarding session.');
+        }
 
-          if (!email) throw new Error('Work email is required.');
-          if (!company && !tenantId) throw new Error('Company name is required when creating a new tenant.');
+        localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+        renderTenantLine();
+        updateUrlState();
+        updateTokenBanner();
+        updateEmbedScript();
+        setStatus(successTitle, [`Tenant: ${tenantId}`, 'Secure onboarding is active. Continue to the next step.']);
+      }
+
+      signupOnboardingBtn?.addEventListener('click', async () => {
+        try {
+          signupOnboardingBtn.disabled = true;
+          signupOnboardingBtn.textContent = 'Creating account...';
+
+          const name = String(signupNameInput?.value || '').trim();
+          const email = String(signupEmailInput?.value || '').trim();
+          const company = String(signupCompanyInput?.value || '').trim();
 
           const data = await postJson('/api/onboarding/session', {
             tenant_id: tenantId || undefined,
@@ -544,21 +598,37 @@
             primaryUseCase: primaryUseCaseChoiceInput.value,
             deploymentProfile: deploymentChoiceInput.value,
           });
+          await applyOnboardingSession(data, 'Account created');
+        } catch (error) {
+          setStatus('Could not create account', error.message);
+        } finally {
+          signupOnboardingBtn.disabled = false;
+          signupOnboardingBtn.textContent = 'Create account and continue';
+        }
+      });
 
-          tenantId = String(data?.tenant?.tenant_id || '').trim();
-          sessionToken = String(data?.session?.token || '').trim();
-          if (!tenantId || !sessionToken) {
-            throw new Error('Could not start onboarding session.');
+      signinOnboardingBtn?.addEventListener('click', async () => {
+        try {
+          signinOnboardingBtn.disabled = true;
+          signinOnboardingBtn.textContent = 'Signing in...';
+
+          const requestedTenantId = String(signinTenantInput?.value || tenantId || '').trim();
+          const email = String(signinEmailInput?.value || '').trim();
+          if (!requestedTenantId) {
+            throw new Error('Workspace ID is required to sign in.');
           }
 
-          localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
-          renderTenantLine();
-          updateUrlState();
-          updateTokenBanner();
-          updateEmbedScript();
-          setStatus('Workspace ready', [`Tenant: ${tenantId}`, 'Secure onboarding is active. Continue to the next step.']);
+          const data = await postJson('/api/onboarding/session', {
+            tenant_id: requestedTenantId,
+            email,
+            name: 'Onboarding User',
+          });
+          await applyOnboardingSession(data, 'Signed in');
         } catch (error) {
-          setStatus('Could not start onboarding', error.message);
+          setStatus('Could not sign in', error.message);
+        } finally {
+          signinOnboardingBtn.disabled = false;
+          signinOnboardingBtn.textContent = 'Sign in to onboarding';
         }
       });
 
@@ -578,8 +648,8 @@
 
       updateEmbedScript();
 
-      if (onboardingCompanyInput && !onboardingCompanyInput.value) {
-        onboardingCompanyInput.value = String(params.get('company') || '').trim();
+      if (signupCompanyInput && !signupCompanyInput.value) {
+        signupCompanyInput.value = String(params.get('company') || '').trim();
       }
 
       if (hasSessionToken()) {
@@ -588,12 +658,21 @@
 
       {
         const savedEmail = localStorage.getItem('knowledgeos_last_email') || '';
-        if (onboardingEmailInput && savedEmail) onboardingEmailInput.value = savedEmail;
+        if (signupEmailInput && savedEmail) signupEmailInput.value = savedEmail;
+        if (signinEmailInput && savedEmail) signinEmailInput.value = savedEmail;
+        if (signinTenantInput && tenantId) signinTenantInput.value = tenantId;
       }
 
-      if (onboardingEmailInput) {
-        onboardingEmailInput.addEventListener('change', () => {
-          const value = String(onboardingEmailInput.value || '').trim();
+      if (signupEmailInput) {
+        signupEmailInput.addEventListener('change', () => {
+          const value = String(signupEmailInput.value || '').trim();
+          if (value) localStorage.setItem('knowledgeos_last_email', value);
+        });
+      }
+
+      if (signinEmailInput) {
+        signinEmailInput.addEventListener('change', () => {
+          const value = String(signinEmailInput.value || '').trim();
           if (value) localStorage.setItem('knowledgeos_last_email', value);
         });
       }
