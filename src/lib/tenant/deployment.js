@@ -1,11 +1,21 @@
 const { randomUUID } = require('crypto');
 
-function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', audiences = [] } = {}) {
+function normalizeOrigin(value, fallback = 'http://127.0.0.1:3000') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  try {
+    return new URL(raw).origin;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', audiences = [], runtimeOrigin = null } = {}) {
   if (!tenantId) throw new Error('tenant_id is required');
 
   const deploymentId = `deploy-${randomUUID()}`;
-  const runtimeUrl = `https://${tenantId}.knowledgeos.com/runtime/${deploymentId}`;
-  const runtimeOrigin = new URL(runtimeUrl).origin;
+  const resolvedOrigin = normalizeOrigin(runtimeOrigin);
+  const runtimeUrl = `${resolvedOrigin}/runtime/${tenantId}/${deploymentId}`;
   const apiKey = `kos_${randomUUID().replace(/-/g, '')}`;
 
   return {
@@ -26,7 +36,7 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
       product: 'KnowledgeOS',
       tagline: "Your company's intelligence, deployed everywhere.",
     },
-    embed_code: `<script src="${runtimeOrigin}/embed.js" data-tenant-id="${tenantId}" data-runtime-url="${runtimeUrl}" data-title="Ask ${tenantId}"></script>`,
+    embed_code: `<script src="${resolvedOrigin}/embed.js" data-tenant-id="${tenantId}" data-api-base="${resolvedOrigin}" data-title="Ask ${tenantId}"></script>`,
     api_key: apiKey,
   };
 }

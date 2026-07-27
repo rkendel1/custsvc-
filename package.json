@@ -7,6 +7,8 @@
     "test": "node --test",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "wasm:package": "node scripts/package-wasm-assets.js",
+    "wasm:refresh": "node scripts/package-wasm-assets.js",
     "db:init": "node scripts/init-pg-schema.js",
     "db:check": "node scripts/check-pg-version.js",
     "dev:up": "docker compose -f docker-compose.dev.yml up -d --build",

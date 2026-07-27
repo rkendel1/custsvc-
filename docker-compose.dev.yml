@@ -20,6 +20,7 @@ services:
       SOURCE_SECRET_KEY_VERSION: 1
       APP_PASSWORD: localdev
       APP_AUTH_SECRET: local-dev-auth-secret-change-me
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:3000}
     ports:
       - "${APP_PORT:-3000}:8080"
     volumes:

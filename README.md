@@ -195,9 +195,15 @@ PostgreSQL       Browser Runtime
 - Node.js + Express runtime
 - PostgreSQL for durable storage
 - pgvector for semantic retrieval
-- Browser-local embedding generation using Transformers.js
+- Browser-local embedding generation via local runtime (no external embedding service)
 - Multi-source connector architecture with real outbound provider checks
 - Dockerized local stack and cloud deployment support
+
+WASM parser package:
+
+- Package local parser assets with `npm run wasm:package`
+- Assets are copied to `public/vendor/pdf-parse`
+- Startup also materializes parser assets automatically when available
 
 ## Deployment Model
 
@@ -248,6 +254,16 @@ Postgres TLS behavior:
 - `PGSSL_STRICT_REQUIRE_CA=true|false`:
      Default: `false`.
      When `true`, `require` mode keeps strict CA verification semantics and may fail startup if CA is missing.
+
+- `PUBLIC_BASE_URL=https://...`:
+     Public origin used for deployment runtime URLs and generated embed code.
+     Local Docker default: `http://127.0.0.1:3000`
+     Fly default (compose prod): `https://kiss.fly.dev`
+
+WASM packaging and build path:
+
+- `npm run wasm:package` copies parser runtime assets to `public/vendor/pdf-parse`.
+- Docker dev and prod images run this command during build, so packaged assets are present in container builds.
 
 ## Quick Start
 

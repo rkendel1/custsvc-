@@ -11,6 +11,7 @@ FROM base AS dev
 ENV NODE_ENV=development
 ENV PORT=8080
 ENV HOST=0.0.0.0
+RUN npm run wasm:package
 EXPOSE 8080
 CMD ["npm", "run", "dev"]
 
@@ -27,6 +28,8 @@ COPY scripts ./scripts
 COPY bundles ./bundles
 COPY data ./data
 COPY certs ./certs
+
+RUN npm run wasm:package
 
 RUN mkdir -p /app/data /app/bundles && chown -R node:node /app
 

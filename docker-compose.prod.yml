@@ -31,6 +31,7 @@ services:
       SOURCE_SECRET_KEY_VERSION: ${SOURCE_SECRET_KEY_VERSION:-1}
       APP_PASSWORD: ${APP_PASSWORD:-}
       APP_AUTH_SECRET: ${APP_AUTH_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://kiss.fly.dev}
     ports:
       - "${APP_PORT:-8080}:8080"
     volumes:

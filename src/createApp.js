@@ -3,7 +3,7 @@ const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
 const net = require('net');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const { randomUUID, createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } = require('crypto');
 const { compileBundle, normalizeVisibility } = require('./lib/compiler');
 const { buildAnalytics } = require('./lib/analytics');
@@ -35,6 +35,44 @@ function stripHtml(text) {
   }
 
   return output.replace(/\s+/g, ' ').trim();
+}
+
+async function extractPdfTextLocal(buffer) {
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return String(result?.text || '').trim();
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
+}
+
+function ensureLocalPdfParserPackage(rootDir) {
+  const sourceDir = path.join(rootDir, 'node_modules', 'pdf-parse', 'dist');
+  if (!fs.existsSync(sourceDir)) return;
+
+  const targetDir = path.join(rootDir, 'public', 'vendor', 'pdf-parse');
+  const markerPath = path.join(targetDir, '.packaged');
+  if (fs.existsSync(markerPath)) return;
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.cpSync(sourceDir, targetDir, { recursive: true });
+
+  const packageJsonPath = path.join(rootDir, 'node_modules', 'pdf-parse', 'package.json');
+  let parserVersion = 'unknown';
+  try {
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    parserVersion = String(pkg?.version || parserVersion);
+  } catch (_error) {
+    // Keep marker generation best-effort.
+  }
+
+  fs.writeFileSync(markerPath, JSON.stringify({
+    parser: 'pdf-parse',
+    version: parserVersion,
+    packaged_at: new Date().toISOString(),
+    source: 'node_modules/pdf-parse/dist',
+  }, null, 2));
 }
 
 function createRateLimiter({ max = 120, windowMs = 60_000 } = {}) {
@@ -1251,10 +1289,28 @@ function ensureDefaultBundle(storage, companyName) {
   storage.writeBundle(defaultBundleName, bundle);
 }
 
+function resolvePublicOrigin(req, fallbackPort = 3000) {
+  const configured = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch (_error) {
+      // Fall through to request-derived origin.
+    }
+  }
+
+  const host = String(req?.get?.('host') || `127.0.0.1:${fallbackPort}`).trim();
+  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '').trim().toLowerCase();
+  const protocol = forwardedProto || req?.protocol || 'http';
+  return `${protocol}://${host}`;
+}
+
 function createApp(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const companyName = options.companyName || 'KnowledgeOS';
   const storage = options.storage || createStorage(rootDir);
+
+  ensureLocalPdfParserPackage(rootDir);
 
   if (process.env.NODE_ENV === 'production' && !String(process.env.SOURCE_SECRET_KEY || '').trim()) {
     throw new Error('SOURCE_SECRET_KEY is required in production for connector credential encryption');
@@ -1264,6 +1320,7 @@ function createApp(options = {}) {
   ensureDefaultBundle(storage, companyName);
 
   const app = express();
+  app.set('trust proxy', true);
   const upload = multer({ storage: multer.memoryStorage() });
   const writeLimiter = createRateLimiter();
   const signupLimiter = createRateLimiter({ max: 12, windowMs: 60_000 });
@@ -1759,8 +1816,8 @@ function createApp(options = {}) {
     const title = req.body.title || req.file.originalname;
 
     try {
-      const parsed = await pdfParse(req.file.buffer);
-      if (!parsed.text || !parsed.text.trim()) {
+      const text = await extractPdfTextLocal(req.file.buffer);
+      if (!text) {
         return res.status(400).json({ error: 'pdf had no extractable text' });
       }
 
@@ -1770,7 +1827,7 @@ function createApp(options = {}) {
         id: `doc-${randomUUID()}`,
         tenant_id: tenantId,
         title,
-        body: parsed.text.trim(),
+        body: text,
         type: 'PDF',
         visibility,
         audience: visibility,
@@ -2387,11 +2444,13 @@ function createApp(options = {}) {
     onboarding.push(onboardingState);
     saveData(storage, 'saveOnboarding', onboarding);
 
+    const publicOrigin = resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000));
     const deployment = createDeployment({
       tenantId: tenant.tenant_id,
       companyName: tenant.company_name,
       deploymentProfile: selectedDeploymentProfile,
       audiences: onboardingState.audiences,
+      runtimeOrigin: publicOrigin,
     });
     const deployments = listData(storage, 'listDeployments');
     deployments.push(deployment);
@@ -2408,8 +2467,7 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveRuntimeInstances', runtimeInstances);
 
-    const origin = `${req.protocol}://${req.get('host')}`;
-    const embedScript = `<script src="${origin}/embed.js" data-tenant-id="${tenant.tenant_id}" data-api-base="${origin}" data-title="Ask ${tenant.tenant_id}"></script>`;
+    const embedScript = `<script src="${publicOrigin}/embed.js" data-tenant-id="${tenant.tenant_id}" data-api-base="${publicOrigin}" data-title="Ask ${tenant.tenant_id}"></script>`;
 
     return res.status(201).json({
       tenant,
@@ -2719,11 +2777,13 @@ function createApp(options = {}) {
       tenant.audiences || ['Customers', 'Employees'],
     );
 
+    const publicOrigin = resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000));
     const deployment = createDeployment({
       tenantId: req.tenantId,
       companyName: tenant.company_name,
       deploymentProfile: selectedDeploymentProfile,
       audiences: selectedAudiences,
+      runtimeOrigin: publicOrigin,
     });
 
     const deployments = listData(storage, 'listDeployments');

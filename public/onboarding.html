@@ -871,35 +871,32 @@
         return sessionToken ? { 'x-session-token': sessionToken } : {};
       }
 
-      const EMBEDDING_MODEL_REPO = 'Xenova/all-MiniLM-L6-v2';
-      const EMBEDDING_ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-      let embeddingPipeline = null;
+      const LOCAL_EMBEDDING_NORMALIZER = 20;
 
-      async function ensureEmbeddingPipeline() {
-        if (embeddingPipeline) return embeddingPipeline;
-        const transformers = await import(EMBEDDING_ENGINE_URL);
-        embeddingPipeline = await transformers.pipeline('feature-extraction', EMBEDDING_MODEL_REPO);
-        return embeddingPipeline;
-      }
-
-      function flattenEmbedding(output) {
-        if (!output) return [];
-        if (Array.isArray(output?.data)) {
-          return output.data.map((item) => Number(item)).filter((item) => Number.isFinite(item));
-        }
-        if (Array.isArray(output)) {
-          return output.flat(Infinity).map((item) => Number(item)).filter((item) => Number.isFinite(item));
-        }
-        return [];
+      function tokenizeEmbeddingInput(text = '') {
+        return String(text || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter(Boolean);
       }
 
       async function createEmbedding(text) {
         const input = String(text || '').trim();
         if (!input) return [];
         try {
-          const pipeline = await ensureEmbeddingPipeline();
-          const output = await pipeline(input, { pooling: 'mean', normalize: true });
-          return flattenEmbedding(output);
+          const runtimeEmbed = window.KnowledgeOSRuntime?.embed;
+          if (typeof runtimeEmbed === 'function') {
+            const embedded = await runtimeEmbed(input);
+            if (Array.isArray(embedded)) {
+              return embedded.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+            }
+          }
+
+          return tokenizeEmbeddingInput(input)
+            .map((token) => token.length / LOCAL_EMBEDDING_NORMALIZER)
+            .map((item) => Number(item))
+            .filter((item) => Number.isFinite(item));
         } catch (_error) {
           return [];
         }

@@ -1,0 +1,7 @@
+{
+  "parser": "pdf-parse",
+  "version": "2.4.5",
+  "packaged_at": "2026-07-27T16:33:02.708Z",
+  "source": "node_modules/pdf-parse/dist",
+  "output": "public/vendor/pdf-parse"
+}
