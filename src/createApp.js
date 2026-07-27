@@ -128,6 +128,33 @@ function requireTenant(req, res, next) {
   return next();
 }
 
+function requireTenantOrSession(storage) {
+  return (req, res, next) => {
+    const tenantId = resolveTenantId(req);
+    if (tenantId) {
+      req.tenantId = String(tenantId);
+      return next();
+    }
+
+    const token = resolveSessionToken(req);
+    if (!token) {
+      return res.status(400).json({ error: 'tenant_id is required' });
+    }
+
+    const sessions = listData(storage, 'listSessions');
+    const session = sessions.find((item) => item.token === token && item.status === 'active');
+    if (!session) {
+      return res.status(403).json({ error: 'invalid tenant session' });
+    }
+    if (session.expires_at && Date.now() > Date.parse(session.expires_at)) {
+      return res.status(401).json({ error: 'session expired' });
+    }
+
+    req.tenantId = String(session.tenant_id);
+    return next();
+  };
+}
+
 function requireTenantSession(storage) {
   return (req, res, next) => {
     const token = resolveSessionToken(req);
@@ -302,6 +329,7 @@ function createApp(options = {}) {
   const writeLimiter = createRateLimiter();
   const signupLimiter = createRateLimiter({ max: 12, windowMs: 60_000 });
   const readLimiter = createRateLimiter({ max: 240, windowMs: 60_000 });
+  const tenantResolverMiddleware = requireTenantOrSession(storage);
   const tenantSessionMiddleware = requireTenantSession(storage);
 
   app.use(express.json({ limit: '8mb' }));
@@ -662,7 +690,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.get('/api/tenant', readLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
+  app.get('/api/tenant', readLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const tenants = listData(storage, 'listTenants');
     const tenant = tenants.find((item) => item.tenant_id === req.tenantId);
     if (!tenant) {
@@ -686,7 +714,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/onboarding', writeLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
+  app.post('/api/onboarding', writeLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const { step, companyProfile, deploymentChoice, importSources, audiences } = req.body || {};
     const onboarding = listData(storage, 'listOnboarding');
     const nextState = {
@@ -718,7 +746,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/deploy', writeLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
+  app.post('/api/deploy', writeLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const userId = req.session.user_id;
     const memberships = listData(storage, 'listTenantMemberships');
     const membership = memberships.find((item) => item.tenant_id === req.tenantId && item.user_id === userId);
@@ -771,7 +799,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.get('/api/deployment/status', readLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
+  app.get('/api/deployment/status', readLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
     const deploymentId = req.query.deployment_id || req.query.id;
     if (!deploymentId) {
       return res.status(400).json({ error: 'deployment_id is required' });

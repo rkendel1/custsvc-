@@ -65,3 +65,57 @@ test('telemetry endpoint rejects payloads without question and intent', async (t
   });
   assert.equal(response.status, 400);
 });
+
+test('onboarding resolves tenant_id from session token when tenant_id is omitted', async (t) => {
+  const now = Date.now();
+  const sessions = [
+    {
+      token: 'kos_test_token',
+      tenant_id: 'acme',
+      user_id: 'user-acme-owner',
+      status: 'active',
+      expires_at: new Date(now + 60_000).toISOString(),
+    },
+  ];
+  const onboarding = [];
+
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listTelemetry: () => [],
+    saveTelemetry: () => {},
+    listSessions: () => [...sessions],
+    saveSessions: (nextSessions) => {
+      sessions.length = 0;
+      sessions.push(...nextSessions);
+    },
+    listOnboarding: () => [...onboarding],
+    saveOnboarding: (nextOnboarding) => {
+      onboarding.length = 0;
+      onboarding.push(...nextOnboarding);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/onboarding`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-session-token': 'kos_test_token',
+    },
+    body: JSON.stringify({
+      step: 'compile-intelligence',
+      deploymentChoice: 'Both',
+      importSources: ['Upload documents'],
+      audiences: ['Customers', 'Employees'],
+    }),
+  });
+
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.onboarding.tenant_id, 'acme');
+});
