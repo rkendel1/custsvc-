@@ -55,7 +55,8 @@
   async function loadBundle() {
     if (state.bundle) return state.bundle;
 
-    const cacheKey = `company-intelligence:${simpleHash(bundleUrl)}`;
+    const cacheScope = `${window.location.origin}:${bundleUrl}`;
+    const cacheKey = `company-intelligence:${simpleHash(cacheScope)}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {
@@ -238,7 +239,7 @@
         const response = await answerQuestion(question);
         appendMessage(messages, 'AI', response.answer);
 
-        const answered = Boolean(response.answered);
+        const answered = response.answered;
         state.history.push({ question, ...response, answered, at: new Date().toISOString() });
 
         sendTelemetry({

@@ -18,7 +18,7 @@ test('compileBundle creates chunks with visibility and tf metadata', () => {
   assert.equal(bundle.documentCount, 1);
   assert.ok(bundle.chunkCount >= 1);
   assert.equal(bundle.chunks[0].visibility, 'PUBLIC');
-  assert.ok(bundle.chunks[0].tf.refunds > 0);
+  assert.ok(bundle.chunks[0].tf.within > 0);
 });
 
 test('compileBundle parses FAQ JSON arrays into chunks', () => {

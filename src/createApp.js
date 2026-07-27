@@ -33,15 +33,15 @@ function stripHtml(text) {
 
 function createRateLimiter({ max = 120, windowMs = 60_000 } = {}) {
   const buckets = new Map();
-  let requestCount = 0;
+  let lastCleanup = 0;
   return (req, res, next) => {
     const key = `${req.ip}:${req.path}`;
     const now = Date.now();
-    requestCount += 1;
-    if (requestCount % 500 === 0) {
+    if (now - lastCleanup >= windowMs) {
       for (const [bucketKey, bucket] of buckets.entries()) {
         if (now > bucket.resetAt) buckets.delete(bucketKey);
       }
+      lastCleanup = now;
     }
     const record = buckets.get(key) || { count: 0, resetAt: now + windowMs };
     if (now > record.resetAt) {
@@ -191,9 +191,6 @@ function createApp(options = {}) {
     const docs = storage.listDocuments();
     const bundle = compileBundle(docs, { company: companyName });
     const name = req.body?.name || 'company.intelligence.bundle.json';
-    if (String(name).length > 120) {
-      return res.status(400).json({ error: 'bundle name is too long' });
-    }
     const { safeName } = storage.writeBundle(name, bundle);
 
     res.json({

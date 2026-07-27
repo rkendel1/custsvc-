@@ -27,6 +27,7 @@ function writeJson(filePath, value) {
 }
 
 function createStorage(baseDir) {
+  const MAX_BUNDLE_NAME_LENGTH = 120;
   const dataDir = path.join(baseDir, 'data');
   const bundlesDir = path.join(baseDir, 'bundles');
   ensureDir(dataDir);
@@ -46,8 +47,7 @@ function createStorage(baseDir) {
       // Keep raw when decode fails.
     }
     const fileName = path.basename(raw);
-    if (fileName.includes('..')) return 'company.intelligence.bundle.json';
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 120);
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, MAX_BUNDLE_NAME_LENGTH);
     return safeName || 'company.intelligence.bundle.json';
   }
 
