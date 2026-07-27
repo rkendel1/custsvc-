@@ -295,6 +295,8 @@ test('tenant subdomain host resolves tenant scope without explicit tenant_id', a
       name: 'Host Scoped Owner',
       email: 'owner@hostscope.com',
       company: 'Host Scope Co',
+      companySize: '1-50',
+      primaryUseCase: 'Both',
     }),
   });
   assert.equal(signup.status, 201);
