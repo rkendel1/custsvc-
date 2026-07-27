@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/rkendel1/custsvc-#readme",
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "express": "^5.2.1",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5"

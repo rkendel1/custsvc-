@@ -52,7 +52,33 @@ Employees
 Managers
 Executives</pre>
       </section>
+
+      <section>
+        <h2>Runtime Diagnostics</h2>
+        <p>Confirms browser startup warmup for bundle load, model artifact prefetch, and PGlite initialization.</p>
+        <pre id="runtimeDiagnostics">Initializing runtime diagnostics...</pre>
+      </section>
     </main>
     <script src="/knowledgeos-ai.js" data-bundle-url="/bundles/knowledgeos.bundle.json" data-title="KnowledgeOS Assistant"></script>
+    <script>
+      async function renderRuntimeDiagnostics() {
+        const output = document.getElementById('runtimeDiagnostics');
+        if (!output) return;
+        const runtime = window.KnowledgeOSRuntime;
+        if (!runtime || typeof runtime.getRuntimeDiagnostics !== 'function') {
+          output.textContent = 'Runtime not available yet.';
+          return;
+        }
+        const diagnostics = await runtime.getRuntimeDiagnostics();
+        output.textContent = JSON.stringify(diagnostics, null, 2);
+      }
+
+      setTimeout(() => {
+        renderRuntimeDiagnostics().catch((error) => {
+          const output = document.getElementById('runtimeDiagnostics');
+          if (output) output.textContent = `Diagnostics failed: ${error.message}`;
+        });
+      }, 800);
+    </script>
   </body>
 </html>

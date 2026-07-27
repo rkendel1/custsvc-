@@ -81,6 +81,60 @@ Open:
 - `http://localhost:3000/onboarding?tenant_id=<tenant>` onboarding wizard
 - `http://localhost:3000/tenant` tenant dashboard
 - `http://localhost:3000/admin` KnowledgeOS Console
+- `http://localhost:3000/` now includes Runtime Diagnostics for browser warmup visibility
+
+## Docker (Fully Contained)
+
+This repository now includes a contained Docker stack with:
+
+- `app` (Node/Express API + static runtime)
+- `postgres` (PostgreSQL 16)
+- `adminer` (database UI)
+
+Run the stack:
+
+```bash
+docker compose up --build
+```
+
+Endpoints:
+
+- `http://127.0.0.1:3000` app
+- `http://127.0.0.1:8080` adminer
+
+Container persistence:
+
+- app data volume: `app_data`
+- app bundles volume: `app_bundles`
+- postgres volume: `postgres_data`
+
+Dependency status API:
+
+- `GET /api/system/status` validates Postgres reachability and reports browser runtime asset URLs.
+
+## Browser Runtime Warmup
+
+On page load, the widget runtime now performs warmup automatically:
+
+1. Load bundle from `/bundles/knowledgeos.bundle.json`
+2. Initialize AI mode and selected local model metadata
+3. Prefetch model artifact from bundle manifest path (default: `models/company-assistant-small/model.gguf`)
+4. Initialize browser-local PGlite from `/vendor/pglite/index.js`
+5. Seed a PGlite table with bundle chunks and use it during search
+
+Verification options:
+
+- Open `http://127.0.0.1:3000` and inspect Runtime Diagnostics section
+- In browser console run:
+
+```js
+await window.KnowledgeOSRuntime.getRuntimeDiagnostics()
+```
+
+Notes:
+
+- A placeholder local model artifact is included at `public/models/company-assistant-small/model.gguf` for startup/download verification flow.
+- For production-grade local LLM inference, replace placeholder model assets with real quantized weights/tokenizer artifacts.
 
 Note: URL ingestion uses secure mode: provide the source URL plus pasted page content.
 

@@ -80,6 +80,53 @@ function isPrivateHost(hostname) {
   return host === '::1' || host.startsWith('fc00:') || host.startsWith('fd00:') || host.startsWith('fe80:');
 }
 
+function resolveDatabaseProbeTarget() {
+  const fromUrl = process.env.DATABASE_URL;
+  if (fromUrl) {
+    try {
+      const parsed = new URL(fromUrl);
+      if (parsed.hostname) {
+        return {
+          host: parsed.hostname,
+          port: Number(parsed.port || 5432),
+          source: 'DATABASE_URL',
+        };
+      }
+    } catch (_error) {
+      // Ignore parse errors and fallback to PGHOST/PGPORT.
+    }
+  }
+
+  if (process.env.PGHOST) {
+    return {
+      host: process.env.PGHOST,
+      port: Number(process.env.PGPORT || 5432),
+      source: 'PGHOST',
+    };
+  }
+
+  return null;
+}
+
+function probeTcp({ host, port }, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port: Number(port) });
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.on('connect', () => finish({ ok: true }));
+    socket.on('timeout', () => finish({ ok: false, reason: 'timeout' }));
+    socket.on('error', (error) => finish({ ok: false, reason: error.message }));
+  });
+}
+
 function isValidHttpUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
@@ -337,6 +384,36 @@ function createApp(options = {}) {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, product: 'KnowledgeOS' });
+  });
+
+  app.get('/api/system/status', async (_req, res) => {
+    const databaseTarget = resolveDatabaseProbeTarget();
+    let database = {
+      configured: Boolean(databaseTarget),
+      reachable: false,
+      host: databaseTarget?.host || null,
+      port: databaseTarget?.port || null,
+      source: databaseTarget?.source || null,
+      error: null,
+    };
+
+    if (databaseTarget) {
+      const result = await probeTcp(databaseTarget);
+      database = {
+        ...database,
+        reachable: result.ok,
+        error: result.ok ? null : result.reason || 'unknown',
+      };
+    }
+
+    res.json({
+      ok: true,
+      database,
+      browser_runtime: {
+        bundle_url: '/bundles/knowledgeos.bundle.json',
+        pglite_module_url: '/vendor/pglite/index.js',
+      },
+    });
   });
 
   app.get('/api/documents', readLimiter, (req, res) => {
@@ -850,6 +927,7 @@ function createApp(options = {}) {
   });
 
   app.use('/bundles', express.static(path.join(rootDir, 'bundles')));
+  app.use('/vendor/pglite', express.static(path.join(rootDir, 'node_modules', '@electric-sql', 'pglite', 'dist')));
   app.use(express.static(path.join(rootDir, 'public')));
 
   app.get('/admin', (_req, res) => {

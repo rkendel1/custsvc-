@@ -9,6 +9,8 @@
   const minAnswerConfidence = Number(script?.dataset?.minAnswerConfidence || 0.1);
   const role = script?.dataset?.role || 'Customer';
   const department = script?.dataset?.department || '';
+  const pgliteModuleUrl = script?.dataset?.pgliteModuleUrl || '/vendor/pglite/index.js';
+  const preloadModel = String(script?.dataset?.preloadModel || 'true').toLowerCase() !== 'false';
   const permissions = (script?.dataset?.permissions || '')
     .split(',')
     .map((x) => x.trim())
@@ -28,6 +30,19 @@
       model: null,
       mode: aiModeSetting,
       modelStatus: {},
+    },
+    pglite: {
+      initialized: false,
+      ready: false,
+      rows: 0,
+      error: null,
+      db: null,
+      chunkById: new Map(),
+    },
+    warmup: {
+      started: false,
+      completed: false,
+      error: null,
     },
   };
   const AI_MODE = {
@@ -228,6 +243,90 @@
     }
 
     return state.bundle;
+  }
+
+  async function initializePGlite(bundle) {
+    if (state.pglite.initialized) return state.pglite;
+    state.pglite.initialized = true;
+
+    if (typeof indexedDB === 'undefined') {
+      state.pglite.error = 'indexeddb_unavailable';
+      return state.pglite;
+    }
+
+    try {
+      const module = await import(pgliteModuleUrl);
+      const PGlite = module?.PGlite;
+      if (!PGlite) throw new Error('PGlite export not found');
+
+      const dbName = `idb://knowledgeos-${simpleHash(bundle?.company || 'default')}`;
+      const db = new PGlite(dbName);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+          id TEXT PRIMARY KEY,
+          knowledge_id TEXT,
+          text TEXT,
+          audience TEXT,
+          visibility TEXT,
+          department TEXT,
+          confidence REAL,
+          last_reviewed TEXT,
+          review_frequency INTEGER
+        )
+      `);
+      await db.query('DELETE FROM knowledge_chunks');
+
+      const chunks = Array.isArray(bundle?.chunks) ? bundle.chunks : [];
+      for (const chunk of chunks) {
+        await db.query(
+          `INSERT INTO knowledge_chunks (id, knowledge_id, text, audience, visibility, department, confidence, last_reviewed, review_frequency)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            String(chunk.id || ''),
+            String(chunk.knowledgeId || ''),
+            String(chunk.text || ''),
+            String(chunk.audience || ''),
+            String(chunk.visibility || ''),
+            String(chunk.department || ''),
+            Number(chunk.confidence || 0.7),
+            chunk.last_reviewed ? String(chunk.last_reviewed) : null,
+            Number(chunk.review_frequency || 90),
+          ],
+        );
+      }
+
+      const byId = new Map();
+      for (const chunk of chunks) byId.set(String(chunk.id), chunk);
+
+      state.pglite.db = db;
+      state.pglite.ready = true;
+      state.pglite.rows = chunks.length;
+      state.pglite.chunkById = byId;
+      return state.pglite;
+    } catch (error) {
+      state.pglite.error = error?.message || 'pglite_init_failed';
+      return state.pglite;
+    }
+  }
+
+  async function warmupRuntime() {
+    if (state.warmup.started) return;
+    state.warmup.started = true;
+    try {
+      const bundle = await loadBundle();
+      await initializeAI();
+      if (preloadModel && state.ai.model && state.ai.mode !== AI_MODE.DISABLED) {
+        try {
+          await downloadModel();
+        } catch (_error) {
+          // Keep retrieval runtime available even if model preload fails.
+        }
+      }
+      await initializePGlite(bundle);
+      state.warmup.completed = true;
+    } catch (error) {
+      state.warmup.error = error?.message || 'runtime_warmup_failed';
+    }
   }
 
   async function remoteFallback(question) {
@@ -474,8 +573,35 @@
     await initializeAI();
     const id = modelId || state.ai.model?.id;
     if (!id) throw new Error('model not found');
-    state.ai.modelStatus[id] = { id, downloaded: true, initialized: true };
-    return state.ai.model || { id };
+    const model = (state.bundle?.models || []).find((item) => item.id === id) || state.ai.model || { id };
+    const artifactPath = model?.artifact?.weights || model?.artifact?.manifest || null;
+    let artifactUrl = null;
+    let bytes = 0;
+    if (artifactPath) {
+      artifactUrl = new URL(String(artifactPath), window.location.origin).toString();
+      const response = await fetch(artifactUrl, { cache: 'force-cache' });
+      if (!response.ok) throw new Error(`model artifact fetch failed (${response.status})`);
+      const buffer = await response.arrayBuffer();
+      bytes = buffer.byteLength;
+      if ('caches' in window) {
+        try {
+          const cache = await caches.open('knowledgeos-model-artifacts-v1');
+          await cache.put(artifactUrl, new Response(buffer, { headers: response.headers }));
+        } catch (_error) {
+          // Cache API may be unavailable in some environments.
+        }
+      }
+    }
+    state.ai.modelStatus[id] = {
+      id,
+      downloaded: true,
+      initialized: true,
+      artifactPath,
+      artifactUrl,
+      bytes,
+      downloadedAt: new Date().toISOString(),
+    };
+    return state.ai.model || model;
   }
 
   function getModels() {
@@ -533,6 +659,49 @@
     const allowedStoreIds = new Set(stores.map((store) => store.id));
 
     const results = [];
+    if (state.pglite.ready && state.pglite.db && queryTokens.length) {
+      const hitScores = new Map();
+      for (const token of queryTokens) {
+        const tokenRows = await state.pglite.db.query(
+          `SELECT id, text, audience, visibility, department, confidence, last_reviewed, review_frequency
+           FROM knowledge_chunks
+           WHERE lower(text) LIKE ('%' || lower($1) || '%')
+           LIMIT 500`,
+          [token],
+        );
+        for (const row of tokenRows.rows || []) {
+          const id = String(row.id || '');
+          hitScores.set(id, (hitScores.get(id) || 0) + 1);
+        }
+      }
+
+      for (const [chunkId, hitScore] of hitScores.entries()) {
+        const original = state.pglite.chunkById.get(chunkId);
+        const fallback = {
+          id: chunkId,
+          text: '',
+          audience: 'INTERNAL',
+          visibility: 'INTERNAL',
+          department: null,
+          confidence: 0.7,
+        };
+        const chunk = original || fallback;
+        if (!isVisible(chunk, context)) continue;
+
+        const source = getKnowledgeSource(chunk, bundle);
+        if (!allowedStoreIds.has(source.id)) continue;
+
+        const semantic = similarity(queryTf, queryMag, {
+          tf: termFrequency(tokenize(chunk.text || '')),
+          magnitude: magnitude(termFrequency(tokenize(chunk.text || ''))),
+        });
+        const score = Math.max(semantic, hitScore / Math.max(1, queryTokens.length));
+        if (score <= 0) continue;
+        results.push({ chunk, score, source });
+      }
+    }
+
+    if (!results.length) {
     for (const chunk of bundle.chunks || []) {
       if (!isVisible(chunk, context)) continue;
       const source = getKnowledgeSource(chunk, bundle);
@@ -540,6 +709,7 @@
       const score = similarity(queryTf, queryMag, chunk);
       if (score <= 0) continue;
       results.push({ chunk, score, source });
+    }
     }
     results.sort((a, b) => b.score - a.score);
     const limit = Number(options.limit || 5);
@@ -758,9 +928,13 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', createWidget);
+    document.addEventListener('DOMContentLoaded', () => {
+      createWidget();
+      warmupRuntime();
+    });
   } else {
     createWidget();
+    warmupRuntime();
   }
 
   window.KnowledgeOSRuntime = {
@@ -788,6 +962,18 @@
     search,
     getKnowledgeSource,
     getAIStatus,
+    getRuntimeDiagnostics: async () => ({
+      warmup: { ...state.warmup },
+      ai: getAIStatus(),
+      pglite: {
+        initialized: state.pglite.initialized,
+        ready: state.pglite.ready,
+        rows: state.pglite.rows,
+        error: state.pglite.error,
+        moduleUrl: pgliteModuleUrl,
+      },
+      bundleLoaded: Boolean(state.bundle),
+    }),
     downloadModel,
     initializeAI,
     generate,

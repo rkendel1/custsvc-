@@ -1,0 +1,63 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: knowledgeos-app
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      COMPANY_NAME: KnowledgeOS
+      DATABASE_URL: postgres://knowledgeos:knowledgeos@postgres:5432/knowledgeos
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: knowledgeos
+      PGPASSWORD: knowledgeos
+      PGDATABASE: knowledgeos
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+      - app_bundles:/app/bundles
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: knowledgeos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: knowledgeos
+      POSTGRES_USER: knowledgeos
+      POSTGRES_PASSWORD: knowledgeos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledgeos -d knowledgeos"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer:4
+    container_name: knowledgeos-adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  app_data:
+  app_bundles:
+  postgres_data:
