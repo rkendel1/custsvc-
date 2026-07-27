@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Embed Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #1c2436;
+        --muted: #5e6a86;
+        --canvas: #f5f8ff;
+        --panel: #ffffff;
+        --line: #d8e4fa;
+        --brand: #1254ff;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(980px 420px at 8% -12%, #fff1d8 0%, transparent 58%),
+          radial-gradient(860px 500px at 92% -8%, #dbeafe 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 2rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
+      }
+
+      .wordmark img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        object-fit: cover;
+        border: 1px solid var(--line);
+      }
+
+      .wordmark strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 800;
+      }
+
+      .wordmark span { color: var(--brand); }
+
+      .topnav {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      .layout {
+        margin-top: 0.9rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.9rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 0.95rem;
+      }
+
+      label {
+        display: block;
+        font-weight: 700;
+        font-size: 0.9rem;
+        margin: 0.55rem 0 0.3rem;
+      }
+
+      input, textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.58rem 0.62rem;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 190px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.58rem 0.9rem;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        color: #fff;
+        background: linear-gradient(135deg, #1254ff, #2f88ff);
+      }
+
+      .btn-ghost {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .actions {
+        margin-top: 0.65rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .status {
+        margin-top: 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 0.6rem;
+        font-size: 0.9rem;
+      }
+
+      .preview {
+        width: 100%;
+        min-height: 420px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 0.88rem;
+        margin-top: 0.45rem;
+      }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="wordmark" href="/">
+          <img src="/koslogo.svg" alt="KnowledgeOS logo" />
+          <strong>Knowledge<span>OS</span></strong>
+        </a>
+        <nav class="topnav">
+          <a href="/onboarding.html">Setup</a>
+          <a href="/install.html">Install</a>
+          <a id="spaceLink" href="/tenant.html">Your space</a>
+          <a id="dashboardLink" href="/access.html?next=%2Fadmin.html">Dashboard</a>
+        </nav>
+      </header>
+
+      <div class="layout">
+        <section class="panel">
+          <h1 style="font-size:1.35rem;">Embed script test lab</h1>
+          <p style="margin:0.42rem 0 0; color: var(--muted);">
+            Paste your embed script and launch a clean sandbox page to validate the assistant behavior.
+          </p>
+
+          <label for="tenantIdInput">Tenant ID</label>
+          <input id="tenantIdInput" placeholder="acme" />
+
+          <label for="embedScriptInput">Embed script</label>
+          <textarea id="embedScriptInput" placeholder="Paste the full script tag from onboarding."></textarea>
+
+          <div class="actions">
+            <button id="generateBtn" class="btn-ghost" type="button">Generate script from tenant</button>
+            <button id="runBtn" class="btn-primary" type="button">Run test page</button>
+            <button id="copyBtn" class="btn-ghost" type="button">Copy script</button>
+            <button id="clearBtn" class="btn-ghost" type="button">Clear</button>
+          </div>
+
+          <div id="status" class="status"><strong>Status</strong> Ready to test.</div>
+          <p class="hint">The script is also saved in local storage so you can iterate quickly.</p>
+        </section>
+
+        <section class="panel">
+          <h2 style="font-size:1.05rem;">Sandbox preview</h2>
+          <p style="margin:0.35rem 0 0.55rem; color: var(--muted); font-size: 0.9rem;">
+            This frame mimics a customer page. We inject only your script and minimal page content.
+          </p>
+          <iframe id="previewFrame" class="preview" title="KnowledgeOS embed test sandbox"></iframe>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const tenantIdInput = document.getElementById('tenantIdInput');
+      const embedScriptInput = document.getElementById('embedScriptInput');
+      const generateBtn = document.getElementById('generateBtn');
+      const runBtn = document.getElementById('runBtn');
+      const copyBtn = document.getElementById('copyBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const status = document.getElementById('status');
+      const previewFrame = document.getElementById('previewFrame');
+      const spaceLink = document.getElementById('spaceLink');
+      const dashboardLink = document.getElementById('dashboardLink');
+
+      function setStatus(title, lines = []) {
+        const safeLines = Array.isArray(lines) ? lines : [String(lines || '')];
+        status.innerHTML = `<strong>${title}</strong>${safeLines.filter(Boolean).join('<br />')}`;
+      }
+
+      function normalizeTenant(value) {
+        return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+      }
+
+      function buildEmbedScript(tenantId) {
+        const safeTenant = normalizeTenant(tenantId);
+        if (!safeTenant) return '';
+        const origin = window.location.origin;
+        return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}" data-api-base="${origin}" data-title="Ask ${safeTenant}"><\\/script>`;
+      }
+
+      function updateLinks(tenantId) {
+        const safeTenant = normalizeTenant(tenantId);
+        if (!safeTenant) {
+          spaceLink.href = '/tenant.html';
+          dashboardLink.href = '/access.html?next=%2Fadmin.html';
+          return;
+        }
+        spaceLink.href = `/tenant.html?tenant_id=${encodeURIComponent(safeTenant)}`;
+        const next = `/admin.html?tenant_id=${encodeURIComponent(safeTenant)}`;
+        dashboardLink.href = `/access.html?next=${encodeURIComponent(next)}`;
+      }
+
+      function saveState() {
+        localStorage.setItem('knowledgeos_embed_test_script', String(embedScriptInput.value || ''));
+        localStorage.setItem('knowledgeos_last_workspace', String(tenantIdInput.value || ''));
+      }
+
+      function loadState() {
+        const tenantFromQuery = String(params.get('tenant_id') || '').trim();
+        const savedTenant = String(localStorage.getItem('knowledgeos_last_workspace') || '').trim();
+        tenantIdInput.value = tenantFromQuery || savedTenant;
+
+        const savedScript = String(localStorage.getItem('knowledgeos_embed_test_script') || '').trim();
+        embedScriptInput.value = savedScript;
+
+        if (!embedScriptInput.value && tenantIdInput.value) {
+          embedScriptInput.value = buildEmbedScript(tenantIdInput.value);
+        }
+        updateLinks(tenantIdInput.value);
+      }
+
+      function runSandbox() {
+        const script = String(embedScriptInput.value || '').trim();
+        if (!script) {
+          setStatus('Action needed', 'Paste or generate an embed script first.');
+          return;
+        }
+
+        const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed Test Sandbox</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #1e293b; }
+      .card { max-width: 760px; margin: 0 auto; border: 1px solid #d7e1f4; border-radius: 12px; background: #fff; padding: 16px; }
+      h1 { margin: 0 0 8px; font-size: 20px; }
+      p { margin: 0; color: #475569; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>KnowledgeOS Embed Sandbox</h1>
+      <p>Your script is loaded below. Open browser console for diagnostics if needed.</p>
+    </div>
+    ${script}
+  </body>
+</html>`;
+
+        previewFrame.srcdoc = html;
+        saveState();
+        setStatus('Sandbox running', 'Your embed script has been injected in the preview frame.');
+      }
+
+      generateBtn.addEventListener('click', () => {
+        const tenantId = normalizeTenant(tenantIdInput.value);
+        if (!tenantId) {
+          setStatus('Action needed', 'Enter a tenant id first.');
+          return;
+        }
+        embedScriptInput.value = buildEmbedScript(tenantId);
+        tenantIdInput.value = tenantId;
+        updateLinks(tenantId);
+        saveState();
+        setStatus('Script generated', `Generated script for tenant: ${tenantId}`);
+      });
+
+      runBtn.addEventListener('click', runSandbox);
+
+      copyBtn.addEventListener('click', async () => {
+        const value = String(embedScriptInput.value || '').trim();
+        if (!value) {
+          setStatus('Action needed', 'No script to copy yet.');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(value);
+          setStatus('Copied', 'Embed script copied to clipboard.');
+        } catch (_error) {
+          setStatus('Copy unavailable', 'Select and copy the script manually.');
+        }
+      });
+
+      clearBtn.addEventListener('click', () => {
+        embedScriptInput.value = '';
+        previewFrame.srcdoc = '';
+        localStorage.removeItem('knowledgeos_embed_test_script');
+        setStatus('Cleared', 'Script and preview were cleared.');
+      });
+
+      tenantIdInput.addEventListener('change', () => {
+        updateLinks(tenantIdInput.value);
+        saveState();
+      });
+
+      embedScriptInput.addEventListener('change', saveState);
+
+      loadState();
+      if (embedScriptInput.value) {
+        setStatus('Ready', 'Embed script loaded from your previous session.');
+      }
+    </script>
+  </body>
+</html>

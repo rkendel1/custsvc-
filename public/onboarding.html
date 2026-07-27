@@ -400,7 +400,12 @@
             <label style="margin-top:0.72rem;">Simple embed script
               <textarea id="embedScript" rows="6" readonly placeholder="Finish setup to generate your embed script."></textarea>
             </label>
-            <button id="copyEmbedBtn" type="button" class="btn-ghost" style="margin-top:0.5rem;">Copy embed script</button>
+            <div class="inline-actions" style="margin-top:0.5rem;">
+              <button id="copyEmbedBtn" type="button" class="btn-ghost">Copy embed script</button>
+              <button id="openEmbedTesterBtn" type="button" class="btn-ghost">Open embed tester</button>
+              <button id="goToSpaceBtn" type="button" class="btn-ghost">Go to your space</button>
+              <button id="goToDashboardBtn" type="button" class="btn-ghost">Go to dashboard</button>
+            </div>
           </div>
 
           <div class="wizard-nav">
@@ -432,6 +437,9 @@
       const startSetupBtn = document.getElementById('startSetupBtn');
       const embedScript = document.getElementById('embedScript');
       const copyEmbedBtn = document.getElementById('copyEmbedBtn');
+      const openEmbedTesterBtn = document.getElementById('openEmbedTesterBtn');
+      const goToSpaceBtn = document.getElementById('goToSpaceBtn');
+      const goToDashboardBtn = document.getElementById('goToDashboardBtn');
       const finalizeReadyBtn = document.getElementById('finalizeReadyBtn');
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
@@ -660,6 +668,40 @@
         }
       });
 
+      function requireTenantDestination(actionLabel) {
+        const resolvedTenant = String(tenantId || '').trim();
+        if (!resolvedTenant) {
+          setStatus('Action needed', `${actionLabel} is available after tenant setup.`);
+          return '';
+        }
+        return resolvedTenant;
+      }
+
+      openEmbedTesterBtn?.addEventListener('click', () => {
+        const value = String(embedScript?.value || '').trim();
+        if (value && value !== 'Finish setup to generate your embed script.') {
+          localStorage.setItem('knowledgeos_embed_test_script', value);
+        }
+        const resolvedTenant = String(tenantId || '').trim();
+        const testerUrl = resolvedTenant
+          ? `/embed-test.html?tenant_id=${encodeURIComponent(resolvedTenant)}`
+          : '/embed-test.html';
+        window.location.href = testerUrl;
+      });
+
+      goToSpaceBtn?.addEventListener('click', () => {
+        const resolvedTenant = requireTenantDestination('Go to your space');
+        if (!resolvedTenant) return;
+        window.location.href = `/tenant.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+      });
+
+      goToDashboardBtn?.addEventListener('click', () => {
+        const resolvedTenant = requireTenantDestination('Go to dashboard');
+        if (!resolvedTenant) return;
+        const next = `/admin.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+        window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
+      });
+
       updateEmbedScript();
 
       if (hasSessionToken()) {
@@ -827,7 +869,7 @@
           pane.classList.toggle('active', index + 1 === step);
         });
         prevStep.style.visibility = step === 1 ? 'hidden' : 'visible';
-        nextStep.textContent = step === panes.length ? 'Stay here' : 'Next';
+        nextStep.textContent = step === panes.length ? 'Done' : 'Next';
       }
 
       prevStep.addEventListener('click', () => {
