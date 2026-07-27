@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const os = require('node:os');
+const fs = require('node:fs');
+const path = require('node:path');
 const { createApp } = require('../src/createApp');
 
 function startServer(app) {
@@ -85,6 +87,71 @@ test('telemetry endpoint rejects payloads without question and intent', async (t
     body: JSON.stringify({ confidence: 0.2 }),
   });
   assert.equal(response.status, 400);
+});
+
+test('access credentials support signup and require full login credentials', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  t.after(() => {
+    if (previousAuthSecret === undefined) {
+      delete process.env.APP_AUTH_SECRET;
+    } else {
+      process.env.APP_AUTH_SECRET = previousAuthSecret;
+    }
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-access-'));
+  const tenants = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listTelemetry: () => [],
+    saveTelemetry: () => {},
+    listTenants: () => [...tenants],
+    saveTenants: (nextTenants) => {
+      tenants.length = 0;
+      tenants.push(...nextTenants);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir, storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const signupResponse = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'acme',
+      email: 'owner@acme.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(signupResponse.status, 201);
+
+  const statusResponse = await fetch(`${baseUrl}/api/access/status`);
+  const statusBody = await statusResponse.json();
+  assert.equal(statusBody.auth_mode, 'credentials');
+  assert.equal(statusBody.signup_required, false);
+
+  const deniedLogin = await fetch(`${baseUrl}/api/access/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: 'password123' }),
+  });
+  assert.equal(deniedLogin.status, 401);
+
+  const loginResponse = await fetch(`${baseUrl}/api/access/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'acme',
+      email: 'owner@acme.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(loginResponse.status, 200);
 });
 
 test('onboarding standards endpoint returns canonical option sets', async (t) => {

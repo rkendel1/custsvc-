@@ -140,6 +140,12 @@
 
       <section id="loginPane" class="auth-pane active">
         <form id="accessForm">
+          <label>Workspace ID
+            <input id="workspaceId" autocomplete="organization" placeholder="Optional" />
+          </label>
+          <label>Work email
+            <input id="workEmail" type="email" autocomplete="email" placeholder="Optional" />
+          </label>
           <label>Password
             <input id="password" type="password" autocomplete="current-password" required />
           </label>
@@ -152,6 +158,12 @@
           <h2>Create password</h2>
           <p id="passwordHelp">Create your workspace password. You will use this password to access protected pages.</p>
           <form id="passwordForm">
+            <label>Workspace ID
+              <input id="signupWorkspaceId" autocomplete="organization" required />
+            </label>
+            <label>Work email
+              <input id="signupWorkEmail" type="email" autocomplete="email" required />
+            </label>
             <label>New password
               <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required />
             </label>
@@ -168,10 +180,14 @@
 
     <script>
       const form = document.getElementById('accessForm');
+      const workspaceIdInput = document.getElementById('workspaceId');
+      const workEmailInput = document.getElementById('workEmail');
       const passwordInput = document.getElementById('password');
       const passwordForm = document.getElementById('passwordForm');
       const newPasswordInput = document.getElementById('newPassword');
       const confirmPasswordInput = document.getElementById('confirmPassword');
+      const signupWorkspaceIdInput = document.getElementById('signupWorkspaceId');
+      const signupWorkEmailInput = document.getElementById('signupWorkEmail');
       const passwordHelp = document.getElementById('passwordHelp');
       const introText = document.getElementById('introText');
       const status = document.getElementById('status');
@@ -199,6 +215,21 @@
       async function refreshStatus() {
         try {
           const state = await getAccessStatus();
+          if (state.signup_required) {
+            introText.textContent = 'Create your workspace account to continue.';
+            passwordHelp.textContent = 'Use your workspace ID, work email, and password to create your account.';
+            setMode('signup');
+            setStatus('Create your account to continue.');
+            return;
+          }
+
+          if (state.auth_mode === 'credentials') {
+            introText.textContent = 'Sign in with workspace ID, email, and password.';
+            setMode('login');
+            setStatus('Enter your credentials to sign in.');
+            return;
+          }
+
           if (!state.password_required) {
             introText.textContent = 'Create a workspace password to get started.';
             setMode('signup');
@@ -211,7 +242,7 @@
           } else {
             introText.textContent = 'Sign in with your workspace password to continue.';
             setMode('login');
-            setStatus('You are logged out.');
+            setStatus('Enter your credentials to sign in.');
           }
         } catch (_error) {
           setStatus('Could not check access state.');
@@ -222,10 +253,23 @@
         event.preventDefault();
         setStatus('Checking password...');
 
+        const workspaceId = String(workspaceIdInput.value || '').trim();
+        const workEmail = String(workEmailInput.value || '').trim().toLowerCase();
+        if (!workspaceId || !workEmail) {
+          setStatus('Workspace ID and work email are required.');
+          return;
+        }
+        if (workEmail) localStorage.setItem('knowledgeos_last_email', workEmail);
+        if (workspaceId) localStorage.setItem('knowledgeos_last_workspace', workspaceId);
+
         const response = await fetch('/api/access/login', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ password: passwordInput.value }),
+          body: JSON.stringify({
+            password: passwordInput.value,
+            email: workEmail || undefined,
+            tenant_id: workspaceId || undefined,
+          }),
         });
 
         const text = await response.text();
@@ -246,6 +290,13 @@
         event.preventDefault();
         const newPassword = newPasswordInput.value;
         const confirmPassword = confirmPasswordInput.value;
+        const signupWorkspaceId = String(signupWorkspaceIdInput.value || '').trim();
+        const signupWorkEmail = String(signupWorkEmailInput.value || '').trim().toLowerCase();
+
+        if (!signupWorkspaceId || !signupWorkEmail) {
+          setStatus('Workspace ID and work email are required.');
+          return;
+        }
 
         if (!newPassword || newPassword.length < 8) {
           setStatus('New password must be at least 8 characters.');
@@ -258,11 +309,13 @@
 
         setStatus('Saving password...');
 
-        const response = await fetch('/api/access/password', {
+        const response = await fetch('/api/access/signup', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            new_password: newPassword,
+            tenant_id: signupWorkspaceId,
+            email: signupWorkEmail,
+            password: newPassword,
           }),
         });
 
@@ -277,10 +330,25 @@
 
         newPasswordInput.value = '';
         confirmPasswordInput.value = '';
-        setStatus('Password updated. You are logged in.');
+        signupWorkspaceIdInput.value = signupWorkspaceId;
+        signupWorkEmailInput.value = signupWorkEmail;
+        workspaceIdInput.value = signupWorkspaceId;
+        workEmailInput.value = signupWorkEmail;
+        localStorage.setItem('knowledgeos_last_email', signupWorkEmail);
+        localStorage.setItem('knowledgeos_last_workspace', signupWorkspaceId);
+        setStatus('Account created. You are signed in.');
         await refreshStatus();
         window.location.href = next;
       });
+
+      {
+        const savedEmail = localStorage.getItem('knowledgeos_last_email') || '';
+        const savedWorkspace = localStorage.getItem('knowledgeos_last_workspace') || '';
+        if (workEmailInput && savedEmail) workEmailInput.value = savedEmail;
+        if (workspaceIdInput && savedWorkspace) workspaceIdInput.value = savedWorkspace;
+        if (signupWorkEmailInput && savedEmail) signupWorkEmailInput.value = savedEmail;
+        if (signupWorkspaceIdInput && savedWorkspace) signupWorkspaceIdInput.value = savedWorkspace;
+      }
 
       refreshStatus();
     </script>

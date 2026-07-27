@@ -548,8 +548,127 @@ function getConsolePasswordState(req) {
   return req?.app?.locals?.consolePasswordState || null;
 }
 
+function getAccessCredentialState(req) {
+  return req?.app?.locals?.accessCredentialState || null;
+}
+
 function getConsolePasswordRecordPath(rootDir) {
   return path.join(rootDir, 'data', 'console_access.json');
+}
+
+function getAccessCredentialRecordPath(rootDir) {
+  return path.join(rootDir, 'data', 'access_credentials.json');
+}
+
+function loadAccessCredentialRecords(rootDir) {
+  const filePath = getAccessCredentialRecordPath(rootDir);
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeAccessCredentialRecords(rootDir, records) {
+  const filePath = getAccessCredentialRecordPath(rootDir);
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(records, null, 2)}\n`, 'utf8');
+}
+
+function hashAccessCredentialPassword(password, salt) {
+  return scryptSync(String(password || ''), String(salt || ''), 64).toString('hex');
+}
+
+function normalizeCredentialTenantId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeCredentialEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function createAccessCredentialState(rootDir) {
+  let records = loadAccessCredentialRecords(rootDir)
+    .map((item) => ({
+      tenant_id: normalizeCredentialTenantId(item?.tenant_id),
+      email: normalizeCredentialEmail(item?.email),
+      salt: String(item?.salt || '').trim(),
+      password_hash: String(item?.password_hash || '').trim(),
+      updated_at: item?.updated_at ? String(item.updated_at) : null,
+      created_at: item?.created_at ? String(item.created_at) : null,
+    }))
+    .filter((item) => item.tenant_id && item.email && item.salt && item.password_hash);
+
+  function persist() {
+    writeAccessCredentialRecords(rootDir, records);
+  }
+
+  return {
+    hasCredentials() {
+      return records.length > 0;
+    },
+    upsert({ tenantId, email, password }) {
+      const normalizedTenantId = normalizeCredentialTenantId(tenantId);
+      const normalizedEmail = normalizeCredentialEmail(email);
+      const candidatePassword = String(password || '').trim();
+      if (!normalizedTenantId || !normalizedEmail || !candidatePassword) return { ok: false, error: 'tenant_id, email, and password are required' };
+      if (candidatePassword.length < 8) return { ok: false, error: 'password must be at least 8 characters' };
+
+      const salt = randomBytes(16).toString('hex');
+      const passwordHash = hashAccessCredentialPassword(candidatePassword, salt);
+      const updatedAt = new Date().toISOString();
+      const existingIndex = records.findIndex(
+        (item) => item.tenant_id === normalizedTenantId && item.email === normalizedEmail,
+      );
+
+      if (existingIndex >= 0) {
+        records[existingIndex] = {
+          ...records[existingIndex],
+          salt,
+          password_hash: passwordHash,
+          updated_at: updatedAt,
+        };
+      } else {
+        records.push({
+          tenant_id: normalizedTenantId,
+          email: normalizedEmail,
+          salt,
+          password_hash: passwordHash,
+          created_at: updatedAt,
+          updated_at: updatedAt,
+        });
+      }
+
+      persist();
+      return { ok: true, tenant_id: normalizedTenantId, email: normalizedEmail };
+    },
+    verify({ tenantId, email, password }) {
+      const normalizedTenantId = normalizeCredentialTenantId(tenantId);
+      const normalizedEmail = normalizeCredentialEmail(email);
+      const candidatePassword = String(password || '').trim();
+      if (!normalizedTenantId || !normalizedEmail || !candidatePassword) {
+        return { ok: false, error: 'tenant_id, email, and password are required' };
+      }
+
+      const record = records.find(
+        (item) => item.tenant_id === normalizedTenantId && item.email === normalizedEmail,
+      );
+      if (!record) return { ok: false, error: 'invalid credentials' };
+
+      const candidateHash = hashAccessCredentialPassword(candidatePassword, record.salt);
+      const expected = Buffer.from(String(record.password_hash), 'hex');
+      const provided = Buffer.from(String(candidateHash), 'hex');
+      if (expected.length !== provided.length) return { ok: false, error: 'invalid credentials' };
+      if (!timingSafeEqual(expected, provided)) return { ok: false, error: 'invalid credentials' };
+
+      return { ok: true, tenant_id: normalizedTenantId, email: normalizedEmail };
+    },
+  };
 }
 
 function loadConsolePasswordRecord(rootDir) {
@@ -685,6 +804,8 @@ function verifyConsoleAccessToken(token) {
 
 function shouldRequireConsolePassword(req) {
   if (isSecurityRelaxed()) return false;
+  const credentialState = getAccessCredentialState(req);
+  if (credentialState?.hasCredentials && credentialState.hasCredentials()) return true;
   if (getConsolePassword()) return true;
   const state = getConsolePasswordState(req);
   return Boolean(state?.hasStoredPassword && state.hasStoredPassword());
@@ -1128,6 +1249,7 @@ function createApp(options = {}) {
   const connectorVault = createConnectorVault({ storage });
   const pgVectorStore = createPgVectorStore();
   const consolePasswordState = createConsolePasswordState(rootDir);
+  const accessCredentialState = createAccessCredentialState(rootDir);
 
   async function upsertVectorDocument(document) {
     const embedding = normalizeEmbedding(document?.embeddings);
@@ -1172,6 +1294,7 @@ function createApp(options = {}) {
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.locals.consolePasswordState = consolePasswordState;
+  app.locals.accessCredentialState = accessCredentialState;
 
   function requireConsoleAccess(req, res, next) {
     if (isConsoleAuthorized(req)) return next();
@@ -1232,19 +1355,44 @@ function createApp(options = {}) {
   });
 
   app.get('/api/access/status', (_req, res) => {
+    const credentialsEnabled = accessCredentialState.hasCredentials();
     res.json({
       password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
       password_source: consolePasswordState.source(),
+      auth_mode: credentialsEnabled ? 'credentials' : 'password',
+      signup_required: !credentialsEnabled,
     });
   });
 
   app.post('/api/access/login', (req, res) => {
+    const credentialsEnabled = accessCredentialState.hasCredentials();
+    const password = String(req.body?.password || '').trim();
+    const tenantId = String(req.body?.tenant_id || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+
+    if (credentialsEnabled) {
+      const verified = accessCredentialState.verify({ tenantId, email, password });
+      if (!verified.ok) {
+        const message = verified.error === 'tenant_id, email, and password are required'
+          ? 'tenant_id, email, and password are required'
+          : 'invalid credentials';
+        return res.status(401).json({ error: message });
+      }
+
+      const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+      const token = signConsoleAccessToken({ exp: expiresAt, tenant_id: verified.tenant_id, email: verified.email });
+      if (!token) {
+        return res.status(500).json({ error: 'console auth secret is not configured' });
+      }
+      setConsoleAuthCookie(res, token);
+      return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString(), auth_mode: 'credentials' });
+    }
+
     if (!shouldRequireConsolePassword(req)) {
       return res.json({ ok: true, password_required: false });
     }
 
-    const password = String(req.body?.password || '').trim();
     if (!isConsolePasswordMatch(req, password)) {
       return res.status(401).json({ error: 'invalid password' });
     }
@@ -1256,6 +1404,43 @@ function createApp(options = {}) {
     }
     setConsoleAuthCookie(res, token);
     return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString() });
+  });
+
+  app.post('/api/access/signup', (req, res) => {
+    const tenantId = String(req.body?.tenant_id || '').trim().toLowerCase();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '').trim();
+    if (!tenantId || !email || !password) {
+      return res.status(400).json({ error: 'tenant_id, email, and password are required' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'a valid email is required' });
+    }
+
+    const tenants = listData(storage, 'listTenants');
+    const tenant = tenants.find((item) => String(item.tenant_id || '').toLowerCase() === tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'tenant not found' });
+    }
+
+    const upserted = accessCredentialState.upsert({ tenantId, email, password });
+    if (!upserted.ok) {
+      return res.status(400).json({ error: upserted.error || 'could not create credentials' });
+    }
+
+    const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    const token = signConsoleAccessToken({ exp: expiresAt, tenant_id: upserted.tenant_id, email: upserted.email });
+    if (!token) {
+      return res.status(500).json({ error: 'console auth secret is not configured' });
+    }
+    setConsoleAuthCookie(res, token);
+    return res.status(201).json({
+      ok: true,
+      tenant_id: upserted.tenant_id,
+      email: upserted.email,
+      expires_at: new Date(expiresAt).toISOString(),
+      auth_mode: 'credentials',
+    });
   });
 
   app.post('/api/access/logout', (_req, res) => {
