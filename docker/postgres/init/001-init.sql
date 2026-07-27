@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS knowledge_embeddings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_tenant ON knowledge_embeddings (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_vector_cosine ON knowledge_embeddings USING ivfflat (embedding vector_cosine_ops);
 
 CREATE TABLE IF NOT EXISTS connector_secrets (
   tenant_id TEXT NOT NULL,

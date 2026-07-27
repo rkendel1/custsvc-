@@ -242,6 +242,78 @@ Common routes:
 - `/demo` demo environment
 - `/health` health check
 
+## Docker Workflows
+
+### Local development (app + Postgres + Adminer)
+
+Optional: copy local docker env template:
+
+```bash
+cp .env.docker.dev.example .env
+```
+
+Start:
+
+```bash
+npm run docker:dev:up
+```
+
+Logs:
+
+```bash
+npm run docker:dev:logs
+```
+
+Stop:
+
+```bash
+npm run docker:dev:down
+```
+
+Local endpoints:
+
+- App: `http://localhost:${APP_PORT:-3000}`
+- Adminer: `http://localhost:${ADMINER_PORT:-8081}`
+- Postgres: `localhost:${PG_LOCAL_PORT:-5432}`
+
+### Production container deployment
+
+Create a production env file first:
+
+```bash
+cp .env.docker.prod.example .env.prod
+```
+
+Then run with your production values loaded (example):
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+Build and run with production compose file:
+
+```bash
+npm run docker:prod:up
+```
+
+Stop:
+
+```bash
+npm run docker:prod:down
+```
+
+Required production env values:
+
+- `DATABASE_URL` (or `PGHOST` + `PGPORT` + `PGUSER` + `PGPASSWORD` + `PGDATABASE`)
+- `SOURCE_SECRET_KEY`
+- `PG_REQUIRE_ON_STARTUP=true`
+- `PG_ALLOW_JSON_FALLBACK=false`
+
+Recommended TLS settings:
+
+- Availability-first: `PGSSLMODE=require`, `PGSSL_STRICT_REQUIRE_CA=false`
+- Strict CA validation: `PGSSLMODE=verify-full` plus `PGSSLROOTCERT` or `DATABASE_SSL_CA`
+
 ## API Surface (Core)
 
 - Documents ingestion and management

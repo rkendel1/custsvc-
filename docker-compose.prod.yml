@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    container_name: knowledgeos-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      HOST: 0.0.0.0
+      COMPANY_NAME: ${COMPANY_NAME:-KnowledgeOS}
+      DATABASE_URL: ${DATABASE_URL}
+      PGHOST: ${PGHOST:-}
+      PGPORT: ${PGPORT:-5432}
+      PGUSER: ${PGUSER:-}
+      PGPASSWORD: ${PGPASSWORD:-}
+      PGDATABASE: ${PGDATABASE:-}
+      PGSSLMODE: ${PGSSLMODE:-require}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-}
+      DATABASE_SSL_CA: ${DATABASE_SSL_CA:-}
+      DATABASE_SSL_CA_BASE64: ${DATABASE_SSL_CA_BASE64:-}
+      PGSSL_REJECT_UNAUTHORIZED: ${PGSSL_REJECT_UNAUTHORIZED:-}
+      PGSSL_STRICT_REQUIRE_CA: ${PGSSL_STRICT_REQUIRE_CA:-false}
+      PG_REQUIRE_ON_STARTUP: ${PG_REQUIRE_ON_STARTUP:-true}
+      PG_ALLOW_JSON_FALLBACK: ${PG_ALLOW_JSON_FALLBACK:-false}
+      PG_CONNECT_RETRIES: ${PG_CONNECT_RETRIES:-12}
+      PG_CONNECT_RETRY_DELAY_MS: ${PG_CONNECT_RETRY_DELAY_MS:-2000}
+      SOURCE_SECRET_KEY: ${SOURCE_SECRET_KEY}
+      SOURCE_SECRET_KEY_VERSION: ${SOURCE_SECRET_KEY_VERSION:-1}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_AUTH_SECRET: ${APP_AUTH_SECRET:-}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - app_data:/app/data
+      - app_bundles:/app/bundles
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  app_data:
+  app_bundles:

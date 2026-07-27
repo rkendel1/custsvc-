@@ -9,10 +9,15 @@
     "dev": "node --watch src/server.js",
     "db:init": "node scripts/init-pg-schema.js",
     "db:check": "node scripts/check-pg-version.js",
-    "docker:up": "docker compose up -d --build",
-    "docker:up:localdb": "docker compose --profile localdb up -d --build",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:up": "docker compose -f docker-compose.dev.yml up -d --build",
+    "docker:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "docker:dev:up": "docker compose -f docker-compose.dev.yml up -d --build",
+    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:dev:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml up -d --build",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml down",
+    "docker:prod:logs": "docker compose -f docker-compose.prod.yml logs -f"
   },
   "repository": {
     "type": "git",
