@@ -2562,7 +2562,7 @@ function createApp(options = {}) {
       embed_script: embedScript,
       next_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`,
       admin_url: `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
-      tenant_url: `/tenant.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      tenant_url: `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
     });
   });
 
@@ -2991,7 +2991,7 @@ function createApp(options = {}) {
   });
 
   app.get('/tenant', readLimiter, (req, res) => {
-    res.redirect(withOriginalQuery(req, '/tenant.html'));
+    res.redirect(withOriginalQuery(req, '/admin.html'));
   });
 
   return app;

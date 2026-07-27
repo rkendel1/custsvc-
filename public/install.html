@@ -288,7 +288,7 @@
           scriptOutput.textContent = 'Enter a valid tenant id first.';
           return;
         }
-        window.open(`/tenant.html?tenant_id=${encodeURIComponent(tenantId)}`, '_blank', 'noopener');
+        window.open(`/admin.html?tenant_id=${encodeURIComponent(tenantId)}`, '_blank', 'noopener');
       });
 
       renderScript();

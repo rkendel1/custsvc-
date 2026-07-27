@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KnowledgeOS Tenant Dashboard Demo</title>
+    <title>Redirecting to Dashboard</title>
+    <script>
+      (function redirectTenantDemoToDashboard() {
+        const current = new URL(window.location.href);
+        const next = new URL('/admin.html', current.origin);
+        const tenantId = current.searchParams.get('tenant_id');
+        const sessionToken = current.searchParams.get('session_token');
+        if (tenantId) next.searchParams.set('tenant_id', tenantId);
+        if (sessionToken) next.searchParams.set('session_token', sessionToken);
+        window.location.replace(next.toString());
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />

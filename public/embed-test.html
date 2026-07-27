@@ -181,7 +181,7 @@
         </a>
         <nav class="topnav">
           <a href="/onboarding.html">Setup</a>
-          <a id="spaceLink" href="/tenant.html">Your space</a>
+          <a id="spaceLink" href="/admin.html">Dashboard</a>
           <a id="dashboardLink" href="/access.html?next=%2Fadmin.html">Dashboard</a>
         </nav>
       </header>
@@ -268,11 +268,11 @@
       function updateLinks(tenantId) {
         const safeTenant = normalizeTenant(tenantId);
         if (!safeTenant) {
-          spaceLink.href = '/tenant.html';
+          spaceLink.href = '/admin.html';
           dashboardLink.href = '/access.html?next=%2Fadmin.html';
           return;
         }
-        spaceLink.href = `/tenant.html?tenant_id=${encodeURIComponent(safeTenant)}`;
+        spaceLink.href = `/admin.html?tenant_id=${encodeURIComponent(safeTenant)}`;
         const next = `/admin.html?tenant_id=${encodeURIComponent(safeTenant)}`;
         dashboardLink.href = `/access.html?next=${encodeURIComponent(next)}`;
       }

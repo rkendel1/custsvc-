@@ -403,7 +403,7 @@
             <div class="inline-actions" style="margin-top:0.5rem;">
               <button id="copyEmbedBtn" type="button" class="btn-ghost">Copy embed script</button>
               <button id="openEmbedTesterBtn" type="button" class="btn-ghost">Open embed tester</button>
-              <button id="goToSpaceBtn" type="button" class="btn-ghost">Go to your space</button>
+              <button id="goToSpaceBtn" type="button" class="btn-ghost">Open dashboard</button>
               <button id="goToDashboardBtn" type="button" class="btn-ghost">Go to dashboard</button>
             </div>
           </div>
@@ -747,9 +747,10 @@
       });
 
       goToSpaceBtn?.addEventListener('click', () => {
-        const resolvedTenant = requireTenantDestination('Go to your space');
+        const resolvedTenant = requireTenantDestination('Open dashboard');
         if (!resolvedTenant) return;
-        window.location.href = `/tenant.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+        const next = `/admin.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+        window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       });
 
       goToDashboardBtn?.addEventListener('click', () => {
