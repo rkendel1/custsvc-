@@ -146,6 +146,149 @@ function normalizeSourceType(value) {
   return normalized || 'GENERIC';
 }
 
+const SOURCE_TEMPLATES = {
+  SHAREPOINT: {
+    display_name: 'SharePoint',
+    fields: [
+      { key: 'tenant_id', label: 'Tenant ID', required: true, input_type: 'text' },
+      { key: 'site_id', label: 'Site ID', required: true, input_type: 'text' },
+      { key: 'client_id', label: 'Client ID', required: true, input_type: 'text' },
+      { key: 'client_secret', label: 'Client Secret', required: true, input_type: 'password' },
+    ],
+  },
+  WEBSITE: {
+    display_name: 'Website',
+    fields: [
+      { key: 'start_path', label: 'Start path', required: false, input_type: 'text' },
+      { key: 'crawl_depth', label: 'Crawl depth', required: false, input_type: 'number' },
+      { key: 'user_agent', label: 'User agent', required: false, input_type: 'text' },
+    ],
+  },
+  CONFLUENCE: {
+    display_name: 'Confluence',
+    fields: [
+      { key: 'workspace', label: 'Workspace', required: true, input_type: 'text' },
+      { key: 'email', label: 'Admin email', required: true, input_type: 'email' },
+      { key: 'api_token', label: 'API token', required: true, input_type: 'password' },
+    ],
+  },
+  GOOGLE_DRIVE: {
+    display_name: 'Google Drive',
+    fields: [
+      { key: 'folder_id', label: 'Folder ID', required: true, input_type: 'text' },
+      { key: 'service_account_email', label: 'Service account email', required: true, input_type: 'email' },
+      { key: 'private_key_id', label: 'Private key ID', required: true, input_type: 'text' },
+    ],
+  },
+  NOTION: {
+    display_name: 'Notion',
+    fields: [
+      { key: 'workspace', label: 'Workspace', required: true, input_type: 'text' },
+      { key: 'integration_token', label: 'Integration token', required: true, input_type: 'password' },
+    ],
+  },
+  SLACK: {
+    display_name: 'Slack',
+    fields: [
+      { key: 'workspace', label: 'Workspace', required: true, input_type: 'text' },
+      { key: 'bot_token', label: 'Bot token', required: true, input_type: 'password' },
+      { key: 'channel_ids', label: 'Channel IDs (comma-separated)', required: false, input_type: 'text' },
+    ],
+  },
+  ZENDESK: {
+    display_name: 'Zendesk',
+    fields: [
+      { key: 'subdomain', label: 'Subdomain', required: true, input_type: 'text' },
+      { key: 'email', label: 'Agent email', required: true, input_type: 'email' },
+      { key: 'api_token', label: 'API token', required: true, input_type: 'password' },
+    ],
+  },
+  SALESFORCE: {
+    display_name: 'Salesforce',
+    fields: [
+      { key: 'instance_url', label: 'Instance URL', required: true, input_type: 'url' },
+      { key: 'client_id', label: 'Client ID', required: true, input_type: 'text' },
+      { key: 'client_secret', label: 'Client Secret', required: true, input_type: 'password' },
+    ],
+  },
+  S3: {
+    display_name: 'S3',
+    fields: [
+      { key: 'bucket', label: 'Bucket', required: true, input_type: 'text' },
+      { key: 'region', label: 'Region', required: true, input_type: 'text' },
+      { key: 'access_key_id', label: 'Access key ID', required: true, input_type: 'text' },
+      { key: 'secret_access_key', label: 'Secret access key', required: true, input_type: 'password' },
+    ],
+  },
+  GITHUB: {
+    display_name: 'GitHub',
+    fields: [
+      { key: 'org_or_owner', label: 'Org or owner', required: true, input_type: 'text' },
+      { key: 'repo', label: 'Repository', required: false, input_type: 'text' },
+      { key: 'token', label: 'Token', required: true, input_type: 'password' },
+    ],
+  },
+  GENERIC: {
+    display_name: 'Generic',
+    fields: [
+      { key: 'notes', label: 'Connection notes', required: false, input_type: 'text' },
+    ],
+  },
+};
+
+function getSourceTemplate(type) {
+  const normalized = normalizeSourceType(type);
+  return SOURCE_TEMPLATES[normalized] || SOURCE_TEMPLATES.GENERIC;
+}
+
+function normalizeSourceConfig(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return {};
+  const entries = Object.entries(config);
+  const output = {};
+  for (const [key, value] of entries) {
+    const cleanKey = String(key || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .slice(0, 48);
+    if (!cleanKey) continue;
+    if (value === null || value === undefined) continue;
+    output[cleanKey] = String(value).trim();
+  }
+  return output;
+}
+
+function validateSourceConfig(type, config) {
+  const normalizedType = normalizeSourceType(type);
+  const template = getSourceTemplate(normalizedType);
+  const safeConfig = normalizeSourceConfig(config);
+  const missing = [];
+  for (const field of template.fields || []) {
+    if (!field.required) continue;
+    if (!String(safeConfig[field.key] || '').trim()) missing.push(field.key);
+  }
+  return {
+    type: normalizedType,
+    config: safeConfig,
+    missing,
+    ok: missing.length === 0,
+  };
+}
+
+function redactSourceConfig(config) {
+  const safeConfig = normalizeSourceConfig(config);
+  const sensitivePattern = /(secret|token|password|key)/i;
+  const redacted = {};
+  for (const [key, value] of Object.entries(safeConfig)) {
+    if (sensitivePattern.test(key)) {
+      redacted[key] = value ? '***' : '';
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
+
 function sourceHealth(source) {
   const status = String(source?.status || 'connected').toLowerCase();
   if (status !== 'connected') return status;
@@ -702,22 +845,42 @@ function createApp(options = {}) {
     res.json({ analytics });
   });
 
+  app.get('/api/sources/templates', readLimiter, (_req, res) => {
+    const templates = Object.entries(SOURCE_TEMPLATES).map(([type, template]) => ({
+      type,
+      ...template,
+    }));
+    res.json({ templates });
+  });
+
   app.get('/api/sources', readLimiter, (req, res) => {
     const tenantId = resolveTenantId(req) || null;
     const allSources = listData(storage, 'listSources');
     const sources = tenantId ? allSources.filter((item) => item.tenant_id === tenantId) : allSources;
     const summarized = sources.map((source) => ({
       ...source,
+      config: redactSourceConfig(source.config),
       health: sourceHealth(source),
     }));
     res.json({ sources: summarized });
   });
 
   app.post('/api/sources', writeLimiter, (req, res) => {
-    const { name, type = 'GENERIC', site_url = null, poll_minutes = 60, config = {} } = req.body || {};
+    const { name, type = 'GENERIC', site_url = null, poll_minutes = 60, config = {}, credentials = {} } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required' });
     if (site_url && !isValidHttpUrl(site_url)) {
       return res.status(400).json({ error: 'site_url must be public http(s) and not private/internal' });
+    }
+
+    const configValidation = validateSourceConfig(type, {
+      ...(typeof config === 'object' && config ? config : {}),
+      ...(typeof credentials === 'object' && credentials ? credentials : {}),
+    });
+    if (!configValidation.ok) {
+      return res.status(400).json({
+        error: `missing required credentials: ${configValidation.missing.join(', ')}`,
+        missing: configValidation.missing,
+      });
     }
 
     const tenantId = resolveTenantId(req) || 'public';
@@ -726,11 +889,11 @@ function createApp(options = {}) {
       source_id: `source-${randomUUID()}`,
       tenant_id: tenantId,
       name: String(name),
-      type: normalizeSourceType(type),
+      type: configValidation.type,
       site_url: site_url ? String(site_url) : null,
       poll_minutes: Math.max(5, Number(poll_minutes || 60)),
       status: 'connected',
-      config: typeof config === 'object' && config ? config : {},
+      config: configValidation.config,
       last_sync_at: null,
       last_sync_status: 'never',
       last_sync_error: null,
@@ -740,7 +903,13 @@ function createApp(options = {}) {
     };
     sources.push(source);
     saveData(storage, 'saveSources', sources);
-    res.status(201).json({ source: { ...source, health: sourceHealth(source) } });
+    res.status(201).json({
+      source: {
+        ...source,
+        config: redactSourceConfig(source.config),
+        health: sourceHealth(source),
+      },
+    });
   });
 
   app.post('/api/sources/:sourceId/sync', writeLimiter, (req, res) => {
@@ -790,7 +959,7 @@ function createApp(options = {}) {
   });
 
   app.post('/api/signup', signupLimiter, (req, res) => {
-    const { name, email, company, companySize, primaryUseCase, deploymentProfile = 'BOTH' } = req.body || {};
+    const { name, email, company, companySize, primaryUseCase, deploymentProfile = 'BOTH', targets = [] } = req.body || {};
     if (!name || !email || !company || !companySize || !primaryUseCase) {
       return res.status(400).json({ error: 'name, email, company, companySize, and primaryUseCase are required' });
     }
@@ -853,6 +1022,10 @@ function createApp(options = {}) {
     saveData(storage, 'saveSubscriptions', subscriptions);
 
     const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+    const requestedTargets = Array.isArray(targets)
+      ? targets.map((target) => normalizeSourceType(target)).filter(Boolean)
+      : [];
+    const targetsQuery = requestedTargets.length ? `&targets=${encodeURIComponent(requestedTargets.join(','))}` : '';
 
     return res.status(201).json({
       tenant,
@@ -861,7 +1034,7 @@ function createApp(options = {}) {
         token: session.token,
         expires_at: session.expires_at,
       },
-      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}${targetsQuery}`,
       email_verification: {
         required: true,
         status: 'pending',

@@ -206,3 +206,80 @@ test('source monitoring endpoints register and sync website sources', async (t) 
   assert.equal(Array.isArray(listed.sources), true);
   assert.equal(listed.sources.length, 1);
 });
+
+test('source templates endpoint returns connector field requirements', async (t) => {
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [],
+    saveSources: () => {},
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/sources/templates`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(Array.isArray(body.templates), true);
+  assert.equal(body.templates.some((template) => template.type === 'SHAREPOINT'), true);
+});
+
+test('source creation enforces required credentials and redacts sensitive fields', async (t) => {
+  const sources = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const invalidResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'SharePoint Help Center',
+      type: 'SHAREPOINT',
+      tenant_id: 'public',
+    }),
+  });
+  const invalidBody = await invalidResponse.json();
+  assert.equal(invalidResponse.status, 400);
+  assert.equal(Array.isArray(invalidBody.missing), true);
+  assert.equal(invalidBody.missing.includes('client_secret'), true);
+
+  const validResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'SharePoint Help Center',
+      type: 'SHAREPOINT',
+      tenant_id: 'public',
+      credentials: {
+        tenant_id: 'tenant-123',
+        site_id: 'site-123',
+        client_id: 'client-123',
+        client_secret: 'secret-value',
+      },
+    }),
+  });
+  const validBody = await validResponse.json();
+  assert.equal(validResponse.status, 201);
+  assert.equal(validBody.source.config.client_secret, '***');
+
+  const listResponse = await fetch(`${baseUrl}/api/sources`);
+  const listed = await listResponse.json();
+  assert.equal(listResponse.status, 200);
+  assert.equal(listed.sources[0].config.client_secret, '***');
+});

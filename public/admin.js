@@ -33,6 +33,39 @@ function parseMaybeJsonArray(value) {
   }
 }
 
+let sourceTemplates = [];
+
+function getSourceTemplate(type) {
+  const normalizedType = String(type || 'GENERIC').toUpperCase();
+  return sourceTemplates.find((template) => template.type === normalizedType) || null;
+}
+
+function renderSourceCredentialFields(type) {
+  const container = document.getElementById('sourceCredentialFields');
+  if (!container) return;
+  const template = getSourceTemplate(type);
+  if (!template || !Array.isArray(template.fields) || !template.fields.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const labels = template.fields
+    .map((field) => {
+      const inputType = field.input_type || 'text';
+      const requiredAttr = field.required ? 'required' : '';
+      const requiredSuffix = field.required ? ' *' : '';
+      return `<label>${field.label}${requiredSuffix}<input name="cred__${field.key}" type="${inputType}" ${requiredAttr} /></label>`;
+    })
+    .join('');
+
+  container.innerHTML = `<div class="stack"><strong>Credentials for ${template.display_name}</strong>${labels}</div>`;
+}
+
+async function loadSourceTemplates() {
+  const data = await requestJson('/api/sources/templates');
+  sourceTemplates = Array.isArray(data.templates) ? data.templates : [];
+}
+
 async function refreshDocuments() {
   const output = document.getElementById('docsOutput');
   try {
@@ -163,11 +196,28 @@ function wireBulkDocForm() {
 
 function wireSourceForm() {
   const form = document.getElementById('sourceForm');
+  const typeInput = form.querySelector('select[name="type"]');
+
+  typeInput.addEventListener('change', () => {
+    renderSourceCredentialFields(typeInput.value);
+  });
+
+  renderSourceCredentialFields(typeInput.value);
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
-    const payload = Object.fromEntries(formData.entries());
+    const payload = {};
+    const credentials = {};
+    for (const [key, value] of formData.entries()) {
+      if (String(key).startsWith('cred__')) {
+        credentials[String(key).slice(6)] = String(value || '');
+      } else {
+        payload[key] = value;
+      }
+    }
     payload.poll_minutes = Number(payload.poll_minutes || 60);
+    payload.credentials = credentials;
 
     try {
       await requestJson('/api/sources', {
@@ -176,6 +226,7 @@ function wireSourceForm() {
         body: JSON.stringify(payload),
       });
       form.reset();
+      renderSourceCredentialFields('GENERIC');
       await refreshSources();
     } catch (error) {
       alert(error.message);
@@ -275,7 +326,9 @@ function wireConsoleWizard() {
   render();
 }
 
-function main() {
+async function bootstrapAdmin() {
+  await loadSourceTemplates();
+
   wireConsoleWizard();
   wireTextDocForm();
   wireUrlDocForm();
@@ -289,9 +342,11 @@ function main() {
   document.getElementById('refreshAnalytics').addEventListener('click', refreshAnalytics);
   document.getElementById('refreshSources').addEventListener('click', refreshSources);
 
-  refreshDocuments();
-  refreshAnalytics();
-  refreshSources();
+  await refreshDocuments();
+  await refreshAnalytics();
+  await refreshSources();
 }
 
-main();
+bootstrapAdmin().catch((error) => {
+  alert(error.message || 'Failed to initialize admin console');
+});

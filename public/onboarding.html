@@ -239,6 +239,7 @@
               </select>
             </label>
             <label>Source URL <input id="sourceUrl" placeholder="https://..." /></label>
+            <div id="sourceCredentialFields"></div>
             <div class="inline-actions">
               <button id="connectSourceBtn" class="btn-primary">Connect Source</button>
               <button id="refreshSourceMonitorBtn" class="btn-ghost">Refresh Source Monitor</button>
@@ -276,10 +277,16 @@
       const params = new URLSearchParams(window.location.search);
       const tenantId = params.get('tenant_id') || '';
       const sessionToken = params.get('session_token') || '';
+      const requestedTargets = String(params.get('targets') || '')
+        .split(',')
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean);
       const output = document.getElementById('output');
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
       const nextStep = document.getElementById('nextStep');
+      const sourceTypeInput = document.getElementById('sourceType');
+      let sourceTemplates = [];
       let step = 1;
       document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
 
@@ -292,6 +299,44 @@
 
       function selectedTargets() {
         return [...document.querySelectorAll('#targetGrid input:checked')].map((item) => item.value);
+      }
+
+      function getSourceTemplate(type) {
+        const normalizedType = String(type || 'GENERIC').toUpperCase();
+        return sourceTemplates.find((template) => template.type === normalizedType) || null;
+      }
+
+      function renderSourceCredentialFields(type) {
+        const container = document.getElementById('sourceCredentialFields');
+        if (!container) return;
+        const template = getSourceTemplate(type);
+        if (!template || !Array.isArray(template.fields) || !template.fields.length) {
+          container.innerHTML = '';
+          return;
+        }
+
+        const labels = template.fields
+          .map((field) => {
+            const inputType = field.input_type || 'text';
+            const requiredAttr = field.required ? 'required' : '';
+            const requiredSuffix = field.required ? ' *' : '';
+            return `<label>${field.label}${requiredSuffix}<input name="cred__${field.key}" type="${inputType}" ${requiredAttr} /></label>`;
+          })
+          .join('');
+
+        container.innerHTML = `<div><strong>Credentials for ${template.display_name}</strong>${labels}</div>`;
+      }
+
+      async function loadSourceTemplates() {
+        const data = await getJson('/api/sources/templates');
+        sourceTemplates = Array.isArray(data.templates) ? data.templates : [];
+      }
+
+      function applyRequestedTargets() {
+        if (!requestedTargets.length) return;
+        document.querySelectorAll('#targetGrid input').forEach((node) => {
+          node.checked = requestedTargets.includes(node.value);
+        });
       }
 
       function updateTargetSummary() {
@@ -310,6 +355,11 @@
           chip.className = 'chip';
           chip.textContent = target;
           targetSummary.appendChild(chip);
+        }
+
+        if (targets.length && !targets.includes(sourceTypeInput.value)) {
+          sourceTypeInput.value = targets[0];
+          renderSourceCredentialFields(sourceTypeInput.value);
         }
       }
 
@@ -334,6 +384,11 @@
       document.querySelectorAll('#targetGrid input').forEach((node) => {
         node.addEventListener('change', updateTargetSummary);
       });
+      sourceTypeInput.addEventListener('change', () => {
+        renderSourceCredentialFields(sourceTypeInput.value);
+      });
+
+      applyRequestedTargets();
       updateTargetSummary();
       renderStep();
 
@@ -380,12 +435,18 @@
 
       document.getElementById('connectSourceBtn').addEventListener('click', async () => {
         try {
+          const credentials = {};
+          document.querySelectorAll('#sourceCredentialFields input[name^="cred__"]').forEach((input) => {
+            credentials[input.name.slice(6)] = input.value || '';
+          });
+
           const payload = {
             tenant_id: tenantId,
             name: document.getElementById('sourceName').value,
             type: document.getElementById('sourceType').value,
             site_url: document.getElementById('sourceUrl').value,
             poll_minutes: 60,
+            credentials,
           };
           const data = await postJson('/api/sources', payload);
           output.textContent = JSON.stringify(data, null, 2);
@@ -446,6 +507,12 @@
           output.textContent = error.message;
         }
       });
+
+      loadSourceTemplates()
+        .then(() => renderSourceCredentialFields(sourceTypeInput.value))
+        .catch((error) => {
+          output.textContent = error.message;
+        });
     </script>
   </body>
 </html>
