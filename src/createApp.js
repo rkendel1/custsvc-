@@ -2282,6 +2282,11 @@ function createApp(options = {}) {
   function canAutoProvisionEmbedRuntime(req, tenantId) {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) return false;
+
+    // Treat requests on the canonical tenant subdomain as trusted for public embed provisioning.
+    const hostTenantId = String(resolveTenantIdFromHost(req) || '').trim();
+    if (hostTenantId && hostTenantId === normalizedTenantId) return true;
+
     if (!isConsoleAuthorized(req)) return false;
     const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
     return Boolean(identityTenantId && identityTenantId === normalizedTenantId);

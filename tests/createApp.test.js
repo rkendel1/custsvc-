@@ -525,6 +525,50 @@ test('embed session does not auto-provision without authenticated tenant identit
   assert.equal(fs.existsSync(tenantBundlePath), false);
 });
 
+test('embed session auto-provisions on matching tenant subdomain without console auth', async (t) => {
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-host-provision-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const onboardingResponse = await fetch(`${baseUrl}/api/onboarding/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Host Provision',
+      email: `owner+${Date.now().toString(36)}@hostprovision.dev`,
+      company: 'Host Provision Co',
+    }),
+  });
+  assert.equal(onboardingResponse.status, 201);
+  const onboardingBody = await onboardingResponse.json();
+  const tenantId = String(onboardingBody?.tenant?.tenant_id || '').trim();
+  assert.equal(Boolean(tenantId), true);
+
+  const sessionResponse = await fetch(`${baseUrl}/api/embed/session?tenant_id=${encodeURIComponent(tenantId)}`, {
+    headers: {
+      'x-forwarded-host': `${tenantId}.tryghostpost.com`,
+      'x-forwarded-proto': 'https',
+      origin: 'https://www.randykendel.com',
+    },
+  });
+  assert.equal(sessionResponse.status, 200);
+  const sessionBody = await sessionResponse.json();
+  assert.equal(typeof sessionBody.token, 'string');
+  assert.equal(sessionBody.token.length > 10, true);
+
+  const deployments = JSON.parse(fs.readFileSync(path.join(rootDir, 'data', 'deployments.json'), 'utf8'));
+  const activeDeployment = deployments.find((item) => item.tenant_id === tenantId && item.status === 'active');
+  assert.equal(Boolean(activeDeployment), true);
+});
+
 test('embed APIs respond to CORS preflight for third-party pages', async (t) => {
   const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
   process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
