@@ -11,6 +11,7 @@
   const department = script?.dataset?.department || '';
   const pgliteModuleUrl = script?.dataset?.pgliteModuleUrl || '/vendor/pglite/index.js';
   const preloadModel = String(script?.dataset?.preloadModel || 'true').toLowerCase() !== 'false';
+  const modelEngineUrl = script?.dataset?.modelEngineUrl || 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
   const permissions = (script?.dataset?.permissions || '')
     .split(',')
     .map((x) => x.trim())
@@ -30,6 +31,7 @@
       model: null,
       mode: aiModeSetting,
       modelStatus: {},
+      localEngine: null,
     },
     pglite: {
       initialized: false,
@@ -569,15 +571,82 @@
     return getAIStatus();
   }
 
+  function isTransformersModel(model) {
+    const engine = String(model?.engine || '').toLowerCase();
+    return engine === 'transformers.js' || engine === 'transformersjs';
+  }
+
+  async function ensureTransformersEngine(model = state.ai.model) {
+    if (!model) throw new Error('model not found');
+    if (!isTransformersModel(model)) return null;
+
+    if (state.ai.localEngine && state.ai.localEngine.modelId === model.id) {
+      return state.ai.localEngine;
+    }
+
+    const moduleUrl = model.engine_url || modelEngineUrl;
+    const modelRepo = model.model_repo || model?.artifact?.repository;
+    if (!modelRepo) throw new Error('model repository is not configured');
+
+    const transformers = await import(moduleUrl);
+    if (typeof transformers.pipeline !== 'function') {
+      throw new Error('transformers pipeline API unavailable');
+    }
+
+    const task = model.task || 'text-generation';
+    const pipeline = await transformers.pipeline(task, modelRepo);
+    state.ai.localEngine = {
+      modelId: model.id,
+      task,
+      modelRepo,
+      moduleUrl,
+      pipeline,
+    };
+    return state.ai.localEngine;
+  }
+
+  async function generateWithLocalModel(question, contextText = '') {
+    const model = state.ai.model;
+    if (!model || state.ai.mode !== AI_MODE.LOCAL) return null;
+    if (!isTransformersModel(model)) return null;
+
+    const runtime = await ensureTransformersEngine(model);
+    const prompt = [
+      'You are a concise company assistant. Answer only from the provided context.',
+      `Context: ${String(contextText || '').slice(0, 1800)}`,
+      `Question: ${question}`,
+      'Answer:',
+    ].join('\n');
+
+    const output = await runtime.pipeline(prompt, {
+      max_new_tokens: Number(model?.generation?.max_new_tokens || 96),
+      temperature: Number(model?.generation?.temperature || 0.2),
+      top_p: Number(model?.generation?.top_p || 0.95),
+      do_sample: true,
+    });
+
+    const generatedText = Array.isArray(output)
+      ? String(output[0]?.generated_text || '')
+      : String(output?.generated_text || output || '');
+    if (!generatedText) return null;
+
+    const normalized = generatedText.startsWith(prompt)
+      ? generatedText.slice(prompt.length).trim()
+      : generatedText.trim();
+    return normalized || null;
+  }
+
   async function downloadModel(modelId) {
     await initializeAI();
     const id = modelId || state.ai.model?.id;
     if (!id) throw new Error('model not found');
     const model = (state.bundle?.models || []).find((item) => item.id === id) || state.ai.model || { id };
-    const artifactPath = model?.artifact?.weights || model?.artifact?.manifest || null;
+    const artifactPath = model?.artifact?.weights || model?.artifact?.manifest || model?.artifact?.repository || null;
     let artifactUrl = null;
     let bytes = 0;
-    if (artifactPath) {
+    if (isTransformersModel(model)) {
+      await ensureTransformersEngine(model);
+    } else if (artifactPath) {
       artifactUrl = new URL(String(artifactPath), window.location.origin).toString();
       const response = await fetch(artifactUrl, { cache: 'force-cache' });
       if (!response.ok) throw new Error(`model artifact fetch failed (${response.status})`);
@@ -599,6 +668,7 @@
       artifactPath,
       artifactUrl,
       bytes,
+      provider: isTransformersModel(model) ? 'transformers.js' : 'artifact-url',
       downloadedAt: new Date().toISOString(),
     };
     return state.ai.model || model;
@@ -621,6 +691,8 @@
       initialized: Boolean(state.ai.initialized),
       mode: state.ai.mode,
       model: state.ai.model,
+      modelStatus: state.ai.model ? state.ai.modelStatus[state.ai.model.id] || null : null,
+      localEngineReady: Boolean(state.ai.localEngine),
       compatibility: detectAICompatibility(),
     };
   }
@@ -722,6 +794,28 @@
     const intentResult = detectIntent(question);
     const results = await search(question, { limit: 1 });
     const best = results[0] || null;
+
+    if (best && best.score >= minAnswerConfidence && state.ai.mode === AI_MODE.LOCAL) {
+      try {
+        const generated = await generateWithLocalModel(question, best.chunk.text || '');
+        if (generated) {
+          return {
+            answer: generated,
+            score: best.score,
+            confidence: Number(Math.max(0.4, Math.min(0.99, best.score)).toFixed(3)),
+            intent: intentResult.intent,
+            process_started: false,
+            topChunkId: best.chunk.id,
+            sourceStoreId: best.source.id,
+            sourceStoreType: best.source.type,
+            answered: true,
+            generated_by: 'local-transformers',
+          };
+        }
+      } catch (_error) {
+        // Fall back to deterministic retrieval answer when local generation fails.
+      }
+    }
 
     if (best && best.score >= minAnswerConfidence) {
       const fresh = freshnessScore(best.chunk);

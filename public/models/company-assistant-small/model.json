@@ -1,6 +1,0 @@
-{
-  "id": "company-assistant-small",
-  "format": "gguf",
-  "runtime": "wasm",
-  "note": "Placeholder manifest for local runtime warmup and artifact prefetch in development containers."
-}

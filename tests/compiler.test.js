@@ -36,8 +36,8 @@ test('compileBundle v6 creates knowledge, chunks, metadata, model manifest, and 
   assert.equal(bundle.processCount, 0);
   assert.ok(Array.isArray(bundle.models));
   assert.equal(bundle.models[0].runtime, 'wasm');
-  assert.equal(bundle.models[0].engine, 'llama.cpp');
-  assert.ok(bundle.models[0].artifact && bundle.models[0].artifact.weights);
+  assert.equal(bundle.models[0].engine, 'transformers.js');
+  assert.equal(bundle.models[0].artifact.repository, 'Xenova/LaMini-Neo-125M');
   assert.ok(Array.isArray(bundle.models[0].capabilities));
   assert.ok(Array.isArray(bundle.runtime_requirements));
   assert.equal(bundle.storage_profile.mode, 'browser-local');

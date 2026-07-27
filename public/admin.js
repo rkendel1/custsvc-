@@ -53,6 +53,16 @@ async function refreshAnalytics() {
   }
 }
 
+async function refreshSources() {
+  const output = document.getElementById('sourcesOutput');
+  try {
+    const data = await requestJson('/api/sources');
+    output.textContent = format(data.sources);
+  } catch (error) {
+    output.textContent = error.message;
+  }
+}
+
 function wireTextDocForm() {
   const form = document.getElementById('textDocForm');
   form.addEventListener('submit', async (event) => {
@@ -121,6 +131,94 @@ function wirePdfDocForm() {
   });
 }
 
+function wireBulkDocForm() {
+  const form = document.getElementById('bulkDocForm');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const raw = String(formData.get('items') || '').trim();
+    let items = [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('items must be a JSON array');
+      items = parsed;
+    } catch (error) {
+      alert(`Invalid JSON: ${error.message}`);
+      return;
+    }
+
+    try {
+      const result = await requestJson('/api/documents/bulk', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      alert(`Imported ${result.inserted_count} documents (${result.rejected_count} rejected).`);
+      await refreshDocuments();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
+function wireSourceForm() {
+  const form = document.getElementById('sourceForm');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    payload.poll_minutes = Number(payload.poll_minutes || 60);
+
+    try {
+      await requestJson('/api/sources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      form.reset();
+      await refreshSources();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
+function wireSourceSync() {
+  const button = document.getElementById('syncSourceBtn');
+  button.addEventListener('click', async () => {
+    const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
+    if (!sourceId) {
+      alert('source id is required');
+      return;
+    }
+
+    const rawDocs = String(document.getElementById('syncDocuments').value || '').trim();
+    let documents = [];
+    if (rawDocs) {
+      try {
+        const parsed = JSON.parse(rawDocs);
+        if (!Array.isArray(parsed)) throw new Error('must be an array');
+        documents = parsed;
+      } catch (error) {
+        alert(`Invalid sync JSON: ${error.message}`);
+        return;
+      }
+    }
+
+    try {
+      await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/sync`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ documents }),
+      });
+      await refreshSources();
+      await refreshDocuments();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
 function wireCompile() {
   const button = document.getElementById('compileBtn');
   const output = document.getElementById('compileOutput');
@@ -152,13 +250,18 @@ function main() {
   wireTextDocForm();
   wireUrlDocForm();
   wirePdfDocForm();
+  wireBulkDocForm();
+  wireSourceForm();
+  wireSourceSync();
   wireCompile();
 
   document.getElementById('refreshDocs').addEventListener('click', refreshDocuments);
   document.getElementById('refreshAnalytics').addEventListener('click', refreshAnalytics);
+  document.getElementById('refreshSources').addEventListener('click', refreshSources);
 
   refreshDocuments();
   refreshAnalytics();
+  refreshSources();
 }
 
 main();

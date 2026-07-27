@@ -17,6 +17,22 @@
     <div class="step"><strong>Step 1:</strong> Company Profile</div>
     <div class="step"><strong>Step 2:</strong> Choose Deployment (Customer Website / Employee Knowledge / Both / Private Enterprise)</div>
     <div class="step"><strong>Step 3:</strong> Import Knowledge (Upload documents / Paste content / Import URL / Connect sources)</div>
+    <div class="step">
+      <strong>Quick Add Knowledge</strong>
+      <textarea id="quickKnowledge" rows="5" style="width: 100%; margin-top: 0.5rem;" placeholder='[{"title":"Return policy","body":"Returns allowed in 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
+      <button id="importKnowledgeBtn">Import Knowledge JSON</button>
+    </div>
+    <div class="step">
+      <strong>Connect External Source (SharePoint / Website)</strong>
+      <input id="sourceName" placeholder="Source name" style="width: 100%; margin-top: 0.5rem;" />
+      <select id="sourceType" style="width: 100%; margin-top: 0.5rem;">
+        <option value="SHAREPOINT">SHAREPOINT</option>
+        <option value="WEBSITE">WEBSITE</option>
+      </select>
+      <input id="sourceUrl" placeholder="https://..." style="width: 100%; margin-top: 0.5rem;" />
+      <button id="connectSourceBtn">Connect Source</button>
+      <button id="refreshSourceMonitorBtn">Refresh Source Monitor</button>
+    </div>
     <div class="step"><strong>Step 4:</strong> Define Audience (Customers / Employees / Managers / Executives)</div>
     <div class="step"><strong>Step 5:</strong> Compile Intelligence</div>
     <button id="compileBtn">Run Step 5</button>
@@ -48,6 +64,54 @@
         if (!response.ok) throw new Error(data.error || 'Request failed');
         return data;
       }
+
+      async function getJson(url) {
+        const response = await fetch(url, { headers: authHeader() });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      }
+
+      document.getElementById('importKnowledgeBtn').addEventListener('click', async () => {
+        try {
+          const raw = document.getElementById('quickKnowledge').value.trim();
+          if (!raw) throw new Error('Enter JSON array first');
+          const items = JSON.parse(raw);
+          if (!Array.isArray(items)) throw new Error('JSON must be an array');
+          const data = await postJson('/api/documents/bulk', {
+            tenant_id: tenantId,
+            items,
+          });
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
+
+      document.getElementById('connectSourceBtn').addEventListener('click', async () => {
+        try {
+          const payload = {
+            tenant_id: tenantId,
+            name: document.getElementById('sourceName').value,
+            type: document.getElementById('sourceType').value,
+            site_url: document.getElementById('sourceUrl').value,
+            poll_minutes: 60,
+          };
+          const data = await postJson('/api/sources', payload);
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
+
+      document.getElementById('refreshSourceMonitorBtn').addEventListener('click', async () => {
+        try {
+          const data = await getJson(`/api/sources?tenant_id=${encodeURIComponent(tenantId)}`);
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
 
       document.getElementById('compileBtn').addEventListener('click', async () => {
         try {

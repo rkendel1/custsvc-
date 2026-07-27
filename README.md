@@ -118,7 +118,7 @@ On page load, the widget runtime now performs warmup automatically:
 
 1. Load bundle from `/bundles/knowledgeos.bundle.json`
 2. Initialize AI mode and selected local model metadata
-3. Prefetch model artifact from bundle manifest path (default: `models/company-assistant-small/model.gguf`)
+3. Download and initialize the configured browser LLM from model repository (default: `Xenova/LaMini-Neo-125M` via Transformers.js)
 4. Initialize browser-local PGlite from `/vendor/pglite/index.js`
 5. Seed a PGlite table with bundle chunks and use it during search
 
@@ -133,8 +133,8 @@ await window.KnowledgeOSRuntime.getRuntimeDiagnostics()
 
 Notes:
 
-- A placeholder local model artifact is included at `public/models/company-assistant-small/model.gguf` for startup/download verification flow.
-- For production-grade local LLM inference, replace placeholder model assets with real quantized weights/tokenizer artifacts.
+- Default local model configuration is emitted by the compiler in `models[]` and points to a real downloadable model repository.
+- You can override model selection by passing `options.models` to the compiler or by embedding custom model metadata in your bundle.
 
 Note: URL ingestion uses secure mode: provide the source URL plus pasted page content.
 
@@ -143,8 +143,12 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `GET /health`
 - `GET /api/documents`
 - `POST /api/documents`
+- `POST /api/documents/bulk`
 - `POST /api/documents/url`
 - `POST /api/documents/pdf` (multipart file upload)
+- `GET /api/sources`
+- `POST /api/sources`
+- `POST /api/sources/:sourceId/sync`
 - `POST /api/compile`
 - `POST /api/telemetry`
 - `GET /api/admin/analytics`

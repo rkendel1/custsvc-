@@ -94,6 +94,47 @@
       </form>
     </section>
 
+    <section>
+      <h2>Bulk Import Knowledge</h2>
+      <form id="bulkDocForm">
+        <label>Items JSON array
+          <textarea name="items" rows="8" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]' required></textarea>
+        </label>
+        <button type="submit">Bulk import</button>
+      </form>
+    </section>
+
+    <section class="row">
+      <div>
+        <h2>Connect Source</h2>
+        <form id="sourceForm">
+          <label>Name <input name="name" placeholder="Support SharePoint" required /></label>
+          <label>Type
+            <select name="type">
+              <option value="SHAREPOINT">SHAREPOINT</option>
+              <option value="WEBSITE">WEBSITE</option>
+              <option value="CONFLUENCE">CONFLUENCE</option>
+              <option value="GOOGLE_DRIVE">GOOGLE_DRIVE</option>
+              <option value="GENERIC">GENERIC</option>
+            </select>
+          </label>
+          <label>Site URL <input name="site_url" type="url" placeholder="https://contoso.sharepoint.com/sites/support" /></label>
+          <label>Poll interval minutes <input name="poll_minutes" type="number" min="5" value="60" /></label>
+          <button type="submit">Register source</button>
+        </form>
+      </div>
+      <div>
+        <h2>Source Monitoring</h2>
+        <button id="refreshSources">Refresh sources</button>
+        <label>Source ID to sync <input id="syncSourceId" placeholder="source-..." /></label>
+        <label>Optional sync documents JSON array
+          <textarea id="syncDocuments" rows="4" placeholder='[{"title":"New FAQ","body":"..."}]'></textarea>
+        </label>
+        <button id="syncSourceBtn">Run source sync</button>
+        <pre id="sourcesOutput">No sources loaded.</pre>
+      </div>
+    </section>
+
     <section class="row">
       <div>
         <h2>Compile bundle</h2>

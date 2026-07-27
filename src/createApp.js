@@ -136,6 +136,51 @@ function isValidHttpUrl(rawUrl) {
   }
 }
 
+function normalizeSourceType(value) {
+  const type = String(value || '').trim().toUpperCase();
+  if (['SHAREPOINT', 'WEBSITE', 'CONFLUENCE', 'GOOGLE_DRIVE', 'GENERIC'].includes(type)) return type;
+  return 'GENERIC';
+}
+
+function sourceHealth(source) {
+  const status = String(source?.status || 'connected').toLowerCase();
+  if (status !== 'connected') return status;
+  const lastSyncAt = source?.last_sync_at ? Date.parse(source.last_sync_at) : null;
+  const pollMinutes = Number(source?.poll_minutes || 60);
+  if (!lastSyncAt || !Number.isFinite(lastSyncAt)) return 'pending';
+  const ageMs = Date.now() - lastSyncAt;
+  if (ageMs > pollMinutes * 60 * 1000 * 2) return 'stale';
+  return 'healthy';
+}
+
+function toDocumentFromInput(input = {}, tenantId) {
+  const title = String(input.title || '').trim();
+  const body = String(input.body || '').trim();
+  if (!title || !body) return null;
+  return {
+    id: `doc-${randomUUID()}`,
+    tenant_id: tenantId,
+    title,
+    body,
+    summary: input.summary ? String(input.summary) : null,
+    type: String(input.type || 'TEXT').toUpperCase(),
+    visibility: normalizeVisibility(input.visibility || 'INTERNAL'),
+    owner: input.owner || null,
+    department: input.department || null,
+    audience: input.audience || null,
+    classification: input.classification || null,
+    status: input.status || 'ACTIVE',
+    tags: Array.isArray(input.tags) ? input.tags : [],
+    relationships: Array.isArray(input.relationships) ? input.relationships : [],
+    citations: Array.isArray(input.citations) ? input.citations : [],
+    last_reviewed: input.last_reviewed || null,
+    review_frequency: input.review_frequency || null,
+    confidence: Number(input.confidence || 0.7),
+    source_url: input.source_url || null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 function listData(storage, listMethod) {
   if (typeof storage[listMethod] !== 'function') return [];
   const data = storage[listMethod]();
@@ -476,6 +521,36 @@ function createApp(options = {}) {
     return res.status(201).json({ document });
   });
 
+  app.post('/api/documents/bulk', writeLimiter, (req, res) => {
+    const tenantId = resolveTenantId(req) || 'public';
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) {
+      return res.status(400).json({ error: 'items array is required' });
+    }
+
+    const docs = listData(storage, 'listDocuments');
+    const inserted = [];
+    const rejected = [];
+
+    for (let i = 0; i < items.length; i += 1) {
+      const candidate = toDocumentFromInput(items[i], tenantId);
+      if (!candidate) {
+        rejected.push({ index: i, reason: 'title and body are required' });
+        continue;
+      }
+      docs.push(candidate);
+      inserted.push(candidate);
+    }
+
+    saveData(storage, 'saveDocuments', docs);
+    return res.status(201).json({
+      inserted_count: inserted.length,
+      rejected_count: rejected.length,
+      rejected,
+      documents: inserted,
+    });
+  });
+
   app.post('/api/documents/url', writeLimiter, (req, res) => {
     const { url, title, content, visibility = 'PUBLIC', owner = null, department = null } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
@@ -621,6 +696,93 @@ function createApp(options = {}) {
     const filtered = tenantId ? events.filter((event) => event.tenant_id === tenantId) : events;
     const analytics = buildAnalytics(filtered);
     res.json({ analytics });
+  });
+
+  app.get('/api/sources', readLimiter, (req, res) => {
+    const tenantId = resolveTenantId(req) || null;
+    const allSources = listData(storage, 'listSources');
+    const sources = tenantId ? allSources.filter((item) => item.tenant_id === tenantId) : allSources;
+    const summarized = sources.map((source) => ({
+      ...source,
+      health: sourceHealth(source),
+    }));
+    res.json({ sources: summarized });
+  });
+
+  app.post('/api/sources', writeLimiter, (req, res) => {
+    const { name, type = 'GENERIC', site_url = null, poll_minutes = 60, config = {} } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    if (site_url && !isValidHttpUrl(site_url)) {
+      return res.status(400).json({ error: 'site_url must be public http(s) and not private/internal' });
+    }
+
+    const tenantId = resolveTenantId(req) || 'public';
+    const sources = listData(storage, 'listSources');
+    const source = {
+      source_id: `source-${randomUUID()}`,
+      tenant_id: tenantId,
+      name: String(name),
+      type: normalizeSourceType(type),
+      site_url: site_url ? String(site_url) : null,
+      poll_minutes: Math.max(5, Number(poll_minutes || 60)),
+      status: 'connected',
+      config: typeof config === 'object' && config ? config : {},
+      last_sync_at: null,
+      last_sync_status: 'never',
+      last_sync_error: null,
+      documents_synced: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    sources.push(source);
+    saveData(storage, 'saveSources', sources);
+    res.status(201).json({ source: { ...source, health: sourceHealth(source) } });
+  });
+
+  app.post('/api/sources/:sourceId/sync', writeLimiter, (req, res) => {
+    const sourceId = req.params.sourceId;
+    const tenantId = resolveTenantId(req) || 'public';
+    const sources = listData(storage, 'listSources');
+    const index = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
+    if (index < 0) return res.status(404).json({ error: 'source not found' });
+
+    const source = sources[index];
+    const docs = listData(storage, 'listDocuments');
+    const incoming = Array.isArray(req.body?.documents) ? req.body.documents : [];
+
+    let syncedCount = 0;
+    if (incoming.length) {
+      for (const item of incoming) {
+        const doc = toDocumentFromInput(
+          {
+            ...item,
+            type: item.type || (source.type === 'WEBSITE' ? 'URL' : 'TEXT'),
+            source_url: item.source_url || source.site_url || null,
+          },
+          tenantId,
+        );
+        if (!doc) continue;
+        docs.push(doc);
+        syncedCount += 1;
+      }
+      saveData(storage, 'saveDocuments', docs);
+    }
+
+    const updated = {
+      ...source,
+      last_sync_at: new Date().toISOString(),
+      last_sync_status: 'success',
+      last_sync_error: null,
+      documents_synced: Number(source.documents_synced || 0) + syncedCount,
+      updated_at: new Date().toISOString(),
+    };
+    sources[index] = updated;
+    saveData(storage, 'saveSources', sources);
+
+    res.json({
+      source: { ...updated, health: sourceHealth(updated) },
+      synced_count: syncedCount,
+    });
   });
 
   app.post('/api/signup', signupLimiter, (req, res) => {
