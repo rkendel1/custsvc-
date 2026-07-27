@@ -23,6 +23,25 @@ This repository now includes a working end-to-end MVP:
   - inspect documents
   - inspect analytics and recommendations
 
+## Company Intelligence Model v2
+
+The compiler now emits a richer `company.intelligence.bundle` model:
+
+- `knowledge[]` objects (title, summary, body, owner, department, audience, tags, confidence, review schedule)
+- first-class `relationships[]` and `graph` adjacency
+- role and audience indexes for retrieval
+- duplicate and contradiction detection signals
+- freshness/review metadata for governance dashboards
+
+Audience layers:
+
+- `PUBLIC`
+- `INTERNAL`
+- `CONFIDENTIAL`
+- `EXECUTIVE`
+
+Runtime retrieval is now role-aware and department-aware before ranking.
+
 ## Quick start
 
 ```bash

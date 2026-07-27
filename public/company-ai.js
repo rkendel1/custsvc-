@@ -5,11 +5,57 @@
   const widgetTitle = script?.dataset?.title || 'Company Intelligence';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
   const minAnswerConfidence = Number(script?.dataset?.minAnswerConfidence || 0.1);
+  const role = script?.dataset?.role || 'Customer';
+  const department = script?.dataset?.department || '';
+  const permissions = (script?.dataset?.permissions || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
 
   const state = {
     bundle: null,
     history: [],
+    context: {
+      role,
+      department,
+      permissions,
+    },
   };
+  const audiencePriority = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, EXECUTIVE: 3 };
+  const confidenceWeights = {
+    // Weighted toward retrieval relevance while still incorporating governance signals.
+    semantic: 0.35,
+    freshness: 0.2,
+    agreement: 0.2,
+    reviewer: 0.25,
+  };
+
+  function normalizeAudience(value) {
+    const item = String(value || '').toUpperCase();
+    if (item in audiencePriority) return item;
+    return 'INTERNAL';
+  }
+
+  function roleAudiences(ctxRole, ctxPermissions = []) {
+    const roleValue = String(ctxRole || 'Customer').toLowerCase();
+    const perms = new Set((ctxPermissions || []).map((x) => String(x).toLowerCase()));
+    const map = {
+      customer: ['PUBLIC'],
+      partner: ['PUBLIC', 'INTERNAL'],
+      support: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      sales: ['PUBLIC', 'INTERNAL'],
+      engineering: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      hr: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      finance: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      operations: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      executive: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'EXECUTIVE'],
+      administrator: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'EXECUTIVE'],
+    };
+    const allowed = new Set(map[roleValue] || ['PUBLIC']);
+    if (perms.has('view:confidential')) allowed.add('CONFIDENTIAL');
+    if (perms.has('view:executive')) allowed.add('EXECUTIVE');
+    return allowed;
+  }
 
   function simpleHash(value) {
     let hash = 0;
@@ -50,6 +96,36 @@
       if (chunk.tf[token]) dot += count * chunk.tf[token];
     }
     return dot / (queryMag * chunk.magnitude);
+  }
+
+  function isVisible(chunk, context) {
+    const allowedAudiences = roleAudiences(context.role, context.permissions);
+    const chunkAudience = normalizeAudience(chunk.audience || chunk.visibility);
+    if (!allowedAudiences.has(chunkAudience)) return false;
+    const chunkDepartment = String(chunk.department || '').toLowerCase();
+    const userDepartment = String(context.department || '').toLowerCase();
+    if (!chunkDepartment || !userDepartment || chunkDepartment === userDepartment) return true;
+    return (context.permissions || []).map((x) => String(x).toLowerCase()).includes('cross_department');
+  }
+
+  function freshnessScore(chunk) {
+    const reviewedAt = new Date(chunk.last_reviewed || 0).getTime();
+    const reviewFrequency = Number(chunk.review_frequency || 90);
+    if (!reviewedAt || !Number.isFinite(reviewFrequency) || reviewFrequency <= 0) return 0.5;
+    const ageDays = (Date.now() - reviewedAt) / (24 * 60 * 60 * 1000);
+    return Math.max(0, Math.min(1, 1 - ageDays / reviewFrequency));
+  }
+
+  function relationshipAgreement(best, bundle) {
+    const adjacency = bundle?.graph?.adjacency?.[best.knowledgeId] || [];
+    if (!adjacency.length) return 0.5;
+    let positive = 0;
+    let negative = 0;
+    for (const edge of adjacency) {
+      if (edge.type === 'SUPPORTS' || edge.type === 'RELATED' || edge.type === 'IMPLEMENTS') positive += 1;
+      if (edge.type === 'CONTRADICTS' || edge.type === 'DUPLICATE_OF') negative += 1;
+    }
+    return Math.max(0, Math.min(1, (positive + 1) / (positive + negative + 1)));
   }
 
   async function loadBundle() {
@@ -101,15 +177,31 @@
 
     let best = null;
     for (const chunk of bundle.chunks || []) {
-      if (chunk.visibility === 'INTERNAL') continue;
+      if (!isVisible(chunk, state.context)) continue;
       const score = similarity(queryTf, queryMag, chunk);
       if (!best || score > best.score) best = { chunk, score };
     }
 
     if (best && best.score >= minAnswerConfidence) {
+      const fresh = freshnessScore(best.chunk);
+      const agreement = relationshipAgreement(best.chunk, bundle);
+      const reviewerConfidence = Number(best.chunk.confidence || 0.7);
+      const confidence = Number((
+        best.score * confidenceWeights.semantic +
+        fresh * confidenceWeights.freshness +
+        agreement * confidenceWeights.agreement +
+        reviewerConfidence * confidenceWeights.reviewer
+      ).toFixed(3));
       return {
         answer: best.chunk.text,
         score: best.score,
+        confidence,
+        confidenceBreakdown: {
+          semantic: Number(best.score.toFixed(3)),
+          freshness: Number(fresh.toFixed(3)),
+          agreement: Number(agreement.toFixed(3)),
+          reviewer: Number(reviewerConfidence.toFixed(3)),
+        },
         topChunkId: best.chunk.id,
         answered: true,
       };
@@ -121,6 +213,7 @@
     return {
       answer: "I don't have an answer for that yet.",
       score: best ? best.score : 0,
+      confidence: best ? Number(best.score.toFixed(3)) : 0,
       topChunkId: best?.chunk?.id || null,
       answered: false,
     };
@@ -246,7 +339,11 @@
           question,
           answered,
           score: response.score,
+          confidence: response.confidence || 0,
           topChunkId: response.topChunkId,
+          role: state.context.role,
+          department: state.context.department,
+          permissions: state.context.permissions,
         });
       } catch (error) {
         appendMessage(messages, 'AI', `Unable to answer right now: ${error.message}`);
