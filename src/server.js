@@ -2,6 +2,7 @@ const path = require('path');
 const { createApp } = require('./createApp');
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const rootDir = path.resolve(__dirname, '..');
 
 const app = createApp({
@@ -9,6 +10,6 @@ const app = createApp({
   companyName: process.env.COMPANY_NAME || 'KnowledgeOS',
 });
 
-app.listen(PORT, () => {
-  console.log(`KnowledgeOS listening on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`KnowledgeOS listening on http://${HOST}:${PORT}`);
 });
