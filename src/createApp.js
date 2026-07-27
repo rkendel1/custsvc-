@@ -516,6 +516,37 @@ function requireTenantSession(storage) {
   };
 }
 
+function requireTenantRole(storage, allowedRoles = ['Owner', 'Admin', 'Administrator']) {
+  const allowed = new Set(allowedRoles.map((role) => String(role).toLowerCase()));
+  return (req, res, next) => {
+    const token = resolveSessionToken(req);
+    if (!token) return res.status(401).json({ error: 'session token is required' });
+
+    const tenantId = resolveScopedTenantId(req);
+    const sessions = listData(storage, 'listSessions');
+    const session = sessions.find(
+      (item) => item.token === token && item.tenant_id === tenantId && item.status === 'active',
+    );
+    if (!session) return res.status(403).json({ error: 'invalid tenant session' });
+    if (session.expires_at && Date.now() > Date.parse(session.expires_at)) {
+      return res.status(401).json({ error: 'session expired' });
+    }
+
+    const memberships = listData(storage, 'listTenantMemberships');
+    const membership = memberships.find(
+      (item) => item.tenant_id === tenantId && item.user_id === session.user_id && String(item.status || '').toLowerCase() === 'active',
+    );
+    const role = String(membership?.role || session.role || '').toLowerCase();
+    if (!allowed.has(role)) {
+      return res.status(403).json({ error: 'owner or admin role is required' });
+    }
+
+    req.session = session;
+    req.tenantId = tenantId;
+    return next();
+  };
+}
+
 function isValidEmail(email) {
   const value = String(email || '').trim().toLowerCase();
   if (!value || value.length > 254 || value.includes(' ')) return false;
@@ -676,6 +707,7 @@ function createApp(options = {}) {
   const readLimiter = createRateLimiter({ max: 240, windowMs: 60_000 });
   const tenantResolverMiddleware = requireTenantOrSession(storage);
   const tenantSessionMiddleware = requireTenantSession(storage);
+  const sourceAdminRoleMiddleware = requireTenantRole(storage, ['Owner', 'Admin', 'Administrator']);
   const connectorVault = createConnectorVault({ storage });
   const pgVectorStore = createPgVectorStore();
 
@@ -1026,14 +1058,14 @@ function createApp(options = {}) {
     res.json({ sources: summarized, tenant_id: tenantId });
   });
 
-  app.get('/api/sources/audit', readLimiter, async (req, res) => {
+  app.get('/api/sources/audit', readLimiter, sourceAdminRoleMiddleware, async (req, res) => {
     const tenantId = resolveScopedTenantId(req);
     const limit = Number(req.query.limit || 100);
     const events = await connectorVault.listAudit({ tenantId, limit });
     res.json({ tenant_id: tenantId, events });
   });
 
-  app.post('/api/sources', writeLimiter, async (req, res) => {
+  app.post('/api/sources', writeLimiter, sourceAdminRoleMiddleware, async (req, res) => {
     const { name, type = 'GENERIC', site_url = null, poll_minutes = 60, config = {}, credentials = {} } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required' });
     if (site_url && !isValidHttpUrl(site_url)) {
@@ -1092,7 +1124,7 @@ function createApp(options = {}) {
     res.status(201).json({ source: await toSourceResponse(source, tenantId) });
   });
 
-  app.patch('/api/sources/:sourceId', writeLimiter, async (req, res) => {
+  app.patch('/api/sources/:sourceId', writeLimiter, sourceAdminRoleMiddleware, async (req, res) => {
     const sourceId = req.params.sourceId;
     const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');
@@ -1162,7 +1194,7 @@ function createApp(options = {}) {
     return res.json({ source: await toSourceResponse(updated, tenantId) });
   });
 
-  app.post('/api/sources/:sourceId/test', writeLimiter, async (req, res) => {
+  app.post('/api/sources/:sourceId/test', writeLimiter, sourceAdminRoleMiddleware, async (req, res) => {
     const sourceId = req.params.sourceId;
     const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');
@@ -1229,7 +1261,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/sources/:sourceId/sync', writeLimiter, async (req, res) => {
+  app.post('/api/sources/:sourceId/sync', writeLimiter, sourceAdminRoleMiddleware, async (req, res) => {
     const sourceId = req.params.sourceId;
     const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');

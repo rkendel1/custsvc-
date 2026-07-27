@@ -1,5 +1,22 @@
+const adminParams = new URLSearchParams(window.location.search);
+const adminSessionToken = adminParams.get('session_token') || localStorage.getItem('knowledgeos_admin_session_token') || '';
+
+if (adminSessionToken) {
+  localStorage.setItem('knowledgeos_admin_session_token', adminSessionToken);
+}
+
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
+  const headers = {
+    ...(options.headers || {}),
+  };
+  if (adminSessionToken && !headers.authorization && !headers['x-session-token']) {
+    headers['x-session-token'] = adminSessionToken;
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
   const text = await response.text();
   let data = {};
   if (text) {

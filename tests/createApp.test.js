@@ -242,6 +242,8 @@ test('document vector search endpoint validates embedding payload and returns sc
 test('source monitoring endpoints register and sync website sources', async (t) => {
   const documents = [];
   const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [...documents],
     saveDocuments: (nextDocuments) => {
@@ -253,6 +255,9 @@ test('source monitoring endpoints register and sync website sources', async (t) 
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
 
@@ -262,7 +267,7 @@ test('source monitoring endpoints register and sync website sources', async (t) 
 
   const createResponse = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'Support Site',
       type: 'WEBSITE',
@@ -276,7 +281,7 @@ test('source monitoring endpoints register and sync website sources', async (t) 
 
   const syncResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/sync`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       tenant_id: 'public',
       documents: [{ title: 'FAQ', body: 'Contact support via portal.' }],
@@ -316,6 +321,8 @@ test('source templates endpoint returns connector field requirements', async (t)
 
 test('source creation enforces required credentials and redacts sensitive fields', async (t) => {
   const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -324,6 +331,9 @@ test('source creation enforces required credentials and redacts sensitive fields
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
 
@@ -333,7 +343,7 @@ test('source creation enforces required credentials and redacts sensitive fields
 
   const invalidResponse = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'SharePoint Help Center',
       type: 'SHAREPOINT',
@@ -347,7 +357,7 @@ test('source creation enforces required credentials and redacts sensitive fields
 
   const validResponse = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'SharePoint Help Center',
       type: 'SHAREPOINT',
@@ -372,6 +382,8 @@ test('source creation enforces required credentials and redacts sensitive fields
 
 test('source update rotates credentials and keeps sensitive fields redacted', async (t) => {
   const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -380,6 +392,9 @@ test('source update rotates credentials and keeps sensitive fields redacted', as
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
 
@@ -389,7 +404,7 @@ test('source update rotates credentials and keeps sensitive fields redacted', as
 
   const createResponse = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'SharePoint Docs',
       type: 'SHAREPOINT',
@@ -407,7 +422,7 @@ test('source update rotates credentials and keeps sensitive fields redacted', as
 
   const updateResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       tenant_id: 'public',
       name: 'SharePoint Docs Rotated',
@@ -424,6 +439,8 @@ test('source update rotates credentials and keeps sensitive fields redacted', as
 
 test('source test endpoint validates connector state and updates source status', async (t) => {
   const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -432,6 +449,9 @@ test('source test endpoint validates connector state and updates source status',
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
 
@@ -441,7 +461,7 @@ test('source test endpoint validates connector state and updates source status',
 
   const createResponse = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'Generic KB',
       type: 'GENERIC',
@@ -454,7 +474,7 @@ test('source test endpoint validates connector state and updates source status',
 
   const testResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/test`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({ tenant_id: 'public' }),
   });
   const tested = await testResponse.json();
@@ -476,6 +496,8 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
 
   const sources = [];
   const connectorSecrets = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -484,6 +506,9 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     listConnectorSecrets: () => [...connectorSecrets],
     saveConnectorSecrets: (nextSecrets) => {
       connectorSecrets.length = 0;
@@ -498,7 +523,7 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
 
   const response = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({
       name: 'GitHub Docs',
       type: 'GITHUB',
@@ -519,6 +544,8 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
 test('source audit trail records connector lifecycle events', async (t) => {
   const sources = [];
   const connectorAudit = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -527,6 +554,9 @@ test('source audit trail records connector lifecycle events', async (t) => {
       sources.length = 0;
       sources.push(...nextSources);
     },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
     listConnectorAudit: () => [...connectorAudit],
     saveConnectorAudit: (nextAudit) => {
       connectorAudit.length = 0;
@@ -541,18 +571,53 @@ test('source audit trail records connector lifecycle events', async (t) => {
 
   const created = await fetch(`${baseUrl}/api/sources`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({ name: 'Website Docs', type: 'WEBSITE', site_url: 'https://example.com/help', tenant_id: 'public' }),
   }).then((r) => r.json());
 
   await fetch(`${baseUrl}/api/sources/${created.source.source_id}/test`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
     body: JSON.stringify({ tenant_id: 'public' }),
   });
 
-  const audit = await fetch(`${baseUrl}/api/sources/audit?tenant_id=public`).then((r) => r.json());
+  const audit = await fetch(`${baseUrl}/api/sources/audit?tenant_id=public`, { headers: { 'x-session-token': 'owner-token' } }).then((r) => r.json());
   assert.equal(Array.isArray(audit.events), true);
   assert.equal(audit.events.some((event) => event.action === 'source.create'), true);
   assert.equal(audit.events.some((event) => event.action === 'source.test'), true);
+});
+
+test('source mutation endpoints enforce owner/admin RBAC', async (t) => {
+  const sources = [];
+  const sessions = [{ token: 'member-token', tenant_id: 'public', user_id: 'member-1', role: 'Member', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'member-1', role: 'Member', status: 'active' }];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'member-token' },
+    body: JSON.stringify({ name: 'Blocked Source', type: 'WEBSITE', site_url: 'https://example.com/help', tenant_id: 'public' }),
+  });
+  assert.equal(createResponse.status, 403);
+
+  const auditResponse = await fetch(`${baseUrl}/api/sources/audit?tenant_id=public`, {
+    headers: { 'x-session-token': 'member-token' },
+  });
+  assert.equal(auditResponse.status, 403);
 });

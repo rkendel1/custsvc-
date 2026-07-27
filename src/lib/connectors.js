@@ -1,12 +1,37 @@
+const { createSign } = require('crypto');
+
 function basicAuthHeader(username, token) {
   return `Basic ${Buffer.from(`${username}:${token}`).toString('base64')}`;
 }
 
-let google = null;
-try {
-  ({ google } = require('googleapis'));
-} catch (_error) {
-  google = null;
+function base64url(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function createGoogleServiceJwt(config) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const payload = {
+    iss: config.service_account_email,
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  };
+
+  const encodedHeader = base64url(JSON.stringify(header));
+  const encodedPayload = base64url(JSON.stringify(payload));
+  const unsigned = `${encodedHeader}.${encodedPayload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(unsigned);
+  signer.end();
+  const privateKey = String(config.private_key || '').replace(/\\n/g, '\n');
+  const signature = signer.sign(privateKey);
+  return `${unsigned}.${base64url(signature)}`;
 }
 
 let S3Client = null;
@@ -223,25 +248,23 @@ async function testWebsite(fetchImpl, config, source) {
 }
 
 async function testGoogleDrive(fetchImpl, config) {
-  if (!google) {
-    return { ok: false, status: 500, error: 'googleapis package not installed' };
-  }
-
-  const jwt = new google.auth.JWT({
-    email: config.service_account_email,
-    key: String(config.private_key || '').replace(/\\n/g, '\n'),
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+  const assertion = createGoogleServiceJwt(config);
+  const tokenResult = await fetchJson(fetchImpl, 'https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }).toString(),
   });
-  await jwt.authorize();
-  const token = await jwt.getAccessToken();
-  if (!token?.token) {
+  if (!tokenResult.ok || !tokenResult.body?.access_token) {
     return { ok: false, status: 401, error: 'unable to obtain Google access token' };
   }
 
   const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(config.folder_id)}?fields=id,name,mimeType`;
   const response = await fetchJson(fetchImpl, url, {
     headers: {
-      authorization: `Bearer ${token.token}`,
+      authorization: `Bearer ${tokenResult.body.access_token}`,
       accept: 'application/json',
     },
   });
