@@ -278,7 +278,9 @@
       </div>
     </div>
 
+    <script src="/auth-context.js"></script>
     <script>
+      const authContext = window.KnowledgeOSAuthContext || {};
       const form = document.getElementById('quickSignupForm');
       const output = document.getElementById('signupOutput');
       const submitBtn = document.getElementById('createWorkspaceBtn');
@@ -294,23 +296,25 @@
 
       function redirectToAccess() {
         const next = '/signup.html';
+        if (typeof authContext.buildAccessUrl === 'function') {
+          window.location.href = authContext.buildAccessUrl(next);
+          return;
+        }
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
       function resolveTenantRedirect(nextUrl, tenantOrigin, fallbackPath) {
-        const candidate = String(nextUrl || '').trim();
-        if (/^https?:\/\//i.test(candidate)) return candidate;
-
-        const safeFallback = String(fallbackPath || '/onboarding.html');
-        const safePath = candidate.startsWith('/') ? candidate : safeFallback;
-        const origin = String(tenantOrigin || '').trim();
-        if (!origin) return safePath;
-
-        try {
-          return new URL(safePath, origin).toString();
-        } catch (_error) {
-          return safePath;
+        if (typeof authContext.resolveRedirectUrl === 'function') {
+          return authContext.resolveRedirectUrl({
+            serverNextUrl: nextUrl,
+            fallback: String(fallbackPath || '/onboarding.html'),
+            tenantOrigin,
+            requestedNext: '',
+          });
         }
+        const candidate = String(nextUrl || '').trim();
+        if (candidate.startsWith('/')) return candidate;
+        return String(fallbackPath || '/onboarding.html');
       }
 
       function renderOptions(selectNode, options, fallbackValue = '') {

@@ -430,9 +430,12 @@
       </div>
     </div>
 
+    <script src="/auth-context.js"></script>
     <script>
+      const authContext = window.KnowledgeOSAuthContext || {};
       const params = new URLSearchParams(window.location.search);
       let tenantId = params.get('tenant_id') || '';
+      let tenantOrigin = '';
       const quickMode = params.get('quick') === '1';
       let sessionToken =
         params.get('session_token') ||
@@ -488,6 +491,7 @@
         try {
           const response = await fetch('/api/access/status');
           const data = await response.json();
+          tenantOrigin = String(data?.tenant_origin || tenantOrigin || '').trim();
           if (!data.password_required) {
             setAuthState('Access: open', true);
             return;
@@ -497,6 +501,9 @@
             const tenantFromAuth = String(data?.authenticated_tenant_id || '').trim();
             const emailFromAuth = String(data?.authenticated_email || '').trim();
             if (tenantFromAuth) {
+              if (typeof authContext.maybeRedirectToTenantHost === 'function') {
+                if (authContext.maybeRedirectToTenantHost(tenantFromAuth, tenantOrigin)) return;
+              }
               tenantId = tenantFromAuth;
               if (onboardingTenantInput) onboardingTenantInput.value = tenantFromAuth;
             }
@@ -570,7 +577,9 @@
           embedScript.value = 'Finish setup to generate your embed script.';
           return;
         }
-        const origin = window.location.origin;
+        const origin = (typeof authContext.resolveTenantOrigin === 'function')
+          ? (authContext.resolveTenantOrigin(tenantId, tenantOrigin) || window.location.origin)
+          : window.location.origin;
         embedScript.value = `<script src="${origin}/embed.js" data-tenant-id="${tenantId}"><\\/script>`;
       }
 
@@ -581,6 +590,10 @@
 
       function redirectToAccess() {
         const next = `${window.location.pathname}${window.location.search || ''}`;
+        if (typeof authContext.buildAccessUrl === 'function') {
+          window.location.href = authContext.buildAccessUrl(next);
+          return;
+        }
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
@@ -598,6 +611,7 @@
             const access = await response.json();
             const tenantFromAuth = String(access?.authenticated_tenant_id || '').trim();
             const emailFromAuth = String(access?.authenticated_email || '').trim();
+            tenantOrigin = String(access?.tenant_origin || tenantOrigin || '').trim();
             if (!requestedTenantId && tenantFromAuth) requestedTenantId = tenantFromAuth;
             if (!email && emailFromAuth) email = emailFromAuth;
             if (requestedTenantId && onboardingTenantInput && !onboardingTenantInput.value) onboardingTenantInput.value = requestedTenantId;
@@ -699,6 +713,7 @@
 
       async function applyOnboardingSession(data, successTitle) {
         tenantId = String(data?.tenant?.tenant_id || '').trim();
+        tenantOrigin = String(data?.tenant_origin || tenantOrigin || '').trim();
         const nextSessionToken = String(data?.session?.token || '').trim();
         if (!tenantId || !nextSessionToken) {
           throw new Error('Could not start onboarding session.');
@@ -769,6 +784,10 @@
         const resolvedTenant = requireTenantDestination('Open dashboard');
         if (!resolvedTenant) return;
         const next = `/admin.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+        if (typeof authContext.buildAccessUrl === 'function') {
+          window.location.href = authContext.buildAccessUrl(next);
+          return;
+        }
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       });
 
@@ -776,6 +795,10 @@
         const resolvedTenant = requireTenantDestination('Go to dashboard');
         if (!resolvedTenant) return;
         const next = `/admin.html?tenant_id=${encodeURIComponent(resolvedTenant)}`;
+        if (typeof authContext.buildAccessUrl === 'function') {
+          window.location.href = authContext.buildAccessUrl(next);
+          return;
+        }
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       });
 
@@ -812,7 +835,11 @@
         try {
           await fetch('/api/access/logout', { method: 'POST' });
           setAuthState('Access: signed out', false);
-          window.location.href = '/access.html?next=/onboarding.html';
+          if (typeof authContext.buildAccessUrl === 'function') {
+            window.location.href = authContext.buildAccessUrl('/onboarding.html');
+          } else {
+            window.location.href = '/access.html?next=/onboarding.html';
+          }
         } catch (_error) {
           setStatus('Could not sign out', 'Please try again.');
         }
@@ -1514,7 +1541,9 @@
 
           updateEmbedScript(String(data?.outputs?.embed_code || ''));
           const dashboardNext = `/admin.html?tenant_id=${encodeURIComponent(tenantId)}`;
-          const dashboardUrl = `/access.html?next=${encodeURIComponent(dashboardNext)}`;
+          const dashboardUrl = (typeof authContext.buildAccessUrl === 'function')
+            ? authContext.buildAccessUrl(dashboardNext)
+            : `/access.html?next=${encodeURIComponent(dashboardNext)}`;
           setStatus('Your assistant is live-ready', [
             `Tenant: ${tenantId}`,
             `Runtime URL: ${data?.outputs?.runtime_url || 'ready'}`,

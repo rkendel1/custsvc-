@@ -1,52 +1,20 @@
 const adminParams = new URLSearchParams(window.location.search);
 const adminSessionToken = adminParams.get('session_token') || localStorage.getItem('knowledgeos_admin_session_token') || '';
 let adminTenantId = adminParams.get('tenant_id') || localStorage.getItem('knowledgeos_active_tenant_id') || '';
+const authContext = window.KnowledgeOSAuthContext || {};
 
 function normalizeTenant(value) {
+  if (typeof authContext.normalizeTenant === 'function') {
+    return authContext.normalizeTenant(value);
+  }
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
 }
 
-function normalizeOrigin(value) {
-  const input = String(value || '').trim();
-  if (!input) return '';
-  try {
-    return new URL(input).origin;
-  } catch (_error) {
-    return '';
-  }
-}
-
-function getLikelyBaseDomainFromHost(hostname) {
-  const host = String(hostname || '').trim().toLowerCase();
-  if (!host) return '';
-  const labels = host.split('.').filter(Boolean);
-  if (labels.length < 2) return '';
-  return labels.slice(-2).join('.');
-}
-
 function maybeRedirectToTenantHost(tenantId, tenantOrigin = '') {
-  const safeTenant = normalizeTenant(tenantId);
-  if (!safeTenant) return false;
-
-  const originFromApi = normalizeOrigin(tenantOrigin);
-  let targetOrigin = originFromApi;
-  if (!targetOrigin) {
-    const baseDomain = getLikelyBaseDomainFromHost(window.location.hostname || '');
-    if (!baseDomain) return false;
-    const isApex = window.location.hostname === baseDomain || window.location.hostname === `www.${baseDomain}`;
-    if (!isApex) return false;
-    targetOrigin = `${window.location.protocol}//${safeTenant}.${baseDomain}`;
+  if (typeof authContext.maybeRedirectToTenantHost === 'function') {
+    return authContext.maybeRedirectToTenantHost(tenantId, tenantOrigin);
   }
-
-  if (targetOrigin === window.location.origin) return false;
-
-  const nextUrl = new URL(window.location.href);
-  const target = new URL(targetOrigin);
-  nextUrl.protocol = target.protocol;
-  nextUrl.host = target.host;
-  nextUrl.searchParams.set('tenant_id', safeTenant);
-  window.location.replace(nextUrl.toString());
-  return true;
+  return false;
 }
 
 if (adminTenantId) {

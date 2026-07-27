@@ -3645,6 +3645,7 @@ function createApp(options = {}) {
       ? targets.map((target) => normalizeSourceType(target)).filter(Boolean)
       : [];
     const targetsQuery = requestedTargets.length ? `&targets=${encodeURIComponent(requestedTargets.join(','))}` : '';
+    const onboardingPath = `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}${targetsQuery}`;
 
     return res.status(201).json({
       tenant,
@@ -3653,7 +3654,8 @@ function createApp(options = {}) {
         token: session.token,
         expires_at: session.expires_at,
       },
-      onboarding_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}${targetsQuery}`,
+      tenant_origin: resolveTenantOrigin(req, tenant.tenant_id, Number(process.env.APP_PORT || 3000)),
+      onboarding_url: resolveTenantRedirectUrl(req, tenant.tenant_id, onboardingPath),
       email_verification: {
         required: true,
         status: 'pending',
@@ -3939,13 +3941,15 @@ function createApp(options = {}) {
       }
 
       const session = createSession(storage, { tenantId: existingTenant.tenant_id, userId, role: 'Owner' });
+      const onboardingPath = `/onboarding.html?tenant_id=${existingTenant.tenant_id}&session_token=${session.token}`;
       return res.status(201).json({
         tenant: existingTenant,
         session: {
           token: session.token,
           expires_at: session.expires_at,
         },
-        onboarding_url: `/onboarding.html?tenant_id=${existingTenant.tenant_id}&session_token=${session.token}`,
+        tenant_origin: resolveTenantOrigin(req, existingTenant.tenant_id, Number(process.env.APP_PORT || 3000)),
+        onboarding_url: resolveTenantRedirectUrl(req, existingTenant.tenant_id, onboardingPath),
       });
     }
 
@@ -4012,13 +4016,15 @@ function createApp(options = {}) {
     saveData(storage, 'saveSubscriptions', subscriptions);
 
     const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+    const onboardingPath = `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`;
     return res.status(201).json({
       tenant,
       session: {
         token: session.token,
         expires_at: session.expires_at,
       },
-      onboarding_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      tenant_origin: resolveTenantOrigin(req, tenant.tenant_id, Number(process.env.APP_PORT || 3000)),
+      onboarding_url: resolveTenantRedirectUrl(req, tenant.tenant_id, onboardingPath),
     });
   });
 

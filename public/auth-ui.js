@@ -1,6 +1,7 @@
 (function initGlobalAuthUi() {
   const chip = document.querySelector('[data-auth-state]');
   const signOutBtn = document.querySelector('[data-signout]');
+  const authContext = window.KnowledgeOSAuthContext || {};
   if (!chip && !signOutBtn) return;
 
   let passwordRequired = false;
@@ -49,7 +50,11 @@
         setState('Access: signed out', 'bad');
         if (passwordRequired) {
           const next = String(signOutBtn.dataset.next || window.location.pathname || '/');
-          window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
+          if (typeof authContext.buildAccessUrl === 'function') {
+            window.location.href = authContext.buildAccessUrl(next);
+          } else {
+            window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
+          }
         }
       } catch (_error) {
         setState('Sign out failed', 'bad');
