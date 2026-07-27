@@ -52,6 +52,20 @@ The compiler now supports executable `processes[]` as first-class bundle peers t
 - Runtime APIs now include: `startProcess`, `resumeProcess`, `completeStep`, `validateStep`, `branch`, `rollback`, `cancel`, `getStorageStatus`, `getAudienceContext`, `search`, and `getKnowledgeSource`.
 - Bundle output is now `company.intelligence.bundle.v6` with enriched `models[]`, `runtime_requirements[]`, and `storage_profile`, while keeping `format_legacy: company.intelligence.bundle.v5` compatibility.
 
+### Enterprise action runtime primitives
+
+The runtime also supports operational execution primitives:
+
+- `capabilities[]` registry entries with provider/auth/risk/permission metadata
+- `connectors[]` and `execution_policies[]` in the compiled bundle
+- process step support for `Action` + `capability` + `input_mapping`
+- runtime APIs for capability execution and human approval flow:
+  - `executeCapability`
+  - `listCapabilities`
+  - `getExecutionHistory`
+  - `approve`
+  - `reject`
+
 ## Quick start
 
 ```bash
