@@ -330,6 +330,12 @@
         answer: best.chunk.text,
         score: best.score,
         confidence,
+        confidenceBreakdown: {
+          semantic: Number(best.score.toFixed(3)),
+          freshness: Number(fresh.toFixed(3)),
+          agreement: Number(agreement.toFixed(3)),
+          reviewer: Number(reviewerConfidence.toFixed(3)),
+        },
         intent: intentResult.intent,
         process_started: Boolean(intentProcessMap[intentResult.intent]),
         topChunkId: best.chunk.id,
