@@ -64,6 +64,7 @@ function createHybridRetriever(options = {}) {
   }
 
   async function search(query, context = {}) {
+    // Alias maintained for runtime ergonomics where `search` is the public retrieval verb.
     return retrieve(query, context);
   }
 

@@ -432,22 +432,22 @@
 
   async function search(question, options = {}) {
     const bundle = await loadBundle();
+    const context = options.context || state.context;
     const queryTokens = tokenize(question);
     const queryTf = termFrequency(queryTokens);
     const queryMag = magnitude(queryTf);
     const profile = getStorageProfile(bundle);
-    const audience = getAudienceContext(options.context || state.context);
+    const audience = getAudienceContext(context);
     const stores = (profile.stores || []).filter((store) => {
-      const context = options.context || state.context;
       return storeSupportsAudience(store, audience) && hasStorePermission(store, context);
     });
     const allowedStoreIds = new Set(stores.map((store) => store.id));
 
     const results = [];
     for (const chunk of bundle.chunks || []) {
-      if (!isVisible(chunk, options.context || state.context)) continue;
+      if (!isVisible(chunk, context)) continue;
       const source = getKnowledgeSource(chunk, bundle);
-      if (allowedStoreIds.size && !allowedStoreIds.has(source.id)) continue;
+      if (!allowedStoreIds.has(source.id)) continue;
       const score = similarity(queryTf, queryMag, chunk);
       if (score <= 0) continue;
       results.push({ chunk, score, source });

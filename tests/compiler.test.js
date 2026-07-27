@@ -41,7 +41,9 @@ test('compileBundle v6 creates knowledge, chunks, metadata, model manifest, and 
   assert.ok(Array.isArray(bundle.models[0].capabilities));
   assert.ok(Array.isArray(bundle.runtime_requirements));
   assert.equal(bundle.storage_profile.mode, 'browser-local');
+  assert.equal(bundle.storage_profile.stores[0].id, 'public');
   assert.equal(bundle.storage_profile.stores[0].type, 'browser-local');
+  assert.deepEqual(bundle.storage_profile.stores[0].audiences, ['customer']);
   assert.ok(bundle.process_graph && Array.isArray(bundle.process_graph.nodes));
   assert.ok(bundle.role_views && bundle.role_views.Customer);
 });
