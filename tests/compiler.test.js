@@ -253,11 +253,19 @@ test('bundle keeps v2-compatible knowledge and chunk fields', () => {
 });
 
 test('bundle exposes v6 format with explicit v5 compatibility markers', () => {
-  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], { processes: [] });
+  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], {
+    processes: [],
+    capabilities: [{ id: 'crm.create_customer', provider: 'salesforce' }],
+    connectors: [{ id: 'salesforce', capabilities: ['crm.create_customer'] }],
+    execution_policies: [{ id: 'default', retries: 2 }],
+  });
   assert.equal(bundle.version, 6);
   assert.equal(bundle.format, 'company.intelligence.bundle.v6');
   assert.equal(bundle.format_legacy, 'company.intelligence.bundle.v5');
   assert.ok(bundle.metadata && typeof bundle.metadata.knowledgeCount === 'number');
+  assert.ok(Array.isArray(bundle.capabilities));
+  assert.ok(Array.isArray(bundle.connectors));
+  assert.ok(Array.isArray(bundle.execution_policies));
   assert.ok(Array.isArray(bundle.models));
   assert.ok(Array.isArray(bundle.runtime_requirements));
   assert.ok(bundle.storage_profile && Array.isArray(bundle.storage_profile.stores));
