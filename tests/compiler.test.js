@@ -17,7 +17,7 @@ test('compileBundle v2 creates knowledge, chunks, and metadata', () => {
       type: 'POLICY',
       visibility: 'PUBLIC',
       audience: 'PUBLIC',
-      content: 'We offer refunds within 30 days. Enterprise exceptions require approval.',
+      body: 'We offer refunds within 30 days. Enterprise exceptions require approval.',
     },
   ], { company: 'TestCo' });
 
@@ -40,7 +40,7 @@ test('compileBundle parses FAQ JSON arrays into chunks', () => {
       title: 'FAQ',
       type: 'FAQ',
       visibility: 'INTERNAL',
-      content: JSON.stringify([
+      body: JSON.stringify([
         { question: 'How do I reset my password?', answer: 'Click forgot password.' },
       ]),
     },
@@ -106,6 +106,14 @@ test('duplicate detection flags similar policies', () => {
   assert.ok(duplicates[0].confidence >= 0.9);
 });
 
+test('visibility enforces strict v2 audience levels', () => {
+  const bundle = compileBundle([
+    { id: 'doc-1', title: 'Strict visibility', body: 'Body', visibility: 'BOTH', audience: 'BOTH' },
+  ]);
+  assert.equal(bundle.knowledge[0].visibility, 'INTERNAL');
+  assert.equal(bundle.knowledge[0].audience, 'INTERNAL');
+});
+
 test('review scheduling counts stale, due soon, and orphaned objects', () => {
   const now = Date.now();
   const schedule = calculateReviewSchedule([
@@ -125,12 +133,10 @@ test('review scheduling counts stale, due soon, and orphaned objects', () => {
   assert.equal(schedule.orphaned, 1);
 });
 
-test('bundle backward compatibility keeps legacy fields', () => {
-  const bundle = compileBundle([{ title: 'Legacy', content: 'Legacy content' }], { company: 'LegacyCo' });
-  assert.equal(bundle.company, 'LegacyCo');
-  assert.ok(Array.isArray(bundle.chunks));
-  assert.equal(bundle.documentCount, 1);
-  assert.ok(bundle.generatedAt);
+test('compiler requires v2 body field and does not infer from legacy content field', () => {
+  const bundle = compileBundle([{ title: 'Legacy', content: 'Legacy content only' }], { company: 'LegacyCo' });
+  assert.equal(bundle.knowledge[0].body, '');
+  assert.equal(bundle.chunkCount, 0);
 });
 
 test('buildAnalytics surfaces unanswered questions and recommendations', () => {

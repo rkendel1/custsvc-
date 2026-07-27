@@ -23,6 +23,7 @@
   };
   const audiencePriority = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, EXECUTIVE: 3 };
   const confidenceWeights = {
+    // Weighted toward retrieval relevance while still incorporating governance signals.
     semantic: 0.35,
     freshness: 0.2,
     agreement: 0.2,

@@ -28,10 +28,7 @@ const SUPPORTED_RELATIONSHIPS = new Set([
 const DUPLICATE_SIMILARITY_THRESHOLD = 0.82;
 
 function normalizeVisibility(visibility) {
-  const value = String(visibility || 'BOTH').toUpperCase();
-  // Legacy bundles used BOTH to represent broad visibility; map to PUBLIC so existing
-  // public-facing retrieval behavior remains available after audience layer expansion.
-  if (value === 'BOTH') return 'PUBLIC';
+  const value = String(visibility || 'INTERNAL').toUpperCase();
   if (AUDIENCE_LEVELS.includes(value)) return value;
   return 'INTERNAL';
 }
@@ -180,8 +177,8 @@ function chunkText(text, maxLength = 450) {
 
 function toKnowledgeObject(document, index) {
   const id = document.id || `doc-${index + 1}`;
-  const body = String(document.body || document.content || '');
-  const lastReviewed = document.last_reviewed || document.lastReviewed || document.createdAt || new Date().toISOString();
+  const body = String(document.body || '');
+  const lastReviewed = document.last_reviewed || new Date().toISOString();
   const parsedReviewDate = new Date(lastReviewed);
   const safeLastReviewed = Number.isNaN(parsedReviewDate.getTime())
     ? new Date().toISOString()
@@ -212,7 +209,7 @@ function toKnowledgeObject(document, index) {
     relationships,
     citations: parseList(document.citations || document.sourceUrl),
     last_reviewed: safeLastReviewed,
-    review_frequency: parseReviewFrequency(document.review_frequency || document.reviewFrequency),
+    review_frequency: parseReviewFrequency(document.review_frequency),
     confidence: clamp01(document.confidence, 0.7),
     embeddings: Array.isArray(document.embeddings) ? document.embeddings : [],
     sourceType,
@@ -305,9 +302,9 @@ function detectDuplicates(knowledge, threshold = DUPLICATE_SIMILARITY_THRESHOLD)
 }
 
 function extractRefundWindowDays(text) {
-  // Current contradiction extraction is intentionally narrow and focused on refund-policy
-  // windows. Broader policy conflict extraction can be added incrementally.
-  const match = String(text || '').toLowerCase().match(/refund\w*[\s\S]{0,40}?(\d{1,3})\s*days?/);
+  const match = String(text || '')
+    .toLowerCase()
+    .match(/refund(?:s|ing)?(?:\s+(?:within|in|for|eligible|allowed|are|is|must|be|processed|requested|submitted|a|the|up|to)){0,8}\s+(\d{1,3})\s*days?/);
   if (!match) return null;
   return Number(match[1]);
 }

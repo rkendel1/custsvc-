@@ -35,7 +35,7 @@
         <label>Visibility
           <select name="visibility">
             <option value="PUBLIC">PUBLIC</option>
-            <option value="INTERNAL">INTERNAL</option>
+            <option value="INTERNAL" selected>INTERNAL</option>
             <option value="CONFIDENTIAL">CONFIDENTIAL</option>
             <option value="EXECUTIVE">EXECUTIVE</option>
           </select>
@@ -52,7 +52,7 @@
         <label>Relationships (JSON array) <textarea name="relationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
         <label>Review frequency (days) <input name="review_frequency" type="number" min="1" value="90" /></label>
         <label>Reviewer confidence (0-1) <input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
-        <label>Content <textarea name="content" rows="6" required></textarea></label>
+        <label>Body <textarea name="body" rows="6" required></textarea></label>
         <button type="submit">Save knowledge object</button>
       </form>
     </section>

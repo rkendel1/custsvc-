@@ -109,7 +109,6 @@ function createApp(options = {}) {
   app.post('/api/documents', writeLimiter, (req, res) => {
     const {
       title,
-      content,
       body,
       type = 'TEXT',
       visibility = 'INTERNAL',
@@ -126,16 +125,15 @@ function createApp(options = {}) {
       review_frequency = null,
       confidence = 0.7,
     } = req.body || {};
-    const normalizedBody = String(body || content || '').trim();
+    const normalizedBody = String(body || '').trim();
     if (!title || !normalizedBody) {
-      return res.status(400).json({ error: 'title and body/content are required' });
+      return res.status(400).json({ error: 'title and body are required' });
     }
 
     const docs = storage.listDocuments();
     const document = {
       id: `doc-${randomUUID()}`,
       title: String(title),
-      content: normalizedBody,
       body: normalizedBody,
       summary: summary ? String(summary) : null,
       type: String(type).toUpperCase(),
@@ -177,7 +175,6 @@ function createApp(options = {}) {
       const document = {
         id: `doc-${randomUUID()}`,
         title: title || `URL: ${url}`,
-        content: text,
         body: text,
         type: 'URL',
         visibility: normalizeVisibility(visibility),
@@ -210,7 +207,6 @@ function createApp(options = {}) {
       const document = {
         id: `doc-${randomUUID()}`,
         title,
-        content: parsed.text.trim(),
         body: parsed.text.trim(),
         type: 'PDF',
         visibility,
