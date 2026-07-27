@@ -1,0 +1,28 @@
+{
+  "name": "custsvc-",
+  "version": "1.0.0",
+  "description": "This repository defines a **browser-native organizational intelligence platform**, not just a customer service chatbot.",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rkendel1/custsvc-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/rkendel1/custsvc-/issues"
+  },
+  "homepage": "https://github.com/rkendel1/custsvc-#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5"
+  }
+}

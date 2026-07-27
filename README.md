@@ -2,6 +2,50 @@
 
 This repository defines a **browser-native organizational intelligence platform**, not just a customer service chatbot.
 
+## Implemented MVP
+
+This repository now includes a working end-to-end MVP:
+
+- Document ingestion APIs for:
+  - text/markdown/faq/policy
+  - URL fetch + extraction
+  - PDF upload + text extraction
+- Knowledge compiler that generates:
+  - `bundles/company.intelligence.bundle.json`
+- Embeddable widget runtime:
+  - `<script src="/company-ai.js" ...></script>`
+  - local bundle retrieval and scoring in the browser
+  - optional remote inference fallback endpoint hook
+  - telemetry capture for each question
+- Admin console at `/admin`:
+  - upload content
+  - compile bundle
+  - inspect documents
+  - inspect analytics and recommendations
+
+## Quick start
+
+```bash
+npm install
+npm start
+```
+
+Open:
+
+- `http://localhost:3000/admin` to ingest docs and compile
+- `http://localhost:3000/` to use the widget
+
+## API surface (MVP)
+
+- `GET /health`
+- `GET /api/documents`
+- `POST /api/documents`
+- `POST /api/documents/url`
+- `POST /api/documents/pdf` (multipart file upload)
+- `POST /api/compile`
+- `POST /api/telemetry`
+- `GET /api/admin/analytics`
+
 ## Positioning
 
 - Customer service chatbot alone: **5/10**
