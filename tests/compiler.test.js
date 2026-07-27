@@ -279,4 +279,5 @@ test('bundle accepts explicit hybrid storage profile', () => {
   assert.equal(bundle.storage_profile.stores.length, 2);
   assert.equal(bundle.storage_profile.stores[1].id, 'internal');
   assert.equal(bundle.storage_profile.stores[1].type, 'customer-managed');
+  assert.deepEqual(bundle.storage_profile.stores[1].audiences, ['employee', 'manager']);
 });

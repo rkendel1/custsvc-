@@ -12,8 +12,9 @@ class KnowledgeStore {
   async delete() { return false; }
 
   /**
-   * Returns a deterministic fallback embedding as normalized token lengths.
-   * This is intended for local development/testing; production providers should override with real embeddings.
+   * Returns a deterministic numeric vector fallback where each dimension is (token length / 20).
+   * This is only for local development/testing to satisfy the embedding contract shape.
+   * Production providers should override this with a true semantic embedding model.
    */
   async embed(text = '') {
     return String(text || '')

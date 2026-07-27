@@ -125,12 +125,12 @@
     const chunkAudience = normalizeAudience(chunk?.audience || chunk?.visibility).toLowerCase();
     const stores = (profile.stores || []).map((store) => ({
       ...store,
-      _audiencesNormalized: (Array.isArray(store?.audiences) ? store.audiences : [])
+      normalizedAudiences: (Array.isArray(store?.audiences) ? store.audiences : [])
         .map((item) => String(item).toLowerCase()),
     }));
     const mapped = stores.find((store) => {
-      if (!store._audiencesNormalized?.length) return false;
-      return store._audiencesNormalized.includes(chunkAudience);
+      if (!store.normalizedAudiences?.length) return false;
+      return store.normalizedAudiences.includes(chunkAudience);
     });
     return mapped || stores[0] || { id: 'public', type: 'browser-local', audiences: ['customer'] };
   }
