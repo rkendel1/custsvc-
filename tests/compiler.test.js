@@ -10,7 +10,7 @@ const {
 } = require('../src/lib/compiler');
 const { buildAnalytics } = require('../src/lib/analytics');
 
-test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
+test('compileBundle v4 creates knowledge, chunks, and metadata', () => {
   const bundle = compileBundle([
     {
       id: 'doc-1',
@@ -22,8 +22,8 @@ test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
     },
   ], { company: 'TestCo' });
 
-  assert.equal(bundle.version, 3);
-  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.version, 4);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v4');
   assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
   assert.equal(bundle.company, 'TestCo');
   assert.equal(bundle.documentCount, 1);
@@ -242,12 +242,20 @@ test('bundle keeps v2-compatible knowledge and chunk fields', () => {
   assert.ok(bundle.graph && bundle.indexes && bundle.review_schedule);
 });
 
-test('bundle exposes v3 format with explicit v2 compatibility markers', () => {
-  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], { processes: [] });
-  assert.equal(bundle.version, 3);
-  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+test('bundle exposes v4 format with explicit v2 compatibility markers', () => {
+  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], {
+    processes: [],
+    capabilities: [{ id: 'crm.create_customer', provider: 'salesforce' }],
+    connectors: [{ id: 'salesforce', capabilities: ['crm.create_customer'] }],
+    execution_policies: [{ id: 'default', retries: 2 }],
+  });
+  assert.equal(bundle.version, 4);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v4');
   assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
   assert.ok(bundle.metadata && typeof bundle.metadata.knowledgeCount === 'number');
+  assert.ok(Array.isArray(bundle.capabilities));
+  assert.ok(Array.isArray(bundle.connectors));
+  assert.ok(Array.isArray(bundle.execution_policies));
   assert.ok(Array.isArray(bundle.knowledge));
   assert.ok(Array.isArray(bundle.chunks));
 });

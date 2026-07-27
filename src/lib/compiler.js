@@ -29,6 +29,7 @@ const DUPLICATE_SIMILARITY_THRESHOLD = 0.82;
 const PROCESS_STEP_TYPES = new Set([
   'DECISION',
   'APPROVAL',
+  'ACTION',
   'COLLECT_DATA',
   'ASK_QUESTION',
   'GENERATE_DOCUMENT',
@@ -387,6 +388,8 @@ function normalizeProcessStep(step, index) {
     actor: step?.actor || null,
     required_role: step?.required_role || null,
     required_capability: step?.required_capability || null,
+    capability: step?.capability || step?.required_capability || null,
+    input_mapping: step?.input_mapping && typeof step.input_mapping === 'object' ? step.input_mapping : {},
     expected_duration: Number(step?.expected_duration || 0),
     automation: step?.automation || null,
     validation: step?.validation || null,
@@ -416,6 +419,49 @@ function normalizeProcess(process, index) {
     policies: parseList(process?.policies),
     outputs: parseList(process?.outputs),
     metrics: parseList(process?.metrics),
+  };
+}
+
+function normalizeCapability(capability, index) {
+  if (typeof capability === 'string') {
+    return {
+      id: capability,
+      name: capability,
+      description: '',
+      provider: null,
+      inputs: [],
+      outputs: [],
+      permissions: [],
+      authentication: 'none',
+      risk_level: 'low',
+      execution_mode: 'internal',
+    };
+  }
+  const id = String(capability?.id || `capability-${index + 1}`);
+  return {
+    id,
+    name: String(capability?.name || id),
+    description: String(capability?.description || ''),
+    provider: capability?.provider ? String(capability.provider) : null,
+    inputs: parseList(capability?.inputs),
+    outputs: parseList(capability?.outputs),
+    permissions: parseList(capability?.permissions),
+    authentication: String(capability?.authentication || 'none'),
+    risk_level: String(capability?.risk_level || 'low'),
+    execution_mode: String(capability?.execution_mode || 'internal'),
+  };
+}
+
+function normalizeConnector(connector, index) {
+  const id = String(connector?.id || connector?.name || `connector-${index + 1}`);
+  return {
+    id,
+    name: String(connector?.name || id),
+    type: String(connector?.type || 'external'),
+    provider: String(connector?.provider || id),
+    capabilities: parseList(connector?.capabilities),
+    authentication: String(connector?.authentication || 'oauth2'),
+    health: String(connector?.health || 'unknown'),
   };
 }
 
@@ -559,6 +605,8 @@ function compileBundle(documents, options = {}) {
   const safeDocs = Array.isArray(documents) ? documents : [];
   const company = options.company || 'Acme';
   const safeProcesses = Array.isArray(options.processes) ? options.processes : [];
+  const safeCapabilities = Array.isArray(options.capabilities) ? options.capabilities : [];
+  const safeConnectors = Array.isArray(options.connectors) ? options.connectors : [];
   const knowledge = safeDocs.map(toKnowledgeObject);
   const chunks = knowledge.flatMap((item, index) => toChunks(item, index));
   const graph = buildGraph(knowledge);
@@ -590,11 +638,22 @@ function compileBundle(documents, options = {}) {
   const capabilitySet = new Set();
   for (const process of processes) {
     for (const capability of process.required_capabilities) capabilitySet.add(capability);
+    for (const step of process.steps) if (step.capability) capabilitySet.add(step.capability);
   }
+  const capabilityRegistry = safeCapabilities.map(normalizeCapability);
+  const seenCapabilities = new Set(capabilityRegistry.map((item) => item.id));
+  for (const inferredCapability of capabilitySet) {
+    if (seenCapabilities.has(inferredCapability)) continue;
+    capabilityRegistry.push(normalizeCapability(inferredCapability, capabilityRegistry.length));
+    seenCapabilities.add(inferredCapability);
+  }
+  const connectors = safeConnectors.map(normalizeConnector);
+  const executionPolicies = Array.isArray(options.execution_policies) ? options.execution_policies : [];
+  const permissions = Array.isArray(options.permissions) ? options.permissions : [];
 
   return {
-    version: 3,
-    format: 'company.intelligence.bundle.v3',
+    version: 4,
+    format: 'company.intelligence.bundle.v4',
     format_legacy: 'company.intelligence.bundle',
     company,
     generatedAt,
@@ -609,6 +668,8 @@ function compileBundle(documents, options = {}) {
       knowledgeCount: knowledge.length,
       chunkCount: chunks.length,
       processCount: processes.length,
+      capabilityCount: capabilityRegistry.length,
+      connectorCount: connectors.length,
     },
     knowledge,
     relationships: graph.edges,
@@ -629,11 +690,19 @@ function compileBundle(documents, options = {}) {
       chunks: chunks.map((item) => item.id),
       processes: processes.map((item) => item.id),
     },
-    capabilities: [...capabilitySet],
+    capabilities: capabilityRegistry,
+    capability_ids: [...capabilitySet],
+    connectors,
+    permissions,
+    execution_policies: executionPolicies,
     analytics: {
       processes: {
         total: processes.length,
         validation_issues: Object.values(processValidation).reduce((sum, items) => sum + items.length, 0),
+      },
+      execution: {
+        automation_percentage: 0,
+        human_intervention_rate: 0,
       },
     },
     duplicates,

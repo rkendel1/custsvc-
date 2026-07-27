@@ -216,6 +216,61 @@
       return (bundle?.processes || []).find((item) => item.id === processId) || null;
     }
 
+    function getCapability(bundle, capabilityId) {
+      return (bundle?.capabilities || []).find((item) => (typeof item === 'string' ? item === capabilityId : item.id === capabilityId)) || null;
+    }
+
+    function listCapabilities(context = state.context) {
+      const bundle = state.bundle || {};
+      const userPermissions = new Set((context.permissions || []).map((item) => String(item)));
+      return (bundle.capabilities || []).filter((capability) => {
+        if (typeof capability === 'string') return true;
+        if (!capability.permissions || capability.permissions.length === 0) return true;
+        return capability.permissions.some((permission) => userPermissions.has(permission));
+      });
+    }
+
+    function getExecutionHistory(executionId) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      return [...(execution.timeline || execution.history || [])];
+    }
+
+    function executeCapability(executionId, capabilityId, input = {}) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const capability = getCapability(state.bundle || {}, capabilityId);
+      if (!capability) throw new Error(`unknown capability: ${capabilityId}`);
+      const result = { outputs: input, external_ref: null };
+      execution.outputs = { ...(execution.outputs || {}), [capabilityId]: result.outputs };
+      execution.history.push({ stepId: execution.currentStepId, action: 'EXECUTE_CAPABILITY', capabilityId, at: new Date().toISOString() });
+      execution.timeline = [...(execution.timeline || []), { event: 'CAPABILITY_EXECUTED', capabilityId, at: new Date().toISOString() }];
+      return result;
+    }
+
+    function updateApproval(executionId, approvalId, decision, reason = null) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const approvals = execution.approvals || [];
+      const approval = approvals.find((item) => item.id === approvalId);
+      if (!approval) throw new Error('approval not found');
+      if (approval.decision !== 'PENDING') throw new Error('approval already decided');
+      approval.decision = decision;
+      approval.reason = reason;
+      approval.decidedAt = new Date().toISOString();
+      execution.status = decision === 'APPROVED' ? 'ACTIVE' : 'REJECTED';
+      execution.timeline = [...(execution.timeline || []), { event: `APPROVAL_${decision}`, approvalId, at: new Date().toISOString() }];
+      return execution;
+    }
+
+    function approve(executionId, approvalId, reason = null) {
+      return updateApproval(executionId, approvalId, 'APPROVED', reason);
+    }
+
+    function reject(executionId, approvalId, reason = null) {
+      return updateApproval(executionId, approvalId, 'REJECTED', reason);
+    }
+
     async function startProcess(processId, context = {}) {
       const bundle = await loadBundle();
       const process = getProcess(bundle, processId);
@@ -229,6 +284,9 @@
         context,
         currentStepId: process.steps[0].id,
         history: [],
+        approvals: [],
+        outputs: {},
+        timeline: [{ event: 'PROCESS_STARTED', at: new Date().toISOString(), processId }],
         startedAt: new Date().toISOString(),
       };
       state.executions[executionId] = execution;
@@ -265,6 +323,31 @@
       const bundle = await loadBundle();
       const process = getProcess(bundle, execution.processId);
       const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
+      if (normalizeStepType(current?.type) === 'APPROVAL') {
+        const approvalsForStep = (execution.approvals || []).filter((item) => item.stepId === current.id);
+        const pending = approvalsForStep.find((item) => item.decision === 'PENDING');
+        if (pending) throw new Error('approval pending');
+        const approved = approvalsForStep.find((item) => item.decision === 'APPROVED');
+        if (!approved) {
+          const approval = {
+            id: `${execution.id}:${current.id}:${Date.now()}`,
+            stepId: current.id,
+            assigned_role: current.required_role || null,
+            decision: 'PENDING',
+            reason: null,
+            createdAt: new Date().toISOString(),
+          };
+          execution.approvals.push(approval);
+          execution.status = 'WAITING_APPROVAL';
+          execution.history.push({ stepId: execution.currentStepId, action: 'REQUEST_APPROVAL', at: new Date().toISOString() });
+          execution.timeline = [...(execution.timeline || []), { event: 'APPROVAL_REQUESTED', approvalId: approval.id, at: new Date().toISOString() }];
+          return execution;
+        }
+        execution.status = 'ACTIVE';
+      }
+      if (normalizeStepType(current?.type) === 'ACTION' && current?.capability) {
+        executeCapability(executionId, current.capability, payload.inputs || {});
+      }
       const nextStepId = current?.next?.[0] || null;
       execution.history.push({ stepId: execution.currentStepId, action: 'COMPLETE', at: new Date().toISOString() });
       if (!nextStepId || normalizeStepType(current?.type) === 'FINISH') {
@@ -490,5 +573,10 @@
     branch,
     rollback,
     cancel,
+    executeCapability,
+    listCapabilities,
+    getExecutionHistory,
+    approve,
+    reject,
   };
 })();
