@@ -25,9 +25,12 @@ const SUPPORTED_RELATIONSHIPS = new Set([
   'DUPLICATE_OF',
   'DERIVED_FROM',
 ]);
+const DUPLICATE_SIMILARITY_THRESHOLD = 0.82;
 
 function normalizeVisibility(visibility) {
   const value = String(visibility || 'BOTH').toUpperCase();
+  // Legacy bundles used BOTH to represent broad visibility; map to PUBLIC so existing
+  // public-facing retrieval behavior remains available after audience layer expansion.
   if (value === 'BOTH') return 'PUBLIC';
   if (AUDIENCE_LEVELS.includes(value)) return value;
   return 'INTERNAL';
@@ -283,7 +286,7 @@ function jaccardSimilarity(a, b) {
   return common / (setA.size + setB.size - common);
 }
 
-function detectDuplicates(knowledge, threshold = 0.82) {
+function detectDuplicates(knowledge, threshold = DUPLICATE_SIMILARITY_THRESHOLD) {
   const duplicates = [];
   for (let i = 0; i < knowledge.length; i += 1) {
     for (let j = i + 1; j < knowledge.length; j += 1) {
@@ -302,6 +305,8 @@ function detectDuplicates(knowledge, threshold = 0.82) {
 }
 
 function extractRefundWindowDays(text) {
+  // Current contradiction extraction is intentionally narrow and focused on refund-policy
+  // windows. Broader policy conflict extraction can be added incrementally.
   const match = String(text || '').toLowerCase().match(/refund\w*[\s\S]{0,40}?(\d{1,3})\s*days?/);
   if (!match) return null;
   return Number(match[1]);

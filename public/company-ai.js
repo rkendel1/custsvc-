@@ -22,6 +22,12 @@
     },
   };
   const audiencePriority = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, EXECUTIVE: 3 };
+  const confidenceWeights = {
+    semantic: 0.35,
+    freshness: 0.2,
+    agreement: 0.2,
+    reviewer: 0.25,
+  };
 
   function normalizeAudience(value) {
     const item = String(value || '').toUpperCase();
@@ -179,7 +185,12 @@
       const fresh = freshnessScore(best.chunk);
       const agreement = relationshipAgreement(best.chunk, bundle);
       const reviewerConfidence = Number(best.chunk.confidence || 0.7);
-      const confidence = Number(((best.score + fresh + agreement + reviewerConfidence) / 4).toFixed(3));
+      const confidence = Number((
+        best.score * confidenceWeights.semantic +
+        fresh * confidenceWeights.freshness +
+        agreement * confidenceWeights.agreement +
+        reviewerConfidence * confidenceWeights.reviewer
+      ).toFixed(3));
       return {
         answer: best.chunk.text,
         score: best.score,
