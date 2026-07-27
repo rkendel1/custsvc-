@@ -40,6 +40,7 @@ function createStorage(baseDir) {
 
   function sanitizeBundleName(name) {
     const fileName = path.basename(String(name || 'company.intelligence.bundle.json'));
+    if (fileName.includes('..')) return 'company.intelligence.bundle.json';
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
     return safeName || 'company.intelligence.bundle.json';
   }

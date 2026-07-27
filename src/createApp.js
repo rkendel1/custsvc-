@@ -10,8 +10,6 @@ const { createStorage } = require('./lib/storage');
 
 function stripHtml(text) {
   return String(text || '')
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -53,14 +51,16 @@ function isPrivateHost(hostname) {
     );
   }
 
-  return host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80');
+  return host === '::1' || host.startsWith('fc00:') || host.startsWith('fd00:') || host.startsWith('fe80:');
 }
 
-function validateExternalUrl(rawUrl) {
+function parseAndValidateExternalUrl(rawUrl, allowedHosts) {
   try {
     const parsed = new URL(rawUrl);
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-    return !isPrivateHost(parsed.hostname);
+    if (isPrivateHost(parsed.hostname)) return false;
+    if (!allowedHosts.has(parsed.hostname.toLowerCase())) return false;
+    return parsed;
   } catch (_e) {
     return false;
   }
@@ -74,6 +74,12 @@ function createApp(options = {}) {
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() });
   const writeLimiter = createRateLimiter();
+  const allowedFetchHosts = new Set(
+    String(process.env.ALLOWED_FETCH_HOSTS || '')
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -110,12 +116,17 @@ function createApp(options = {}) {
   app.post('/api/documents/url', writeLimiter, async (req, res) => {
     const { url, title, visibility = 'BOTH' } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
-    if (!validateExternalUrl(url)) {
-      return res.status(400).json({ error: 'url must be public http(s) and not private/internal' });
+    if (allowedFetchHosts.size === 0) {
+      return res.status(400).json({ error: 'URL ingestion is disabled until ALLOWED_FETCH_HOSTS is configured.' });
+    }
+
+    const validatedUrl = parseAndValidateExternalUrl(url, allowedFetchHosts);
+    if (!validatedUrl) {
+      return res.status(400).json({ error: 'url must be public http(s), non-private, and in ALLOWED_FETCH_HOSTS' });
     }
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(validatedUrl.toString());
       if (!response.ok) {
         return res.status(400).json({ error: `failed to fetch url (${response.status})` });
       }
@@ -126,11 +137,11 @@ function createApp(options = {}) {
       const docs = storage.listDocuments();
       const document = {
         id: `doc-${randomUUID()}`,
-        title: title || `URL: ${url}`,
+        title: title || `URL: ${validatedUrl.toString()}`,
         content: text,
         type: 'URL',
         visibility: normalizeVisibility(visibility),
-        sourceUrl: url,
+        sourceUrl: validatedUrl.toString(),
         createdAt: new Date().toISOString(),
       };
       docs.push(document);
@@ -213,7 +224,7 @@ function createApp(options = {}) {
   app.use(express.static(path.join(rootDir, 'public')));
 
   app.get('/admin', (_req, res) => {
-    res.sendFile(path.join(rootDir, 'public', 'admin.html'));
+    res.redirect('/admin.html');
   });
 
   return app;

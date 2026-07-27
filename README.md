@@ -27,13 +27,15 @@ This repository now includes a working end-to-end MVP:
 
 ```bash
 npm install
-npm start
+ALLOWED_FETCH_HOSTS=example.com,docs.example.com npm start
 ```
 
 Open:
 
 - `http://localhost:3000/admin` to ingest docs and compile
 - `http://localhost:3000/` to use the widget
+
+Note: URL ingestion is restricted to hosts listed in `ALLOWED_FETCH_HOSTS`.
 
 ## API surface (MVP)
 
