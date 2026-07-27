@@ -569,6 +569,33 @@ test('embed session auto-provisions on matching tenant subdomain without console
   assert.equal(Boolean(activeDeployment), true);
 });
 
+test('embed endpoints return explicit tenant-host mismatch error details', async (t) => {
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-host-mismatch-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const sessionResponse = await fetch(`${baseUrl}/api/embed/session?tenant_id=dang`, {
+    headers: {
+      'x-forwarded-host': 'test.tryghostpost.com',
+      'x-forwarded-proto': 'https',
+      origin: 'https://www.randykendel.com',
+    },
+  });
+  assert.equal(sessionResponse.status, 409);
+  const sessionBody = await sessionResponse.json();
+  assert.equal(sessionBody.reason, 'tenant_host_mismatch');
+  assert.equal(sessionBody.expected_tenant_id, 'test');
+  assert.equal(sessionBody.received_tenant_id, 'dang');
+});
+
 test('embed APIs respond to CORS preflight for third-party pages', async (t) => {
   const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
   process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
@@ -1173,6 +1200,52 @@ test('source endpoints accept console cookie auth without session token', async 
    assert.equal(sourceCreate.status, 201);
    assert.equal(sourceBody?.source?.tenant_id, 'sourceauth');
  });
+
+test('console auth cookie is set for base domain to persist across tenant subdomains', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  const previousSourceSecret = process.env.SOURCE_SECRET_KEY;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousTenantBaseDomain = process.env.TENANT_BASE_DOMAIN;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  process.env.SOURCE_SECRET_KEY = 'test-source-secret-key';
+  process.env.NODE_ENV = 'production';
+  process.env.TENANT_BASE_DOMAIN = 'tryghostpost.com';
+
+  t.after(() => {
+    if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+    else process.env.APP_AUTH_SECRET = previousAuthSecret;
+    if (previousSourceSecret === undefined) delete process.env.SOURCE_SECRET_KEY;
+    else process.env.SOURCE_SECRET_KEY = previousSourceSecret;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousTenantBaseDomain === undefined) delete process.env.TENANT_BASE_DOMAIN;
+    else process.env.TENANT_BASE_DOMAIN = previousTenantBaseDomain;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-cookie-domain-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-forwarded-host': 'test.tryghostpost.com',
+      'x-forwarded-proto': 'https',
+    },
+    body: JSON.stringify({
+      tenant_id: 'cookiebase',
+      email: 'owner@cookiebase.dev',
+      password: 'password123',
+    }),
+  });
+  assert.equal(response.status, 201);
+
+  const cookie = String(response.headers.get('set-cookie') || '');
+  assert.equal(cookie.includes('Domain=.tryghostpost.com'), true);
+  assert.equal(cookie.includes('Secure'), true);
+});
 
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {

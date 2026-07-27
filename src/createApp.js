@@ -906,6 +906,32 @@ function resolveTenantOrigin(req, tenantId, fallbackPort = 3000) {
   return `${protocol}://${normalizedTenantId}.${baseDomain}`;
 }
 
+function resolveCookieDomain(req) {
+  const baseDomain = resolveTenantBaseDomain(req);
+  if (!baseDomain || isPrivateHost(baseDomain) || baseDomain === 'localhost') return '';
+  return `.${baseDomain}`;
+}
+
+function validateEmbedTenantHost(req, tenantId) {
+  const requestedTenantId = String(tenantId || '').trim().toLowerCase();
+  if (!requestedTenantId) {
+    return { ok: false, status: 400, error: 'tenant_id is required', reason: 'missing_tenant_id' };
+  }
+
+  const hostTenantId = String(resolveTenantIdFromHost(req) || '').trim().toLowerCase();
+  if (!hostTenantId) return { ok: true };
+  if (hostTenantId === requestedTenantId) return { ok: true };
+
+  return {
+    ok: false,
+    status: 409,
+    error: 'tenant_id does not match tenant subdomain',
+    reason: 'tenant_host_mismatch',
+    expected_tenant_id: hostTenantId,
+    received_tenant_id: requestedTenantId,
+  };
+}
+
 function resolveEmbedCorsOrigin(req) {
   const origin = String(req?.header?.('origin') || '').trim();
   if (!origin) return '';
@@ -1342,26 +1368,30 @@ function resolveConsoleAccessIdentity(req) {
   };
 }
 
-function setConsoleAuthCookie(res, token, maxAgeSeconds = 8 * 60 * 60) {
+function setConsoleAuthCookie(req, res, token, maxAgeSeconds = 8 * 60 * 60) {
   const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const domain = resolveCookieDomain(req);
   const cookie = [
     `kos_console_auth=${encodeURIComponent(String(token || ''))}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
+    domain ? `Domain=${domain}` : '',
     `Max-Age=${Math.max(60, Number(maxAgeSeconds || 0))}`,
     secure ? 'Secure' : '',
   ].filter(Boolean).join('; ');
   res.setHeader('Set-Cookie', cookie);
 }
 
-function clearConsoleAuthCookie(res) {
+function clearConsoleAuthCookie(req, res) {
   const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const domain = resolveCookieDomain(req);
   const cookie = [
     'kos_console_auth=',
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
+    domain ? `Domain=${domain}` : '',
     'Max-Age=0',
     secure ? 'Secure' : '',
   ].filter(Boolean).join('; ');
@@ -2532,7 +2562,7 @@ function createApp(options = {}) {
       if (!token) {
         return res.status(500).json({ error: 'console auth secret is not configured' });
       }
-      setConsoleAuthCookie(res, token);
+      setConsoleAuthCookie(req, res, token);
       return res.json({
         ok: true,
         expires_at: new Date(expiresAt).toISOString(),
@@ -2554,7 +2584,7 @@ function createApp(options = {}) {
     if (!token) {
       return res.status(500).json({ error: 'console auth secret is not configured' });
     }
-    setConsoleAuthCookie(res, token);
+    setConsoleAuthCookie(req, res, token);
     return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString(), next_url: '/admin.html' });
   });
 
@@ -2638,7 +2668,7 @@ function createApp(options = {}) {
     if (!token) {
       return res.status(500).json({ error: 'console auth secret is not configured' });
     }
-    setConsoleAuthCookie(res, token);
+    setConsoleAuthCookie(req, res, token);
     return res.status(201).json({
       ok: true,
       tenant_id: upserted.tenant_id,
@@ -2651,7 +2681,7 @@ function createApp(options = {}) {
   });
 
   app.post('/api/access/logout', (_req, res) => {
-    clearConsoleAuthCookie(res);
+    clearConsoleAuthCookie(_req, res);
     return res.json({ ok: true });
   });
 
@@ -2679,7 +2709,7 @@ function createApp(options = {}) {
 
     const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
     const token = signConsoleAccessToken({ exp: expiresAt });
-    if (token) setConsoleAuthCookie(res, token);
+    if (token) setConsoleAuthCookie(req, res, token);
 
     return res.json({ ok: true, password_required: true, updated_at: new Date().toISOString() });
   });
@@ -2687,6 +2717,16 @@ function createApp(options = {}) {
   app.get('/api/embed/session', readLimiter, (req, res) => {
     const tenantId = String(req.query.tenant_id || '').trim();
     if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
+
+    const tenantHostValidation = validateEmbedTenantHost(req, tenantId);
+    if (!tenantHostValidation.ok) {
+      return res.status(tenantHostValidation.status || 409).json({
+        error: tenantHostValidation.error,
+        reason: tenantHostValidation.reason,
+        expected_tenant_id: tenantHostValidation.expected_tenant_id,
+        received_tenant_id: tenantHostValidation.received_tenant_id,
+      });
+    }
 
     const tenants = listData(storage, 'listTenants');
     const tenant = tenants.find((item) => item.tenant_id === tenantId);
@@ -2729,6 +2769,16 @@ function createApp(options = {}) {
     const tenantId = String(req.query.tenant_id || '').trim();
     if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
 
+    const tenantHostValidation = validateEmbedTenantHost(req, tenantId);
+    if (!tenantHostValidation.ok) {
+      return res.status(tenantHostValidation.status || 409).json({
+        error: tenantHostValidation.error,
+        reason: tenantHostValidation.reason,
+        expected_tenant_id: tenantHostValidation.expected_tenant_id,
+        received_tenant_id: tenantHostValidation.received_tenant_id,
+      });
+    }
+
     const verification = verifyEmbedSessionToken(resolveEmbedToken(req), {
       tenantId,
       origin: req.header('origin') || '',
@@ -2758,6 +2808,16 @@ function createApp(options = {}) {
   app.post('/api/embed/search', writeLimiter, async (req, res) => {
     const tenantId = String(req.body?.tenant_id || req.query?.tenant_id || '').trim();
     if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
+
+    const tenantHostValidation = validateEmbedTenantHost(req, tenantId);
+    if (!tenantHostValidation.ok) {
+      return res.status(tenantHostValidation.status || 409).json({
+        error: tenantHostValidation.error,
+        reason: tenantHostValidation.reason,
+        expected_tenant_id: tenantHostValidation.expected_tenant_id,
+        received_tenant_id: tenantHostValidation.received_tenant_id,
+      });
+    }
 
     const verification = verifyEmbedSessionToken(resolveEmbedToken(req), {
       tenantId,
