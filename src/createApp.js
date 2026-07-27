@@ -684,9 +684,20 @@ function verifyConsoleAccessToken(token) {
 }
 
 function shouldRequireConsolePassword(req) {
+  if (isSecurityRelaxed()) return false;
   if (getConsolePassword()) return true;
   const state = getConsolePasswordState(req);
   return Boolean(state?.hasStoredPassword && state.hasStoredPassword());
+}
+
+function isSecurityRelaxed() {
+  const value = String(
+    process.env.KNOWLEDGEOS_RELAX_SECURITY
+      || process.env.KNOWLEDGEOS_SETUP_MODE
+      || process.env.SETUP_MODE
+      || '',
+  ).trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on';
 }
 
 function isConsoleAuthorized(req) {
@@ -795,6 +806,18 @@ function requireTenant(req, res, next) {
 
 function requireTenantOrSession(storage) {
   return (req, res, next) => {
+    if (isSecurityRelaxed()) {
+      req.tenantId = String(resolveTenantId(req) || 'public');
+      req.session = {
+        token: 'setup-mode',
+        tenant_id: req.tenantId,
+        user_id: 'setup-user',
+        role: 'Owner',
+        status: 'active',
+      };
+      return next();
+    }
+
     const tenantId = resolveTenantId(req);
     if (tenantId) {
       req.tenantId = String(tenantId);
@@ -822,6 +845,17 @@ function requireTenantOrSession(storage) {
 
 function requireTenantSession(storage) {
   return (req, res, next) => {
+    if (isSecurityRelaxed()) {
+      req.session = req.session || {
+        token: 'setup-mode',
+        tenant_id: String(req.tenantId || resolveTenantId(req) || 'public'),
+        user_id: 'setup-user',
+        role: 'Owner',
+        status: 'active',
+      };
+      return next();
+    }
+
     const token = resolveSessionToken(req);
     if (!token) return res.status(401).json({ error: 'session token is required' });
 
@@ -843,6 +877,18 @@ function requireTenantSession(storage) {
 function requireTenantRole(storage, allowedRoles = ['Owner', 'Admin', 'Administrator']) {
   const allowed = new Set(allowedRoles.map((role) => String(role).toLowerCase()));
   return (req, res, next) => {
+    if (isSecurityRelaxed()) {
+      req.tenantId = String(resolveScopedTenantId(req) || 'public');
+      req.session = {
+        token: 'setup-mode',
+        tenant_id: req.tenantId,
+        user_id: 'setup-user',
+        role: 'Owner',
+        status: 'active',
+      };
+      return next();
+    }
+
     const token = resolveSessionToken(req);
     if (!token) return res.status(401).json({ error: 'session token is required' });
 
@@ -1164,6 +1210,9 @@ function createApp(options = {}) {
 
     res.json({
       ok: true,
+      setup_mode: {
+        security_relaxed: isSecurityRelaxed(),
+      },
       database,
       connector_vault: connectorVault.getState(),
       pgvector: pgVectorStore.getState(),

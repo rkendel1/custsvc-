@@ -650,3 +650,44 @@ test('source mutation endpoints enforce owner/admin RBAC', async (t) => {
   });
   assert.equal(auditResponse.status, 403);
 });
+
+test('setup mode relaxes tenant session and role enforcement for source setup', async (t) => {
+  const previousRelaxSecurity = process.env.KNOWLEDGEOS_RELAX_SECURITY;
+  process.env.KNOWLEDGEOS_RELAX_SECURITY = 'true';
+  t.after(() => {
+    if (previousRelaxSecurity === undefined) {
+      delete process.env.KNOWLEDGEOS_RELAX_SECURITY;
+    } else {
+      process.env.KNOWLEDGEOS_RELAX_SECURITY = previousRelaxSecurity;
+    }
+  });
+
+  const sources = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    listSessions: () => [],
+    saveSessions: () => {},
+    listTenantMemberships: () => [],
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Setup Source', type: 'WEBSITE', site_url: 'https://example.com/help' }),
+  });
+  assert.equal(createResponse.status, 201);
+
+  const auditResponse = await fetch(`${baseUrl}/api/sources/audit`);
+  assert.equal(auditResponse.status, 200);
+});

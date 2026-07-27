@@ -137,6 +137,27 @@ KnowledgeOS includes foundational enterprise controls:
 
 These controls are designed to support high-trust deployment in environments where cross-tenant bleed, weak secret handling, or unaudited connector changes are unacceptable.
 
+### Temporary setup mode (security relaxed)
+
+For initial platform bootstrap and data loading, you can temporarily relax auth/session/role enforcement.
+
+- Set one of the following environment variables to enable setup mode:
+  - `KNOWLEDGEOS_RELAX_SECURITY=true`
+  - `KNOWLEDGEOS_SETUP_MODE=true`
+  - `SETUP_MODE=true`
+- In setup mode:
+  - Console password checks are bypassed.
+  - Tenant session checks are bypassed.
+  - Owner/Admin role checks are bypassed.
+  - APIs default to tenant `public` when no tenant is provided.
+- Verify status at `GET /api/system/status` under `setup_mode.security_relaxed`.
+
+Important:
+
+- Use setup mode only in trusted environments.
+- Disable setup mode immediately after initial data setup.
+- Never keep setup mode enabled in production.
+
 ## Architecture Summary
 
 ```text
