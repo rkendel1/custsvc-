@@ -1973,12 +1973,14 @@ function createApp(options = {}) {
       audiences = ['Customers', 'Employees'],
     } = req.body || {};
 
-    if (!name || !email || !company) {
-      return res.status(400).json({ error: 'name, email, and company are required' });
-    }
-    if (!isValidEmail(email)) {
+    const safeName = String(name || '').trim() || 'Workspace Owner';
+    const providedEmail = String(email || '').trim().toLowerCase();
+    if (providedEmail && !isValidEmail(providedEmail)) {
       return res.status(400).json({ error: 'a valid email is required' });
     }
+    const generatedSuffix = randomUUID().slice(0, 8);
+    const safeEmail = providedEmail || `onboarding+${Date.now()}-${generatedSuffix}@example.com`;
+    const safeCompany = String(company || '').trim() || `Instant Workspace ${generatedSuffix}`;
 
     const selectedCompanySize = normalizeSelection(companySize, ALLOWED_COMPANY_SIZES, '1-50');
     const selectedPrimaryUseCase = normalizeSelection(primaryUseCase, ALLOWED_PRIMARY_USE_CASES, 'Customer Website');
@@ -1988,8 +1990,8 @@ function createApp(options = {}) {
     let tenant;
     try {
       tenant = provisionTenant({
-        companyName: company,
-        ownerEmail: email,
+        companyName: safeCompany,
+        ownerEmail: safeEmail,
         companySize: selectedCompanySize,
         primaryUseCase: selectedPrimaryUseCase,
         deploymentProfile: selectedDeploymentProfile,
@@ -2015,8 +2017,8 @@ function createApp(options = {}) {
     users.push({
       user_id: userId,
       tenant_id: tenant.tenant_id,
-      name: String(name),
-      email: String(email).toLowerCase(),
+      name: safeName,
+      email: safeEmail,
       email_verified: false,
       created_at: new Date().toISOString(),
     });
@@ -2056,8 +2058,8 @@ function createApp(options = {}) {
       step: 'quickstart-complete',
       company_profile: {
         company: tenant.company_name,
-        name: String(name),
-        email: String(email).toLowerCase(),
+        name: safeName,
+        email: safeEmail,
       },
       deployment_choice: selectedDeploymentProfile,
       company_size: selectedCompanySize,

@@ -65,6 +65,30 @@ test('signup provisions tenant and tenant lookup returns dashboard', async (t) =
   assert.equal(typeof tenantData.dashboard.knowledge_health, 'number');
 });
 
+test('quickstart signup provisions tenant when identity fields are omitted', async (t) => {
+  const rootDir = createTempRoot();
+  const app = createApp({ rootDir, storage: createStorage(rootDir) });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const response = await fetch(`${baseUrl}/api/signup/quickstart`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(response.status, 201);
+
+  const data = await response.json();
+  assert.equal(typeof data?.tenant?.tenant_id, 'string');
+  assert.equal(data.tenant.tenant_id.length > 0, true);
+  assert.equal(typeof data?.session?.token, 'string');
+  assert.equal(data.session.token.length > 0, true);
+  assert.equal(typeof data?.next_url, 'string');
+  assert.equal(data.next_url.includes('/onboarding?tenant_id='), true);
+  assert.equal(typeof data?.embed_script, 'string');
+  assert.equal(data.embed_script.includes('data-tenant-id'), true);
+});
+
 test('documents are tenant-scoped when tenant id is provided', async (t) => {
   const rootDir = createTempRoot();
   const app = createApp({ rootDir, storage: createStorage(rootDir) });
