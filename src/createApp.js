@@ -764,12 +764,14 @@ function getConsoleAuthSecret() {
   return String(process.env.APP_AUTH_SECRET || process.env.SOURCE_SECRET_KEY || '').trim();
 }
 
-function signConsoleAccessToken({ exp }) {
+function signConsoleAccessToken({ exp, tenant_id = null, email = null } = {}) {
   const secret = getConsoleAuthSecret();
   if (!secret) return null;
   const payload = {
     scope: 'console-access',
     exp: Number(exp || 0),
+    tenant_id: tenant_id ? String(tenant_id).trim().toLowerCase() : null,
+    email: email ? String(email).trim().toLowerCase() : null,
   };
   const encoded = base64urlEncode(JSON.stringify(payload));
   const signature = createHmac('sha256', secret).update(encoded).digest('base64url');
@@ -837,6 +839,29 @@ function isConsoleAuthorized(req) {
   const cookies = parseCookies(req);
   const token = String(cookies.kos_console_auth || '').trim();
   return verifyConsoleAccessToken(token).ok;
+}
+
+function resolveConsoleAccessIdentity(req) {
+  const authHeader = String(req.header('authorization') || '').trim();
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearer = authHeader.slice(7).trim();
+    const verifiedBearer = verifyConsoleAccessToken(bearer);
+    if (verifiedBearer.ok) {
+      return {
+        tenant_id: verifiedBearer.payload?.tenant_id || null,
+        email: verifiedBearer.payload?.email || null,
+      };
+    }
+  }
+
+  const cookies = parseCookies(req);
+  const token = String(cookies.kos_console_auth || '').trim();
+  const verified = verifyConsoleAccessToken(token);
+  if (!verified.ok) return null;
+  return {
+    tenant_id: verified.payload?.tenant_id || null,
+    email: verified.payload?.email || null,
+  };
 }
 
 function setConsoleAuthCookie(res, token, maxAgeSeconds = 8 * 60 * 60) {
@@ -1356,12 +1381,15 @@ function createApp(options = {}) {
 
   app.get('/api/access/status', (_req, res) => {
     const credentialsEnabled = accessCredentialState.hasCredentials();
+    const identity = resolveConsoleAccessIdentity(_req);
     res.json({
       password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
       password_source: consolePasswordState.source(),
       auth_mode: credentialsEnabled ? 'credentials' : 'password',
       signup_required: !credentialsEnabled,
+      authenticated_tenant_id: identity?.tenant_id || null,
+      authenticated_email: identity?.email || null,
     });
   });
 
