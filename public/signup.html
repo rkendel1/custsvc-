@@ -270,6 +270,7 @@
             <div class="actions">
               <button id="createWorkspaceBtn" type="submit" class="btn-primary">Create my workspace</button>
               <a href="/onboarding" class="btn-ghost" style="text-decoration:none; display:inline-flex; align-items:center;">Open advanced setup</a>
+              <a href="/access.html?next=%2Fsignup.html" class="btn-ghost" style="text-decoration:none; display:inline-flex; align-items:center;">Sign in with password</a>
             </div>
           </form>
 
@@ -293,6 +294,11 @@
         output.innerHTML = `<strong>${title}</strong>${items.filter(Boolean).join('<br />')}`;
       }
 
+      function redirectToAccess() {
+        const next = '/signup.html';
+        window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
+      }
+
       function renderOptions(selectNode, options, fallbackValue = '') {
         if (!selectNode || !Array.isArray(options) || !options.length) return;
         const previous = String(selectNode.value || '').trim();
@@ -306,6 +312,10 @@
       async function loadStandards() {
         try {
           const response = await fetch('/api/standards/onboarding');
+          if (response.status === 401) {
+            redirectToAccess();
+            return;
+          }
           const standards = await response.json();
           if (!response.ok) return;
 
@@ -336,6 +346,11 @@
           const text = await response.text();
           let data = {};
           try { data = text ? JSON.parse(text) : {}; } catch (_error) { data = {}; }
+
+          if (response.status === 401 && String(data?.error || '').toLowerCase().includes('password authentication required')) {
+            redirectToAccess();
+            return;
+          }
 
           if (!response.ok) {
             setStatus('Could not create workspace', data.error || `Request failed (${response.status})`);

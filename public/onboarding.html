@@ -320,6 +320,7 @@
                 <input id="signinTenantInput" placeholder="Workspace ID (tenant id)" />
                 <input id="signinEmailInput" type="email" placeholder="Work email (optional)" />
                 <button id="signinOnboardingBtn" type="button" class="btn-ghost" style="margin-top:0.55rem; width:100%;">Sign in to onboarding</button>
+                <a href="/access.html?next=%2Fonboarding.html" style="display:inline-block; margin-top:0.5rem; color:#2d4c84; text-decoration:none; font-weight:700;">Use platform password sign-in</a>
               </div>
             </div>
           </div>
@@ -539,6 +540,11 @@
       function setStatus(title, lines = []) {
         const safeLines = Array.isArray(lines) ? lines : [String(lines || '')];
         output.innerHTML = `<strong>${title}</strong>${safeLines.filter(Boolean).join('<br />')}`;
+      }
+
+      function redirectToAccess() {
+        const next = `${window.location.pathname}${window.location.search || ''}`;
+        window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
       function requireSessionTokenFor(actionLabel) {
@@ -912,6 +918,10 @@
             throw new Error(`Unexpected non-JSON response (${response.status}): ${preview}`);
           }
         }
+        if (response.status === 401 && String(data?.error || '').toLowerCase().includes('password authentication required')) {
+          redirectToAccess();
+          throw new Error('Redirecting to password sign-in...');
+        }
         if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
         return data;
       }
@@ -927,6 +937,10 @@
             const preview = text.slice(0, 160).replace(/\s+/g, ' ');
             throw new Error(`Unexpected non-JSON response (${response.status}): ${preview}`);
           }
+        }
+        if (response.status === 401 && String(data?.error || '').toLowerCase().includes('password authentication required')) {
+          redirectToAccess();
+          throw new Error('Redirecting to password sign-in...');
         }
         if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
         return data;

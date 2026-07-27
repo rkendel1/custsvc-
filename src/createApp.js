@@ -2544,7 +2544,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.use(['/admin.html', '/tenant.html', '/onboarding.html'], requireConsolePageAccess);
+  app.use(['/admin.html', '/tenant.html', '/onboarding.html', '/signup.html'], requireConsolePageAccess);
 
   app.use('/bundles', express.static(path.join(rootDir, 'bundles')));
   app.use('/vendor/pglite', express.static(path.join(rootDir, 'node_modules', '@electric-sql', 'pglite', 'dist')));
