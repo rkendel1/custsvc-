@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Install Guide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #1c2436;
+        --muted: #5e6a86;
+        --canvas: #f5f8ff;
+        --panel: #ffffff;
+        --line: #d8e4fa;
+        --brand: #1254ff;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(980px 420px at 8% -12%, #fff1d8 0%, transparent 58%),
+          radial-gradient(860px 500px at 92% -8%, #dbeafe 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 2.5rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
+      }
+
+      .wordmark img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        object-fit: cover;
+        border: 1px solid var(--line);
+      }
+
+      .wordmark strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 800;
+      }
+
+      .wordmark span { color: var(--brand); }
+
+      .topnav {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      .panel {
+        margin-top: 0.9rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 0.95rem;
+      }
+
+      .tenant-row {
+        margin-top: 0.55rem;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 0.5rem;
+      }
+
+      .tenant-row input {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.58rem 0.62rem;
+        font: inherit;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.58rem 0.9rem;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        color: #fff;
+        background: linear-gradient(135deg, #1254ff, #2f88ff);
+      }
+
+      .btn-ghost {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      ol {
+        margin: 0.6rem 0 0;
+        padding-left: 1.1rem;
+      }
+
+      li {
+        margin: 0.48rem 0;
+        color: var(--muted);
+      }
+
+      code-block,
+      pre {
+        margin: 0.65rem 0 0;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 0.72rem;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
+      .note {
+        margin-top: 0.6rem;
+        color: #2b4e89;
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 860px) {
+        .tenant-row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="wordmark" href="/">
+          <img src="/koslogo.png" alt="KnowledgeOS logo" />
+          <strong>Knowledge<span>OS</span></strong>
+        </a>
+        <nav class="topnav">
+          <a href="/">Home</a>
+          <a href="/demo">Power demo</a>
+          <a href="/onboarding">Onboarding</a>
+          <a href="/admin">Console</a>
+        </nav>
+      </header>
+
+      <section class="panel">
+        <h1 style="font-size:1.4rem;">Install guide</h1>
+        <p style="margin:0.45rem 0 0; color: var(--muted);">
+          Generate a tenant-scoped embed script and install KnowledgeOS on any page in under two minutes.
+        </p>
+
+        <div class="tenant-row">
+          <input id="tenantInput" value="acme" placeholder="tenant id" />
+          <button id="copyScriptBtn" class="btn-primary" type="button">Copy script</button>
+          <button id="openDemoBtn" class="btn-ghost" type="button">Open tenant demo</button>
+        </div>
+
+        <pre id="scriptOutput">Enter a tenant id to generate your embed script.</pre>
+
+        <h2 style="font-size:1.05rem; margin-top:0.85rem;">Install steps</h2>
+        <ol>
+          <li>Copy the tenant-scoped script below.</li>
+          <li>Paste it right before the closing body tag on your site page.</li>
+          <li>Publish and refresh. The KnowledgeOS assistant will load with your tenant bundle.</li>
+          <li>For custom UI behavior, pass optional data attributes after initial install.</li>
+        </ol>
+
+        <div class="note">If your tenant bundle does not exist yet, run onboarding and deploy once before installation.</div>
+      </section>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const tenantInput = document.getElementById('tenantInput');
+      const copyScriptBtn = document.getElementById('copyScriptBtn');
+      const openDemoBtn = document.getElementById('openDemoBtn');
+      const scriptOutput = document.getElementById('scriptOutput');
+
+      const queryTenant = String(params.get('tenant_id') || '').trim();
+      if (queryTenant) tenantInput.value = queryTenant;
+
+      function buildTenantScript(tenantId) {
+        const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (!normalized) return '';
+        const origin = window.location.origin;
+        return `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${normalized}.knowledgeos.bundle.json" data-title="Ask ${normalized}"><\\/script>`;
+      }
+
+      function renderScript() {
+        const script = buildTenantScript(tenantInput.value);
+        scriptOutput.textContent = script || 'Enter a valid tenant id to generate your embed script.';
+      }
+
+      tenantInput.addEventListener('input', renderScript);
+
+      copyScriptBtn.addEventListener('click', async () => {
+        try {
+          const script = buildTenantScript(tenantInput.value);
+          if (!script) {
+            scriptOutput.textContent = 'Enter a valid tenant id first.';
+            return;
+          }
+          await navigator.clipboard.writeText(script);
+          copyScriptBtn.textContent = 'Copied';
+          setTimeout(() => { copyScriptBtn.textContent = 'Copy script'; }, 1200);
+          scriptOutput.textContent = script;
+        } catch (_error) {
+          scriptOutput.textContent = 'Could not copy automatically. Select and copy the script manually.';
+        }
+      });
+
+      openDemoBtn.addEventListener('click', () => {
+        const tenantId = String(tenantInput.value || '').trim().toLowerCase();
+        if (!tenantId) {
+          scriptOutput.textContent = 'Enter a valid tenant id first.';
+          return;
+        }
+        window.open(`/tenant.html?tenant_id=${encodeURIComponent(tenantId)}`, '_blank', 'noopener');
+      });
+
+      renderScript();
+    </script>
+  </body>
+</html>

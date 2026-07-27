@@ -366,10 +366,46 @@
         font-size: 0.95rem;
       }
 
+      .install-strip {
+        margin-top: 0.9rem;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(140deg, #ffffff 0%, #eef4ff 100%);
+        padding: 0.82rem;
+      }
+
+      .install-strip-grid {
+        margin-top: 0.55rem;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 0.45rem;
+      }
+
+      .install-strip-grid input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.52rem 0.58rem;
+        font: inherit;
+      }
+
+      .install-script {
+        margin-top: 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 0.66rem;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.8rem;
+      }
+
       @media (max-width: 980px) {
         .hero,
         .frame,
         .roi-board,
+        .install-strip-grid,
         .scenario,
         .persona-tabs,
         .roi-input-grid {
@@ -464,6 +500,19 @@
         </article>
       </section>
 
+      <section class="install-strip">
+        <h2 style="font-size:1.05rem;">Tenant-scoped quick installer</h2>
+        <p style="margin:0.35rem 0 0; color: var(--muted); font-size:0.9rem;">
+          One click copies the embed script and opens the install guide for the selected tenant.
+        </p>
+        <div class="install-strip-grid">
+          <input id="demoInstallTenant" value="acme" placeholder="tenant id" />
+          <button id="demoInstallAction" class="btn primary" type="button">Copy script + open guide</button>
+          <button id="demoInstallCopyOnly" class="btn ghost" type="button">Copy only</button>
+        </div>
+        <div id="demoInstallScript" class="install-script">Select a tenant id to generate an embed script.</div>
+      </section>
+
       <section class="frame">
         <aside class="panel">
           <h2 style="font-size:1.05rem;">Demo Journey</h2>
@@ -538,6 +587,10 @@
       const roiMonthlyValue = document.getElementById('roiMonthlyValue');
       const roiAnnualValue = document.getElementById('roiAnnualValue');
       const roiNarrative = document.getElementById('roiNarrative');
+      const demoInstallTenant = document.getElementById('demoInstallTenant');
+      const demoInstallAction = document.getElementById('demoInstallAction');
+      const demoInstallCopyOnly = document.getElementById('demoInstallCopyOnly');
+      const demoInstallScript = document.getElementById('demoInstallScript');
       const personaButtons = Array.from(document.querySelectorAll('.persona-btn'));
       const scenarioButtons = Array.from(document.querySelectorAll('[data-scenario]'));
 
@@ -589,6 +642,25 @@
           null,
           2,
         );
+      }
+
+      function buildTenantEmbedScript(tenantId) {
+        const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (!normalized) return '';
+        const origin = window.location.origin;
+        return `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${normalized}.knowledgeos.bundle.json" data-title="Ask ${normalized}"><\\/script>`;
+      }
+
+      function renderInstallScript() {
+        const script = buildTenantEmbedScript(demoInstallTenant.value);
+        demoInstallScript.textContent = script || 'Enter a valid tenant id to generate an embed script.';
+      }
+
+      async function copyInstallScript() {
+        const script = buildTenantEmbedScript(demoInstallTenant.value);
+        if (!script) throw new Error('Enter a valid tenant id first.');
+        await navigator.clipboard.writeText(script);
+        return script;
       }
 
       function setActiveView(view) {
@@ -663,10 +735,35 @@
         updateRoi();
       });
 
+      demoInstallTenant.addEventListener('input', renderInstallScript);
+
+      demoInstallCopyOnly.addEventListener('click', async () => {
+        try {
+          await copyInstallScript();
+          demoInstallCopyOnly.textContent = 'Copied';
+          setTimeout(() => { demoInstallCopyOnly.textContent = 'Copy only'; }, 1200);
+        } catch (_error) {
+          demoInstallScript.textContent = 'Enter a valid tenant id first.';
+        }
+      });
+
+      demoInstallAction.addEventListener('click', async () => {
+        try {
+          const script = await copyInstallScript();
+          const tenantId = String(demoInstallTenant.value || '').trim().toLowerCase();
+          const target = `/install.html?tenant_id=${encodeURIComponent(tenantId)}`;
+          window.open(target, '_blank', 'noopener');
+          demoInstallScript.textContent = script;
+        } catch (_error) {
+          demoInstallScript.textContent = 'Enter a valid tenant id first.';
+        }
+      });
+
       loadDemo().catch((error) => {
         output.textContent = error.message;
       });
       updateRoi();
+      renderInstallScript();
     </script>
   </body>
 </html>

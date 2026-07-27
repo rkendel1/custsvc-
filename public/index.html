@@ -367,6 +367,41 @@
         color: var(--muted);
       }
 
+      .install-card {
+        margin-top: 1rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(140deg, #ffffff 0%, #eef4ff 100%);
+        padding: 1rem;
+      }
+
+      .install-controls {
+        margin-top: 0.65rem;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 0.5rem;
+      }
+
+      .install-controls input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.58rem 0.62rem;
+        font: inherit;
+      }
+
+      .install-code {
+        margin-top: 0.65rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 0.7rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        overflow: auto;
+      }
+
       .reveal {
         opacity: 0;
         transform: translateY(14px);
@@ -578,6 +613,20 @@
           </div>
         </section>
 
+        <section class="install-card reveal delay-4">
+          <div class="kicker">Install Fast</div>
+          <h2 style="font-size:1.3rem;">Copy script + open install guide in one click</h2>
+          <p style="margin:0.45rem 0 0; color: var(--muted);">
+            Tenant-scoped embed install without onboarding friction. Enter tenant id, copy script, and open the full guide.
+          </p>
+          <div class="install-controls">
+            <input id="quickInstallTenant" value="acme" placeholder="tenant id" />
+            <button id="quickInstallAction" class="btn primary" type="button">Copy script + open guide</button>
+            <button id="quickInstallCopyOnly" class="btn ghost" type="button">Copy only</button>
+          </div>
+          <div id="quickInstallScript" class="install-code">Select a tenant id to generate an embed script.</div>
+        </section>
+
         <section class="footer-cta reveal delay-4">
           <div>
             <h2>See the value in under 60 seconds.</h2>
@@ -610,6 +659,56 @@
           if (output) output.textContent = `Diagnostics failed: ${error.message}`;
         });
       }, 800);
+
+      const quickInstallTenant = document.getElementById('quickInstallTenant');
+      const quickInstallAction = document.getElementById('quickInstallAction');
+      const quickInstallCopyOnly = document.getElementById('quickInstallCopyOnly');
+      const quickInstallScript = document.getElementById('quickInstallScript');
+
+      function buildTenantEmbedScript(tenantId) {
+        const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (!normalized) return '';
+        const origin = window.location.origin;
+        return `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${normalized}.knowledgeos.bundle.json" data-title="Ask ${normalized}"><\\/script>`;
+      }
+
+      function renderQuickInstallScript() {
+        const script = buildTenantEmbedScript(quickInstallTenant.value);
+        quickInstallScript.textContent = script || 'Enter a valid tenant id to generate an embed script.';
+      }
+
+      async function copyScript() {
+        const script = buildTenantEmbedScript(quickInstallTenant.value);
+        if (!script) throw new Error('Enter a valid tenant id first.');
+        await navigator.clipboard.writeText(script);
+        return script;
+      }
+
+      quickInstallTenant.addEventListener('input', renderQuickInstallScript);
+
+      quickInstallCopyOnly.addEventListener('click', async () => {
+        try {
+          await copyScript();
+          quickInstallCopyOnly.textContent = 'Copied';
+          setTimeout(() => { quickInstallCopyOnly.textContent = 'Copy only'; }, 1200);
+        } catch (_error) {
+          quickInstallScript.textContent = 'Enter a valid tenant id first.';
+        }
+      });
+
+      quickInstallAction.addEventListener('click', async () => {
+        try {
+          const script = await copyScript();
+          const tenantId = String(quickInstallTenant.value || '').trim().toLowerCase();
+          const target = `/install.html?tenant_id=${encodeURIComponent(tenantId)}`;
+          window.open(target, '_blank', 'noopener');
+          quickInstallScript.textContent = script;
+        } catch (_error) {
+          quickInstallScript.textContent = 'Enter a valid tenant id first.';
+        }
+      });
+
+      renderQuickInstallScript();
     </script>
   </body>
 </html>
