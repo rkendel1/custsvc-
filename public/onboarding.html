@@ -403,7 +403,6 @@
       let sessionToken =
         params.get('session_token') ||
         localStorage.getItem('knowledgeos_onboarding_session_token') ||
-        localStorage.getItem('knowledgeos_admin_session_token') ||
         '';
       const requestedTargets = String(params.get('targets') || '')
         .split(',')
@@ -504,12 +503,27 @@
       }
 
       function requireSessionTokenFor(actionLabel) {
-        if (!tenantId || !hasSessionToken()) {
+        if (!hasSessionToken()) {
           setStatus('Action needed', `${actionLabel} requires onboarding. Use Start secure onboarding above.`);
           updateTokenBanner();
           return false;
         }
         return true;
+      }
+
+      async function hydrateTenantFromSession() {
+        if (tenantId || !hasSessionToken()) return;
+        try {
+          const data = await getJson('/api/tenant');
+          const resolvedTenantId = String(data?.tenant?.tenant_id || '').trim();
+          if (!resolvedTenantId) return;
+          tenantId = resolvedTenantId;
+          renderTenantLine();
+          updateUrlState();
+          updateEmbedScript();
+        } catch (_error) {
+          // Ignore hydration errors and keep onboarding banner visible.
+        }
       }
 
       startOnboardingBtn?.addEventListener('click', async () => {
@@ -910,8 +924,8 @@
 
       document.getElementById('refreshSourceMonitorBtn').addEventListener('click', async () => {
         try {
-          if (!tenantId) throw new Error('Start secure onboarding first.');
-          const data = await getJson(`/api/sources?tenant_id=${encodeURIComponent(tenantId)}`);
+          if (!requireSessionTokenFor('Connected sources')) return;
+          const data = await getJson('/api/sources');
           const count = Array.isArray(data?.sources) ? data.sources.length : 0;
           setStatus('Connected sources', [`${count} source(s) currently connected.`]);
         } catch (error) {
@@ -975,6 +989,7 @@
           bindTargetListeners();
           updateTargetSummary();
           renderStep();
+          hydrateTenantFromSession();
         });
     </script>
   </body>
