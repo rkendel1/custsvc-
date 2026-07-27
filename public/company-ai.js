@@ -193,6 +193,96 @@
       .filter(Boolean);
   }
 
+  function decodeHtmlEntities(text) {
+    const value = String(text || '');
+    if (!value || typeof document === 'undefined') return value;
+    const node = document.createElement('textarea');
+    node.innerHTML = value;
+    return String(node.value || '');
+  }
+
+  function cleanRetrievedText(text) {
+    const decoded = decodeHtmlEntities(text);
+    return decoded
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([,.;:!?])/g, '$1')
+      .trim();
+  }
+
+  function splitIntoSentences(text) {
+    const input = cleanRetrievedText(text);
+    if (!input) return [];
+    return input
+      .split(/(?<=[.!?])\s+|\s+[-|]\s+|\s*\n+\s*/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function isLikelyBoilerplateLine(line) {
+    const normalized = String(line || '').toLowerCase();
+    if (!normalized) return true;
+    if (normalized.length < 30) return true;
+    return (
+      normalized.includes('/ work / about / accomplishments / contact')
+      || normalized.includes('you are a concise company assistant')
+      || normalized.includes('answer only from the provided context')
+      || normalized.includes('available for new work')
+      || normalized.includes('view work get in touch')
+    );
+  }
+
+  function looksLowQualityGeneratedAnswer(text) {
+    const value = cleanRetrievedText(text);
+    const lower = value.toLowerCase();
+    if (!value) return true;
+    if (lower.includes('you are a concise company assistant') || lower.includes('context:')) return true;
+    const tokens = tokenize(value);
+    if (tokens.length < 8) return false;
+
+    // Detect repeated 6-token sequences to suppress looping generations.
+    const seen = new Set();
+    for (let i = 0; i <= tokens.length - 6; i += 1) {
+      const phrase = tokens.slice(i, i + 6).join(' ');
+      if (seen.has(phrase)) return true;
+      seen.add(phrase);
+    }
+    return false;
+  }
+
+  function formatDeterministicAnswer(question, chunkText) {
+    const questionTokens = new Set(tokenize(question));
+    const candidates = splitIntoSentences(chunkText)
+      .filter((line) => !isLikelyBoilerplateLine(line))
+      .map((line) => {
+        const lineTokens = tokenize(line);
+        let overlap = 0;
+        for (const token of lineTokens) {
+          if (questionTokens.has(token)) overlap += 1;
+        }
+        return {
+          line,
+          score: overlap + Math.min(line.length / 160, 1),
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.line);
+
+    const picked = [];
+    for (const line of candidates) {
+      if (picked.some((existing) => existing.toLowerCase() === line.toLowerCase())) continue;
+      picked.push(line);
+      if (picked.length >= 3) break;
+    }
+
+    if (!picked.length) {
+      const fallback = cleanRetrievedText(chunkText).slice(0, 420);
+      if (!fallback) return "I don't have an answer for that yet.";
+      return fallback;
+    }
+
+    return `Here is what I found:\n- ${picked.join('\n- ')}`;
+  }
+
   function termFrequency(tokens) {
     const tf = {};
     for (const token of tokens) {
@@ -901,9 +991,9 @@
     if (best && best.score >= minAnswerConfidence && state.ai.mode === AI_MODE.LOCAL) {
       try {
         const generated = await generateWithLocalModel(question, best.chunk.text || '');
-        if (generated) {
+        if (generated && !looksLowQualityGeneratedAnswer(generated)) {
           return {
-            answer: generated,
+            answer: cleanRetrievedText(generated),
             score: best.score,
             confidence: Number(Math.max(0.4, Math.min(0.99, best.score)).toFixed(3)),
             intent: intentResult.intent,
@@ -930,8 +1020,9 @@
         agreement * confidenceWeights.agreement +
         reviewerConfidence * confidenceWeights.reviewer
       ).toFixed(3));
+      const formattedAnswer = formatDeterministicAnswer(question, best.chunk.text || '');
       return {
-        answer: best.chunk.text,
+        answer: formattedAnswer,
         score: best.score,
         confidence,
         confidenceBreakdown: {
