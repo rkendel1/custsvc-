@@ -270,7 +270,7 @@ function decideApproval(execution, approvalId, decision, payload = {}) {
     status,
     pausedAt: null,
     approvals,
-    history: [...execution.history, { stepId: execution.currentStepId, action: decision, approvalId, at: new Date().toISOString() }],
+    history: [...execution.history, { stepId: execution.currentStepId, action: decisionEvent, approvalId, at: new Date().toISOString() }],
   }, decisionEvent, { approvalId });
 }
 
