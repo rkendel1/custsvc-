@@ -42,15 +42,15 @@ Audience layers:
 
 Runtime retrieval is now role-aware and department-aware before ranking.
 
-## Company Operating System Model v5
+## Company Operating System Model v6
 
 The compiler now supports executable `processes[]` as first-class bundle peers to `knowledge[]`.
 
 - New process model fields include ownership, roles, required capabilities/documents, policies, and executable `steps[]`.
 - New `process_graph` is compiled alongside the knowledge graph.
 - Validation checks include dead-ends, unreachable steps, branch correctness, cycle safety, role/capability mismatches, orphaned processes, and knowledge link integrity.
-- Runtime APIs now include: `startProcess`, `resumeProcess`, `completeStep`, `validateStep`, `branch`, `rollback`, and `cancel`.
-- Bundle output is now `company.intelligence.bundle.v5` with enriched `models[]` manifests plus `runtime_requirements[]`, while keeping `format_legacy: company.intelligence.bundle.v4` compatibility.
+- Runtime APIs now include: `startProcess`, `resumeProcess`, `completeStep`, `validateStep`, `branch`, `rollback`, `cancel`, `getStorageStatus`, `getAudienceContext`, `search`, and `getKnowledgeSource`.
+- Bundle output is now `company.intelligence.bundle.v6` with enriched `models[]`, `runtime_requirements[]`, and `storage_profile`, while keeping `format_legacy: company.intelligence.bundle.v5` compatibility.
 
 ## Quick start
 

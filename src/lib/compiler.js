@@ -614,6 +614,40 @@ function buildRuntimeRequirements(models = []) {
   }));
 }
 
+function normalizeStorageProfile(profile = {}) {
+  const modeValue = String(profile.mode || 'browser-local').toLowerCase();
+  const mode = ['browser-local', 'managed-cloud', 'customer-managed', 'hybrid', 'enterprise-private'].includes(modeValue)
+    ? modeValue
+    : 'browser-local';
+  const inputStores = Array.isArray(profile.stores) ? profile.stores : [];
+  const stores = inputStores
+    .map((store, index) => {
+      if (!store) return null;
+      const id = String(store.id || `store-${index + 1}`);
+      const typeValue = String(store.type || 'browser-local').toLowerCase();
+      const type = ['browser-local', 'managed-cloud', 'customer-managed'].includes(typeValue)
+        ? typeValue
+        : 'browser-local';
+      const audiences = parseList(store.audiences).map((item) => String(item).toLowerCase());
+      return {
+        id,
+        type,
+        audiences: audiences.length ? audiences : ['customer'],
+      };
+    })
+    .filter(Boolean);
+
+  if (!stores.length) {
+    stores.push({
+      id: 'public',
+      type: 'browser-local',
+      audiences: ['customer'],
+    });
+  }
+
+  return { mode, stores };
+}
+
 function compileBundle(documents, options = {}) {
   const safeDocs = Array.isArray(documents) ? documents : [];
   const company = options.company || 'Acme';
@@ -643,6 +677,7 @@ function compileBundle(documents, options = {}) {
     ? Number((knowledge.reduce((sum, item) => sum + item.confidence, 0) / knowledge.length).toFixed(3))
     : 0;
   const generatedAt = new Date().toISOString();
+  const storageProfile = normalizeStorageProfile(options.storage_profile);
   const roleViews = {};
   for (const role of ROLES) {
     roleViews[role] = {
@@ -658,9 +693,9 @@ function compileBundle(documents, options = {}) {
   }
 
   return {
-    version: 5,
-    format: 'company.intelligence.bundle.v5',
-    format_legacy: 'company.intelligence.bundle.v4',
+    version: 6,
+    format: 'company.intelligence.bundle.v6',
+    format_legacy: 'company.intelligence.bundle.v5',
     company,
     generatedAt,
     documentCount: safeDocs.length,
@@ -703,6 +738,7 @@ function compileBundle(documents, options = {}) {
         validation_issues: Object.values(processValidation).reduce((sum, items) => sum + items.length, 0),
       },
     },
+    storage_profile: storageProfile,
     duplicates,
     contradictions,
     confidence: {
@@ -717,6 +753,7 @@ module.exports = {
   compileBundle,
   normalizeVisibility,
   normalizeAudience,
+  normalizeStorageProfile,
   roleAudiences,
   isKnowledgeVisibleForRole,
   detectContradictions,
