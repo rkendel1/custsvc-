@@ -15,8 +15,8 @@ This repository now includes a working end-to-end MVP:
 - Embeddable widget runtime:
   - `<script src="/company-ai.js" ...></script>`
   - local bundle retrieval and scoring in the browser
-  - optional remote inference fallback endpoint hook
-  - telemetry capture for each question
+  - local AI runtime (`WASM` tier first, optional cloud fallback)
+  - privacy-preserving telemetry capture (intent/confidence/process outcomes by default)
 - Admin console at `/admin`:
   - upload content
   - compile bundle
@@ -42,7 +42,7 @@ Audience layers:
 
 Runtime retrieval is now role-aware and department-aware before ranking.
 
-## Company Operating System Model v3
+## Company Operating System Model v4
 
 The compiler now supports executable `processes[]` as first-class bundle peers to `knowledge[]`.
 
@@ -50,7 +50,7 @@ The compiler now supports executable `processes[]` as first-class bundle peers t
 - New `process_graph` is compiled alongside the knowledge graph.
 - Validation checks include dead-ends, unreachable steps, branch correctness, cycle safety, role/capability mismatches, orphaned processes, and knowledge link integrity.
 - Runtime APIs now include: `startProcess`, `resumeProcess`, `completeStep`, `validateStep`, `branch`, `rollback`, and `cancel`.
-- Bundle output is now `company.intelligence.bundle.v3` while retaining legacy v2-compatible knowledge/chunk fields.
+- Bundle output is now `company.intelligence.bundle.v4` with `models[]` runtime metadata while retaining legacy v2-compatible knowledge/chunk fields.
 
 ## Quick start
 

@@ -249,13 +249,26 @@ function createApp(options = {}) {
   });
 
   app.post('/api/telemetry', writeLimiter, (req, res) => {
-    const { question, answered, score, topChunkId, role, department, permissions, confidence } = req.body || {};
-    if (!question) return res.status(400).json({ error: 'question is required' });
+    const {
+      question,
+      answered,
+      score,
+      topChunkId,
+      role,
+      department,
+      permissions,
+      confidence,
+      intent,
+      knowledge_gap,
+      process_started,
+      duration,
+      includeContent,
+    } = req.body || {};
+    if (!question && !intent) return res.status(400).json({ error: 'at least one of question or intent is required' });
 
     const events = storage.listTelemetry();
-    events.push({
+    const event = {
       timestamp: new Date().toISOString(),
-      question: String(question),
       answered: Boolean(answered),
       score: Number(score || 0),
       topChunkId: topChunkId || null,
@@ -263,7 +276,13 @@ function createApp(options = {}) {
       department: department || null,
       permissions: Array.isArray(permissions) ? permissions : [],
       confidence: Number(confidence || 0),
-    });
+      intent: intent ? String(intent) : null,
+      knowledge_gap: Boolean(knowledge_gap),
+      process_started: Boolean(process_started),
+      duration: Number(duration || 0),
+    };
+    if (includeContent && question) event.question = String(question);
+    events.push(event);
     storage.saveTelemetry(events);
     res.status(201).json({ ok: true });
   });

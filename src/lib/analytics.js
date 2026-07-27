@@ -26,14 +26,20 @@ function buildAnalytics(telemetryEvents) {
   const roleUsage = {};
   const departmentUsage = {};
   const confidenceBuckets = { high: 0, medium: 0, low: 0 };
+  let unansweredTotal = 0;
+  let totalEvents = 0;
 
   for (const event of events) {
     const question = String(event.question || '').trim();
-    if (!question) continue;
+    const intent = String(event.intent || '').trim();
+    if (!question && !intent) continue;
+    // Privacy mode may provide only intent-level telemetry. In that mode,
+    // top-question metrics stay sparse while aggregate intent/confidence trends still update.
+    totalEvents += 1;
 
-    byQuestion[question] = (byQuestion[question] || 0) + 1;
-    const intent = classifyIntent(question);
-    intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+    if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;
+    const normalizedIntent = intent || (question ? classifyIntent(question) : 'general');
+    intentCounts[normalizedIntent] = (intentCounts[normalizedIntent] || 0) + 1;
     const role = String(event.role || 'Customer');
     roleUsage[role] = (roleUsage[role] || 0) + 1;
     const department = String(event.department || 'Unknown');
@@ -44,22 +50,23 @@ function buildAnalytics(telemetryEvents) {
     else confidenceBuckets.low += 1;
 
     if (!event.answered) {
-      unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
-      const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_CHAR_LENGTH);
-      for (const keyword of keywords) {
-        missingKeywords[keyword] = (missingKeywords[keyword] || 0) + 1;
+      unansweredTotal += 1;
+      if (question) {
+        unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
+        const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_CHAR_LENGTH);
+        for (const keyword of keywords) {
+          missingKeywords[keyword] = (missingKeywords[keyword] || 0) + 1;
+        }
       }
     }
   }
 
-  const unansweredCount = Object.values(unansweredByQuestion).reduce((a, b) => a + b, 0);
-  const totalQuestions = Object.values(byQuestion).reduce((a, b) => a + b, 0);
-
+  const unansweredCount = unansweredTotal;
   return {
-    totalQuestions,
-    answeredQuestions: totalQuestions - unansweredCount,
+    totalQuestions: totalEvents,
+    answeredQuestions: totalEvents - unansweredCount,
     unansweredQuestions: unansweredCount,
-    answerRate: totalQuestions ? Number(((totalQuestions - unansweredCount) / totalQuestions).toFixed(3)) : 0,
+    answerRate: totalEvents ? Number(((totalEvents - unansweredCount) / totalEvents).toFixed(3)) : 0,
     topQuestions: topEntries(byQuestion, 10),
     topUnansweredQuestions: topEntries(unansweredByQuestion, 10),
     intents: topEntries(intentCounts, 10),

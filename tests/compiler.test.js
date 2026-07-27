@@ -10,7 +10,7 @@ const {
 } = require('../src/lib/compiler');
 const { buildAnalytics } = require('../src/lib/analytics');
 
-test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
+test('compileBundle v4 creates knowledge, chunks, metadata, and model manifest', () => {
   const bundle = compileBundle([
     {
       id: 'doc-1',
@@ -22,8 +22,8 @@ test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
     },
   ], { company: 'TestCo' });
 
-  assert.equal(bundle.version, 3);
-  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.version, 4);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v4');
   assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
   assert.equal(bundle.company, 'TestCo');
   assert.equal(bundle.documentCount, 1);
@@ -34,6 +34,8 @@ test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
   assert.ok(bundle.chunks[0].tf.within > 0);
   assert.equal(bundle.metadata.company, 'TestCo');
   assert.equal(bundle.processCount, 0);
+  assert.ok(Array.isArray(bundle.models));
+  assert.equal(bundle.models[0].runtime, 'wasm');
   assert.ok(bundle.process_graph && Array.isArray(bundle.process_graph.nodes));
   assert.ok(bundle.role_views && bundle.role_views.Customer);
 });
@@ -242,12 +244,13 @@ test('bundle keeps v2-compatible knowledge and chunk fields', () => {
   assert.ok(bundle.graph && bundle.indexes && bundle.review_schedule);
 });
 
-test('bundle exposes v3 format with explicit v2 compatibility markers', () => {
+test('bundle exposes v4 format with explicit v2 compatibility markers', () => {
   const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], { processes: [] });
-  assert.equal(bundle.version, 3);
-  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.version, 4);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v4');
   assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
   assert.ok(bundle.metadata && typeof bundle.metadata.knowledgeCount === 'number');
+  assert.ok(Array.isArray(bundle.models));
   assert.ok(Array.isArray(bundle.knowledge));
   assert.ok(Array.isArray(bundle.chunks));
 });
