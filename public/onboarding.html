@@ -512,6 +512,21 @@
         return Boolean(String(sessionToken || '').trim());
       }
 
+      function setSessionToken(nextToken) {
+        sessionToken = String(nextToken || '').trim();
+        if (sessionToken) {
+          localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+        } else {
+          localStorage.removeItem('knowledgeos_onboarding_session_token');
+        }
+        updateUrlState();
+        updateTokenBanner();
+      }
+
+      function clearSessionToken() {
+        setSessionToken('');
+      }
+
       function updateTokenBanner() {
         if (!tokenBanner) return;
         tokenBanner.style.display = hasSessionToken() ? 'none' : 'block';
@@ -550,8 +565,10 @@
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
-      async function ensureOnboardingSession() {
-        if (hasSessionToken()) return true;
+      async function ensureOnboardingSession(options = {}) {
+        const force = Boolean(options?.force);
+        if (!force && hasSessionToken()) return true;
+        if (force) clearSessionToken();
 
         let requestedTenantId = String(onboardingTenantInput?.value || tenantId || '').trim();
         let email = String(onboardingEmailInput?.value || '').trim();
@@ -583,14 +600,49 @@
           companySize: companySizeChoiceInput.value,
           primaryUseCase: primaryUseCaseChoiceInput.value,
           deploymentProfile: deploymentChoiceInput.value,
-        });
+        }, { retryOnSessionFailure: false });
         localStorage.setItem('knowledgeos_last_email', email);
         localStorage.setItem('knowledgeos_last_workspace', requestedTenantId);
         await applyOnboardingSession(data, 'Setup ready');
         return true;
       }
 
+      function isTenantSessionErrorMessage(message) {
+        const value = String(message || '').trim().toLowerCase();
+        if (!value) return false;
+        return value.includes('invalid tenant session')
+          || value.includes('session expired')
+          || value.includes('session token is required');
+      }
+
+      async function validateCurrentTenantSession() {
+        if (!hasSessionToken()) return false;
+        try {
+          await getJson('/api/tenant', { retryOnSessionFailure: false });
+          return true;
+        } catch (error) {
+          if (isTenantSessionErrorMessage(error?.message)) {
+            clearSessionToken();
+            return false;
+          }
+          return false;
+        }
+      }
+
+      async function recoverOnboardingSession() {
+        try {
+          return await ensureOnboardingSession({ force: true });
+        } catch (_error) {
+          return false;
+        }
+      }
+
       async function requireSessionTokenFor(actionLabel) {
+        if (hasSessionToken()) {
+          const stillValid = await validateCurrentTenantSession();
+          if (stillValid) return true;
+        }
+
         if (!hasSessionToken()) {
           try {
             const established = await ensureOnboardingSession();
@@ -622,15 +674,13 @@
 
       async function applyOnboardingSession(data, successTitle) {
         tenantId = String(data?.tenant?.tenant_id || '').trim();
-        sessionToken = String(data?.session?.token || '').trim();
-        if (!tenantId || !sessionToken) {
+        const nextSessionToken = String(data?.session?.token || '').trim();
+        if (!tenantId || !nextSessionToken) {
           throw new Error('Could not start onboarding session.');
         }
 
-        localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+        setSessionToken(nextSessionToken);
         renderTenantLine();
-        updateUrlState();
-        updateTokenBanner();
         updateEmbedScript();
         setStatus(successTitle, [`Tenant: ${tenantId}`, 'Secure onboarding is active. Continue to the next step.']);
       }
@@ -1039,7 +1089,7 @@
         return payload;
       }
 
-      async function postJson(url, payload) {
+      async function postJson(url, payload, options = {}) {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -1062,11 +1112,26 @@
           redirectToAccess();
           throw new Error('Redirecting to password sign-in...');
         }
-        if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+        if (!response.ok) {
+          const errorMessage = data.error || `Request failed (${response.status})`;
+          const shouldRetry = options.retryOnSessionFailure !== false
+            && !options._retried
+            && isTenantSessionErrorMessage(errorMessage)
+            && url !== '/api/onboarding/session';
+
+          if (shouldRetry) {
+            const recovered = await recoverOnboardingSession();
+            if (recovered) {
+              return postJson(url, payload, { ...options, _retried: true });
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
         return data;
       }
 
-      async function getJson(url) {
+      async function getJson(url, options = {}) {
         const response = await fetch(url, { headers: authHeader() });
         const text = await response.text();
         let data = {};
@@ -1082,7 +1147,22 @@
           redirectToAccess();
           throw new Error('Redirecting to password sign-in...');
         }
-        if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+        if (!response.ok) {
+          const errorMessage = data.error || `Request failed (${response.status})`;
+          const shouldRetry = options.retryOnSessionFailure !== false
+            && !options._retried
+            && isTenantSessionErrorMessage(errorMessage)
+            && url !== '/api/onboarding/session';
+
+          if (shouldRetry) {
+            const recovered = await recoverOnboardingSession();
+            if (recovered) {
+              return getJson(url, { ...options, _retried: true });
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
         return data;
       }
 
@@ -1222,20 +1302,9 @@
             importSources: selectedTargets(),
             audiences: parseAudiences(),
           });
-          const data = await fetch('/api/deploy', {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              ...authHeader(),
-            },
-            body: JSON.stringify({
-              tenant_id: tenantId,
-              audiences: parseAudiences(),
-            }),
-          }).then(async (response) => {
-            const body = await response.json();
-            if (!response.ok) throw new Error(body.error || 'Deployment failed');
-            return body;
+          const data = await postJson('/api/deploy', {
+            tenant_id: tenantId,
+            audiences: parseAudiences(),
           });
 
           updateEmbedScript(String(data?.outputs?.embed_code || ''));
