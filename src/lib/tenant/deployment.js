@@ -17,8 +17,8 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
     runtime_url: runtimeUrl,
     audience_rules: Array.isArray(audiences) ? audiences : [],
     bundle: {
-      name: 'company.intelligence.bundle.v6',
-      format_legacy: 'company.intelligence.bundle.v5',
+      name: 'knowledgeos.bundle.v6',
+      format_legacy: 'knowledgeos.bundle.v5',
     },
     permissions: ['Owner', 'Admin', 'Editor', 'Viewer'],
     branding: {

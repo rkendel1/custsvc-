@@ -27,13 +27,21 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const tenantId = params.get('tenant_id') || '';
+      const sessionToken = params.get('session_token') || '';
       const output = document.getElementById('output');
       document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
+
+      function authHeader() {
+        return sessionToken ? { 'x-session-token': sessionToken } : {};
+      }
 
       async function postJson(url, payload) {
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...authHeader(),
+          },
           body: JSON.stringify(payload),
         });
         const data = await response.json();
@@ -58,14 +66,17 @@
 
       document.getElementById('deployBtn').addEventListener('click', async () => {
         try {
-          const tenant = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`).then((r) => r.json());
+          const tenant = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
+            headers: authHeader(),
+          }).then((r) => r.json());
+
+          if (tenant.error) throw new Error(tenant.error);
+
           const data = await fetch('/api/deploy', {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
-              'x-tenant-id': tenantId,
-              'x-user-id': tenant.tenant.owner_user_id || '',
-              'x-user-email': tenant.tenant.owner || '',
+              ...authHeader(),
             },
             body: JSON.stringify({
               tenant_id: tenantId,

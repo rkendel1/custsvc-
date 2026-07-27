@@ -8,7 +8,8 @@ function provisionTenant(input = {}) {
   if (!companyName) throw new Error('company is required');
   if (!ownerEmail || !ownerEmail.includes('@')) throw new Error('valid owner email is required');
 
-  const tenantId = String(input.tenantId || slugifyCompanyName(companyName)).slice(0, 63) || `tenant-${randomUUID()}`;
+  const normalizedTenantId = (String(input.tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')) || slugifyCompanyName(companyName);
+  const tenantId = normalizedTenantId.slice(0, 63) || `tenant-${randomUUID()}`;
   const deploymentProfile = String(input.deploymentProfile || 'BOTH').toUpperCase();
 
   return {

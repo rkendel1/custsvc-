@@ -210,7 +210,7 @@
     if (state.bundle) return state.bundle;
 
     const cacheScope = `${window.location.origin}:${bundleUrl}`;
-    const cacheKey = `company-intelligence:${simpleHash(cacheScope)}`;
+    const cacheKey = `knowledgeos:${simpleHash(cacheScope)}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {
@@ -763,7 +763,7 @@
     createWidget();
   }
 
-  window.CompanyIntelligenceRuntime = {
+  window.KnowledgeOSRuntime = {
     askQuestion: answerQuestion,
     getStorageStatus: async () => {
       const bundle = await loadBundle();

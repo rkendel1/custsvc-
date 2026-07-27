@@ -1,11 +1,14 @@
 const TENANT_ROLES = ['Owner', 'Admin', 'Editor', 'Viewer'];
+const MAX_SUBDOMAIN_LABEL_LENGTH = 48;
 
 function slugifyCompanyName(companyName) {
-  return String(companyName || 'tenant')
+  const slug = String(companyName || 'tenant')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'tenant';
+    .slice(0, MAX_SUBDOMAIN_LABEL_LENGTH);
+
+  return slug || 'tenant';
 }
 
 function createDefaultTenantStructure({ tenantId, companyName, ownerEmail, deploymentProfile = 'BOTH' }) {

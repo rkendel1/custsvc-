@@ -100,6 +100,14 @@ function saveData(storage, saveMethod, value) {
   }
 }
 
+function resolveSessionToken(req) {
+  const authHeader = req.header('authorization') || '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  return req.header('x-session-token') || req.query.session_token || req.body?.session_token || null;
+}
+
 function resolveTenantId(req) {
   return (
     req.header('x-tenant-id') ||
@@ -119,11 +127,57 @@ function requireTenant(req, res, next) {
   return next();
 }
 
+function requireTenantSession(storage) {
+  return (req, res, next) => {
+    const token = resolveSessionToken(req);
+    if (!token) return res.status(401).json({ error: 'session token is required' });
+
+    const sessions = listData(storage, 'listSessions');
+    const session = sessions.find(
+      (item) => item.token === token && item.tenant_id === req.tenantId && item.status === 'active',
+    );
+    if (!session) return res.status(403).json({ error: 'invalid tenant session' });
+
+    if (session.expires_at && Date.now() > Date.parse(session.expires_at)) {
+      return res.status(401).json({ error: 'session expired' });
+    }
+
+    req.session = session;
+    return next();
+  };
+}
+
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').toLowerCase());
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || value.length > 254 || value.includes(' ')) return false;
+  const atIndex = value.indexOf('@');
+  if (atIndex <= 0 || atIndex !== value.lastIndexOf('@')) return false;
+  const domain = value.slice(atIndex + 1);
+  if (!domain || !domain.includes('.')) return false;
+  if (domain.startsWith('.') || domain.endsWith('.')) return false;
+  return true;
+}
+
+function createSession(storage, { tenantId, userId, role }) {
+  const sessions = listData(storage, 'listSessions');
+  const token = `kos_${randomUUID().replace(/-/g, '')}`;
+  const session = {
+    session_id: `session-${randomUUID()}`,
+    token,
+    tenant_id: tenantId,
+    user_id: userId,
+    role,
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    status: 'active',
+  };
+  sessions.push(session);
+  saveData(storage, 'saveSessions', sessions);
+  return session;
 }
 
 function ensureDemoTenant(storage) {
+  const DEMO_OWNER_USER_ID = 'user-acme-owner';
   const tenants = listData(storage, 'listTenants');
   if (tenants.some((tenant) => tenant.tenant_id === 'acme')) return;
 
@@ -135,13 +189,13 @@ function ensureDemoTenant(storage) {
     primaryUseCase: 'Customer Website',
     deploymentProfile: 'BOTH',
   });
-  tenants.push({ ...tenant, owner_user_id: 'user-acme-owner', seeded: true });
+  tenants.push({ ...tenant, owner_user_id: DEMO_OWNER_USER_ID, seeded: true });
   saveData(storage, 'saveTenants', tenants);
 
   const users = listData(storage, 'listUsers');
-  if (!users.some((user) => user.user_id === 'user-acme-owner')) {
+  if (!users.some((user) => user.user_id === DEMO_OWNER_USER_ID)) {
     users.push({
-      user_id: 'user-acme-owner',
+      user_id: DEMO_OWNER_USER_ID,
       tenant_id: 'acme',
       name: 'Acme Owner',
       email: 'owner@acme.example',
@@ -152,10 +206,10 @@ function ensureDemoTenant(storage) {
   }
 
   const memberships = listData(storage, 'listTenantMemberships');
-  if (!memberships.some((membership) => membership.tenant_id === 'acme' && membership.user_id === 'user-acme-owner')) {
+  if (!memberships.some((membership) => membership.tenant_id === 'acme' && membership.user_id === DEMO_OWNER_USER_ID)) {
     memberships.push({
       tenant_id: 'acme',
-      user_id: 'user-acme-owner',
+      user_id: DEMO_OWNER_USER_ID,
       role: 'Owner',
       status: 'active',
       created_at: new Date().toISOString(),
@@ -212,6 +266,11 @@ function ensureDemoTenant(storage) {
     );
     saveData(storage, 'saveDocuments', documents);
   }
+
+  const sessions = listData(storage, 'listSessions');
+  if (!sessions.some((session) => session.tenant_id === 'acme' && session.user_id === DEMO_OWNER_USER_ID)) {
+    createSession(storage, { tenantId: 'acme', userId: DEMO_OWNER_USER_ID, role: 'Owner' });
+  }
 }
 
 function createApp(options = {}) {
@@ -225,6 +284,8 @@ function createApp(options = {}) {
   const upload = multer({ storage: multer.memoryStorage() });
   const writeLimiter = createRateLimiter();
   const signupLimiter = createRateLimiter({ max: 12, windowMs: 60_000 });
+  const readLimiter = createRateLimiter({ max: 240, windowMs: 60_000 });
+  const tenantSessionMiddleware = requireTenantSession(storage);
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -233,7 +294,7 @@ function createApp(options = {}) {
     res.json({ ok: true, product: 'KnowledgeOS' });
   });
 
-  app.get('/api/documents', (req, res) => {
+  app.get('/api/documents', readLimiter, (req, res) => {
     const tenantId = resolveTenantId(req);
     const documents = listData(storage, 'listDocuments');
     const filtered = tenantId ? documents.filter((doc) => doc.tenant_id === tenantId) : documents;
@@ -366,8 +427,8 @@ function createApp(options = {}) {
     const allDocs = listData(storage, 'listDocuments');
     const docs = tenantId ? allDocs.filter((doc) => doc.tenant_id === tenantId) : allDocs;
     const bundle = compileBundle(docs, { company: companyName });
-    const fallbackName = tenantId ? `${tenantId}.company.intelligence.bundle.json` : 'company.intelligence.bundle.json';
-    const name = req.body?.name || fallbackName;
+    const defaultBundleName = tenantId ? `${tenantId}.knowledgeos.bundle.json` : 'knowledgeos.bundle.json';
+    const name = req.body?.name || defaultBundleName;
     const { safeName } = storage.writeBundle(name, bundle);
 
     res.json({
@@ -432,7 +493,7 @@ function createApp(options = {}) {
     res.status(201).json({ ok: true });
   });
 
-  app.get('/api/admin/analytics', (req, res) => {
+  app.get('/api/admin/analytics', readLimiter, (req, res) => {
     const tenantId = resolveTenantId(req);
     const events = listData(storage, 'listTelemetry');
     const filtered = tenantId ? events.filter((event) => event.tenant_id === tenantId) : events;
@@ -466,10 +527,11 @@ function createApp(options = {}) {
     if (tenants.some((existing) => existing.tenant_id === tenant.tenant_id)) {
       return res.status(409).json({ error: 'tenant already exists for this company' });
     }
+    const userId = `user-${randomUUID()}`;
+    tenant.owner_user_id = userId;
     tenants.push(tenant);
     saveData(storage, 'saveTenants', tenants);
 
-    const userId = `user-${randomUUID()}`;
     const users = listData(storage, 'listUsers');
     users.push({
       user_id: userId,
@@ -480,8 +542,6 @@ function createApp(options = {}) {
       created_at: new Date().toISOString(),
     });
     saveData(storage, 'saveUsers', users);
-    tenant.owner_user_id = userId;
-    saveData(storage, 'saveTenants', tenants);
 
     const memberships = listData(storage, 'listTenantMemberships');
     memberships.push({
@@ -497,17 +557,23 @@ function createApp(options = {}) {
     subscriptions.push({
       tenant_id: tenant.tenant_id,
       plan: 'Starter',
-      usage: { questions_answered: 0, deployments: 0 },
+      usage: { questions_answered: 0, runtime_instances: 0 },
       limits: { documents: 100, monthly_questions: 1000, runtime_instances: 1 },
       status: 'active',
       created_at: new Date().toISOString(),
     });
     saveData(storage, 'saveSubscriptions', subscriptions);
 
+    const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+
     return res.status(201).json({
       tenant,
       user: { user_id: userId, name: String(name), email: String(email).toLowerCase(), role: 'Owner' },
-      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}`,
+      session: {
+        token: session.token,
+        expires_at: session.expires_at,
+      },
+      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
       email_verification: {
         required: true,
         status: 'pending',
@@ -542,10 +608,11 @@ function createApp(options = {}) {
     if (tenants.some((existing) => existing.tenant_id === tenant.tenant_id)) {
       return res.status(409).json({ error: 'tenant already exists for this company' });
     }
+    const userId = `user-${randomUUID()}`;
+    tenant.owner_user_id = userId;
     tenants.push(tenant);
     saveData(storage, 'saveTenants', tenants);
 
-    const userId = `user-${randomUUID()}`;
     const users = listData(storage, 'listUsers');
     users.push({
       user_id: userId,
@@ -556,8 +623,6 @@ function createApp(options = {}) {
       created_at: new Date().toISOString(),
     });
     saveData(storage, 'saveUsers', users);
-    tenant.owner_user_id = userId;
-    saveData(storage, 'saveTenants', tenants);
 
     const memberships = listData(storage, 'listTenantMemberships');
     memberships.push({
@@ -569,10 +634,18 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveTenantMemberships', memberships);
 
-    return res.status(201).json({ tenant, owner: { user_id: userId, role: 'Owner' } });
+    const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+    return res.status(201).json({
+      tenant,
+      owner: { user_id: userId, role: 'Owner' },
+      session: {
+        token: session.token,
+        expires_at: session.expires_at,
+      },
+    });
   });
 
-  app.get('/api/tenant', requireTenant, (req, res) => {
+  app.get('/api/tenant', readLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
     const tenants = listData(storage, 'listTenants');
     const tenant = tenants.find((item) => item.tenant_id === req.tenantId);
     if (!tenant) {
@@ -596,7 +669,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/onboarding', writeLimiter, requireTenant, (req, res) => {
+  app.post('/api/onboarding', writeLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
     const { step, companyProfile, deploymentChoice, importSources, audiences } = req.body || {};
     const onboarding = listData(storage, 'listOnboarding');
     const nextState = {
@@ -628,19 +701,8 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/deploy', writeLimiter, requireTenant, (req, res) => {
-    const users = listData(storage, 'listUsers');
-    let userId = req.header('x-user-id') || req.body?.user_id;
-    if (!userId) {
-      const userEmail = String(req.header('x-user-email') || req.body?.user_email || '').toLowerCase();
-      if (userEmail) {
-        userId = users.find((user) => user.tenant_id === req.tenantId && user.email === userEmail)?.user_id;
-      }
-    }
-    if (!userId) {
-      return res.status(400).json({ error: 'user_id is required for deployment authorization' });
-    }
-
+  app.post('/api/deploy', writeLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
+    const userId = req.session.user_id;
     const memberships = listData(storage, 'listTenantMemberships');
     const membership = memberships.find((item) => item.tenant_id === req.tenantId && item.user_id === userId);
     if (!membership) {
@@ -692,7 +754,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.get('/api/deployment/status', requireTenant, (req, res) => {
+  app.get('/api/deployment/status', readLimiter, requireTenant, tenantSessionMiddleware, (req, res) => {
     const deploymentId = req.query.deployment_id || req.query.id;
     if (!deploymentId) {
       return res.status(400).json({ error: 'deployment_id is required' });
@@ -713,7 +775,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.get('/api/demo', (_req, res) => {
+  app.get('/api/demo', readLimiter, (_req, res) => {
     return res.json({
       tenant_id: 'acme',
       company_name: 'Acme Manufacturing',
@@ -753,20 +815,20 @@ function createApp(options = {}) {
     res.redirect('/admin.html');
   });
 
-  app.get('/demo', (_req, res) => {
-    res.sendFile(path.join(rootDir, 'public', 'demo.html'));
+  app.get('/demo', readLimiter, (_req, res) => {
+    res.redirect('/demo.html');
   });
 
-  app.get('/signup', (_req, res) => {
-    res.sendFile(path.join(rootDir, 'public', 'signup.html'));
+  app.get('/signup', readLimiter, (_req, res) => {
+    res.redirect('/signup.html');
   });
 
-  app.get('/onboarding', (_req, res) => {
-    res.sendFile(path.join(rootDir, 'public', 'onboarding.html'));
+  app.get('/onboarding', readLimiter, (_req, res) => {
+    res.redirect('/onboarding.html');
   });
 
-  app.get('/tenant', (_req, res) => {
-    res.sendFile(path.join(rootDir, 'public', 'tenant.html'));
+  app.get('/tenant', readLimiter, (_req, res) => {
+    res.redirect('/tenant.html');
   });
 
   return app;

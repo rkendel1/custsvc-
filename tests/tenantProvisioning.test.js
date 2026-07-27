@@ -56,7 +56,9 @@ test('signup provisions tenant and tenant lookup returns dashboard', async (t) =
   const data = await signup.json();
   assert.equal(data.tenant.company_name, 'Taylor Manufacturing');
 
-  const tenant = await fetch(`${baseUrl}/api/tenant?tenant_id=${encodeURIComponent(data.tenant.tenant_id)}`);
+  const tenant = await fetch(`${baseUrl}/api/tenant?tenant_id=${encodeURIComponent(data.tenant.tenant_id)}`, {
+    headers: { 'x-session-token': data.session.token },
+  });
   assert.equal(tenant.status, 200);
   const tenantData = await tenant.json();
   assert.equal(tenantData.tenant.tenant_id, data.tenant.tenant_id);
@@ -129,12 +131,25 @@ test('deploy enforces membership role and exposes deployment status', async (t) 
   memberships.push({ tenant_id: signup.tenant.tenant_id, user_id: 'user-viewer', role: 'Viewer', status: 'active' });
   storage.saveTenantMemberships(memberships);
 
+  const viewerSessionToken = 'session-viewer-token';
+  const sessions = storage.listSessions();
+  sessions.push({
+    session_id: 'session-viewer',
+    token: viewerSessionToken,
+    tenant_id: signup.tenant.tenant_id,
+    user_id: 'user-viewer',
+    role: 'Viewer',
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  storage.saveSessions(sessions);
+
   const denied = await fetch(`${baseUrl}/api/deploy`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-tenant-id': signup.tenant.tenant_id,
-      'x-user-id': 'user-viewer',
+      'x-session-token': viewerSessionToken,
     },
     body: JSON.stringify({ tenant_id: signup.tenant.tenant_id }),
   });
@@ -144,8 +159,7 @@ test('deploy enforces membership role and exposes deployment status', async (t) 
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-tenant-id': signup.tenant.tenant_id,
-      'x-user-id': signup.user.user_id,
+      'x-session-token': signup.session.token,
     },
     body: JSON.stringify({ tenant_id: signup.tenant.tenant_id }),
   });
@@ -158,6 +172,7 @@ test('deploy enforces membership role and exposes deployment status', async (t) 
     `${baseUrl}/api/deployment/status?tenant_id=${encodeURIComponent(signup.tenant.tenant_id)}&deployment_id=${encodeURIComponent(
       deploymentData.deployment.deployment_id,
     )}`,
+    { headers: { 'x-session-token': signup.session.token } },
   );
   assert.equal(status.status, 200);
   const statusData = await status.json();
