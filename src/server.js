@@ -6,7 +6,7 @@ const { createStorage } = require('./lib/storage');
 const { createPgStorage } = require('./lib/pgStorage');
 const { hasPgConnectionConfig } = require('./lib/pgConfig');
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 const rootDir = path.resolve(__dirname, '..');
 
@@ -14,10 +14,15 @@ async function start() {
   let storage = createStorage(rootDir);
   const disablePgLifecycle = String(process.env.PG_LIFECYCLE_BACKEND || '').toLowerCase() === 'false';
   if (hasPgConnectionConfig() && !disablePgLifecycle) {
-    const pgStorage = createPgStorage(rootDir);
-    await pgStorage.initialize();
-    storage = pgStorage;
-    console.log('KnowledgeOS lifecycle storage: postgres(app_state)');
+    try {
+      const pgStorage = createPgStorage(rootDir);
+      await pgStorage.initialize();
+      storage = pgStorage;
+      console.log('KnowledgeOS lifecycle storage: postgres(app_state)');
+    } catch (error) {
+      console.warn(`KnowledgeOS lifecycle storage fallback to json: ${error.message}`);
+      storage = createStorage(rootDir);
+    }
   } else {
     console.log('KnowledgeOS lifecycle storage: json');
   }
