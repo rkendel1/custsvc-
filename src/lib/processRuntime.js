@@ -61,7 +61,7 @@ function mapActionInputs(execution, mapping = {}, payloadInputs = {}) {
 function appendTimeline(execution, event, details = {}) {
   return {
     ...execution,
-    timeline: [...(execution.timeline || []), { at: new Date().toISOString(), event, ...details }],
+    timeline: [...(execution.timeline || []), { event, ...details, at: new Date().toISOString() }],
   };
 }
 
@@ -264,13 +264,14 @@ function decideApproval(execution, approvalId, decision, payload = {}) {
     decidedAt: new Date().toISOString(),
   };
   const status = decision === 'APPROVED' ? 'ACTIVE' : 'CANCELLED';
+  const decisionEvent = decision === 'APPROVED' ? 'APPROVAL_APPROVED' : 'APPROVAL_REJECTED';
   return appendTimeline({
     ...execution,
     status,
     pausedAt: null,
     approvals,
     history: [...execution.history, { stepId: execution.currentStepId, action: decision, approvalId, at: new Date().toISOString() }],
-  }, `APPROVAL_${decision}`, { approvalId });
+  }, decisionEvent, { approvalId });
 }
 
 function approve(execution, approvalId, payload = {}) {

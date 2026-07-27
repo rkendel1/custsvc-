@@ -283,7 +283,8 @@
     const result = { outputs: input, external_ref: null };
     execution.outputs = { ...(execution.outputs || {}), [capabilityId]: result.outputs };
     execution.history.push({ stepId: execution.currentStepId, action: 'EXECUTE_CAPABILITY', capabilityId, at: new Date().toISOString() });
-    execution.timeline = [...(execution.timeline || []), { event: 'CAPABILITY_EXECUTED', capabilityId, at: new Date().toISOString() }];
+    execution.timeline = execution.timeline || [];
+    execution.timeline.push({ event: 'CAPABILITY_EXECUTED', capabilityId, at: new Date().toISOString() });
     return result;
   }
 
@@ -298,7 +299,8 @@
     approval.reason = reason;
     approval.decidedAt = new Date().toISOString();
     execution.status = decision === 'APPROVED' ? 'ACTIVE' : 'CANCELLED';
-    execution.timeline = [...(execution.timeline || []), { event: `APPROVAL_${decision}`, approvalId, at: new Date().toISOString() }];
+    execution.timeline = execution.timeline || [];
+    execution.timeline.push({ event: `APPROVAL_${decision}`, approvalId, at: new Date().toISOString() });
     return execution;
   }
 

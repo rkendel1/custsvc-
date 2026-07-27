@@ -738,7 +738,9 @@ function compileBundle(documents, options = {}) {
   const capabilitySet = new Set();
   for (const process of processes) {
     for (const capability of process.required_capabilities) capabilitySet.add(capability);
-    for (const step of process.steps) if (step.capability) capabilitySet.add(step.capability);
+    for (const step of process.steps) {
+      if (step.capability) capabilitySet.add(step.capability);
+    }
   }
   const capabilityRegistry = safeCapabilities.map(normalizeCapability);
   const seenCapabilities = new Set(capabilityRegistry.map((item) => item.id));
