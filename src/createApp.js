@@ -450,6 +450,20 @@ function resolveEmbedToken(req) {
   return req.header('x-embed-token') || req.query.embed_token || null;
 }
 
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || '');
+  const pairs = raw.split(';').map((part) => part.trim()).filter(Boolean);
+  const map = {};
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx <= 0) continue;
+    const key = pair.slice(0, idx).trim();
+    const value = pair.slice(idx + 1).trim();
+    map[key] = decodeURIComponent(value);
+  }
+  return map;
+}
+
 function resolveTenantId(req) {
   return (
     req.header('x-tenant-id') ||
@@ -478,6 +492,100 @@ function getEmbedTokenSecret() {
   const sourceSecret = String(process.env.SOURCE_SECRET_KEY || '').trim();
   if (sourceSecret) return sourceSecret;
   return null;
+}
+
+function getConsolePassword() {
+  return String(process.env.APP_PASSWORD || process.env.KNOWLEDGEOS_PASSWORD || '').trim();
+}
+
+function getConsoleAuthSecret() {
+  return String(process.env.APP_AUTH_SECRET || process.env.SOURCE_SECRET_KEY || '').trim();
+}
+
+function signConsoleAccessToken({ exp }) {
+  const secret = getConsoleAuthSecret();
+  if (!secret) return null;
+  const payload = {
+    scope: 'console-access',
+    exp: Number(exp || 0),
+  };
+  const encoded = base64urlEncode(JSON.stringify(payload));
+  const signature = createHmac('sha256', secret).update(encoded).digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+function verifyConsoleAccessToken(token) {
+  const secret = getConsoleAuthSecret();
+  if (!secret) return { ok: false, reason: 'auth_secret_missing' };
+  const raw = String(token || '').trim();
+  const parts = raw.split('.');
+  if (parts.length !== 2) return { ok: false, reason: 'invalid_format' };
+  const [encoded, signature] = parts;
+  const expected = createHmac('sha256', secret).update(encoded).digest('base64url');
+  if (expected !== signature) return { ok: false, reason: 'invalid_signature' };
+
+  let payload = null;
+  try {
+    payload = JSON.parse(base64urlDecode(encoded));
+  } catch (_error) {
+    return { ok: false, reason: 'invalid_payload' };
+  }
+
+  if (String(payload?.scope || '') !== 'console-access') {
+    return { ok: false, reason: 'invalid_scope' };
+  }
+  if (!Number.isFinite(Number(payload?.exp || 0)) || Date.now() > Number(payload.exp)) {
+    return { ok: false, reason: 'token_expired' };
+  }
+  return { ok: true, payload };
+}
+
+function shouldRequireConsolePassword() {
+  return Boolean(getConsolePassword());
+}
+
+function isConsoleAuthorized(req) {
+  if (!shouldRequireConsolePassword()) return true;
+
+  const headerPassword = String(req.header('x-console-password') || '').trim();
+  if (headerPassword && headerPassword === getConsolePassword()) return true;
+
+  const authHeader = String(req.header('authorization') || '').trim();
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearer = authHeader.slice(7).trim();
+    if (bearer && bearer === getConsolePassword()) return true;
+    if (verifyConsoleAccessToken(bearer).ok) return true;
+  }
+
+  const cookies = parseCookies(req);
+  const token = String(cookies.kos_console_auth || '').trim();
+  return verifyConsoleAccessToken(token).ok;
+}
+
+function setConsoleAuthCookie(res, token, maxAgeSeconds = 8 * 60 * 60) {
+  const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const cookie = [
+    `kos_console_auth=${encodeURIComponent(String(token || ''))}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(60, Number(maxAgeSeconds || 0))}`,
+    secure ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+  res.setHeader('Set-Cookie', cookie);
+}
+
+function clearConsoleAuthCookie(res) {
+  const secure = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const cookie = [
+    'kos_console_auth=',
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+    secure ? 'Secure' : '',
+  ].filter(Boolean).join('; ');
+  res.setHeader('Set-Cookie', cookie);
 }
 
 function signEmbedSessionToken(payload) {
@@ -825,6 +933,17 @@ function createApp(options = {}) {
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
 
+  function requireConsoleAccess(req, res, next) {
+    if (isConsoleAuthorized(req)) return next();
+    return res.status(401).json({ error: 'password authentication required' });
+  }
+
+  function requireConsolePageAccess(req, res, next) {
+    if (isConsoleAuthorized(req)) return next();
+    const target = encodeURIComponent(req.originalUrl || '/');
+    return res.redirect(`/access.html?next=${target}`);
+  }
+
   app.get('/health', (_req, res) => {
     res.json({ ok: true, product: 'KnowledgeOS' });
   });
@@ -858,11 +977,45 @@ function createApp(options = {}) {
         enabled: Boolean(getEmbedTokenSecret()),
         strategy: 'scoped-session-token',
       },
+      console_access: {
+        enabled: shouldRequireConsolePassword(),
+      },
       browser_runtime: {
         bundle_url: '/bundles/knowledgeos.bundle.json',
         pglite_module_url: '/vendor/pglite/index.js',
       },
     });
+  });
+
+  app.get('/api/access/status', (_req, res) => {
+    res.json({
+      password_required: shouldRequireConsolePassword(),
+      authenticated: isConsoleAuthorized(_req),
+    });
+  });
+
+  app.post('/api/access/login', (req, res) => {
+    if (!shouldRequireConsolePassword()) {
+      return res.json({ ok: true, password_required: false });
+    }
+
+    const password = String(req.body?.password || '').trim();
+    if (!password || password !== getConsolePassword()) {
+      return res.status(401).json({ error: 'invalid password' });
+    }
+
+    const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    const token = signConsoleAccessToken({ exp: expiresAt });
+    if (!token) {
+      return res.status(500).json({ error: 'console auth secret is not configured' });
+    }
+    setConsoleAuthCookie(res, token);
+    return res.json({ ok: true, expires_at: new Date(expiresAt).toISOString() });
+  });
+
+  app.post('/api/access/logout', (_req, res) => {
+    clearConsoleAuthCookie(res);
+    return res.json({ ok: true });
   });
 
   app.get('/api/embed/session', readLimiter, (req, res) => {
@@ -917,6 +1070,16 @@ function createApp(options = {}) {
     }
 
     return res.sendFile(bundlePath);
+  });
+
+  app.use((req, res, next) => {
+    if (!shouldRequireConsolePassword()) return next();
+    if (!String(req.path || '').startsWith('/api/')) return next();
+    if (String(req.path || '').startsWith('/api/access/')) return next();
+    if (String(req.path || '').startsWith('/api/embed/')) return next();
+    if (req.path === '/api/demo' || req.path === '/api/health' || req.path === '/api/system/status') return next();
+    if (req.path === '/api/signup' || req.path === '/api/tenants' || req.path === '/api/onboarding/session') return next();
+    return requireConsoleAccess(req, res, next);
   });
 
   app.get('/api/documents', readLimiter, (req, res) => {
@@ -1911,6 +2074,8 @@ function createApp(options = {}) {
       },
     });
   });
+
+  app.use(['/admin.html', '/tenant.html', '/onboarding.html'], requireConsolePageAccess);
 
   app.use('/bundles', express.static(path.join(rootDir, 'bundles')));
   app.use('/vendor/pglite', express.static(path.join(rootDir, 'node_modules', '@electric-sql', 'pglite', 'dist')));

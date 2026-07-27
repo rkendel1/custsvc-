@@ -39,6 +39,12 @@ function format(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function setPanelText(elementId, message) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.textContent = String(message || '');
+}
+
 function parseMaybeJsonArray(value) {
   const text = String(value || '').trim();
   if (!text) return [];
@@ -122,7 +128,7 @@ async function refreshDocuments() {
     const data = await requestJson('/api/documents');
     output.textContent = format(data.documents);
   } catch (error) {
-    output.textContent = error.message;
+    output.textContent = `Unable to load knowledge objects: ${error.message}`;
   }
 }
 
@@ -132,7 +138,7 @@ async function refreshAnalytics() {
     const data = await requestJson('/api/admin/analytics');
     output.textContent = format(data.analytics);
   } catch (error) {
-    output.textContent = error.message;
+    output.textContent = `Unable to load analytics: ${error.message}`;
   }
 }
 
@@ -142,7 +148,7 @@ async function refreshSources() {
     const data = await requestJson('/api/sources');
     output.textContent = format(data.sources);
   } catch (error) {
-    output.textContent = error.message;
+    output.textContent = `Unable to load sources: ${error.message}`;
   }
 }
 
@@ -152,7 +158,7 @@ async function refreshSourceAudit() {
     const data = await requestJson('/api/sources/audit?limit=100');
     output.textContent = format(data.events || []);
   } catch (error) {
-    output.textContent = error.message;
+    output.textContent = `Unable to load source audit: ${error.message}`;
   }
 }
 
@@ -178,9 +184,10 @@ function wireTextDocForm() {
         body: JSON.stringify(payload),
       });
       form.reset();
+      setPanelText('compileOutput', 'Knowledge object saved.');
       await refreshDocuments();
     } catch (error) {
-      alert(error.message);
+      setPanelText('compileOutput', `Could not save knowledge object: ${error.message}`);
     }
   });
 }
@@ -200,9 +207,10 @@ function wireUrlDocForm() {
         body: JSON.stringify(payload),
       });
       form.reset();
+      setPanelText('compileOutput', 'URL knowledge object saved.');
       await refreshDocuments();
     } catch (error) {
-      alert(error.message);
+      setPanelText('compileOutput', `Could not save URL object: ${error.message}`);
     }
   });
 }
@@ -219,9 +227,10 @@ function wirePdfDocForm() {
         body: formData,
       });
       form.reset();
+      setPanelText('compileOutput', 'PDF knowledge object saved.');
       await refreshDocuments();
     } catch (error) {
-      alert(error.message);
+      setPanelText('compileOutput', `Could not save PDF object: ${error.message}`);
     }
   });
 }
@@ -238,7 +247,7 @@ function wireBulkDocForm() {
       if (!Array.isArray(parsed)) throw new Error('items must be a JSON array');
       items = parsed;
     } catch (error) {
-      alert(`Invalid JSON: ${error.message}`);
+      setPanelText('compileOutput', `Invalid bulk JSON: ${error.message}`);
       return;
     }
 
@@ -256,10 +265,10 @@ function wireBulkDocForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ items: embeddedItems }),
       });
-      alert(`Imported ${result.inserted_count} documents (${result.rejected_count} rejected).`);
+      setPanelText('compileOutput', `Imported ${result.inserted_count} object(s), skipped ${result.rejected_count}.`);
       await refreshDocuments();
     } catch (error) {
-      alert(error.message);
+      setPanelText('compileOutput', `Could not run bulk import: ${error.message}`);
     }
   });
 }
@@ -297,9 +306,10 @@ function wireSourceForm() {
       });
       form.reset();
       renderSourceCredentialFields('GENERIC');
+      setPanelText('sourcesOutput', 'Source registered successfully. Refreshing list...');
       await refreshSources();
     } catch (error) {
-      alert(error.message);
+      setPanelText('sourcesOutput', `Could not register source: ${error.message}`);
     }
   });
 }
@@ -309,7 +319,7 @@ function wireSourceSync() {
   button.addEventListener('click', async () => {
     const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
     if (!sourceId) {
-      alert('source id is required');
+      setPanelText('sourcesOutput', 'Source ID is required for sync.');
       return;
     }
 
@@ -326,7 +336,7 @@ function wireSourceSync() {
             : await createEmbedding(`${item?.title || ''}\n${item?.body || ''}`),
         })));
       } catch (error) {
-        alert(`Invalid sync JSON: ${error.message}`);
+        setPanelText('sourcesOutput', `Invalid sync JSON: ${error.message}`);
         return;
       }
     }
@@ -337,10 +347,11 @@ function wireSourceSync() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ documents }),
       });
+      setPanelText('sourcesOutput', 'Source sync completed. Refreshing source and knowledge views...');
       await refreshSources();
       await refreshDocuments();
     } catch (error) {
-      alert(error.message);
+      setPanelText('sourcesOutput', `Could not sync source: ${error.message}`);
     }
   });
 }
@@ -360,7 +371,7 @@ function wireSourceTest() {
   button.addEventListener('click', async () => {
     const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
     if (!sourceId) {
-      alert('source id is required');
+      setPanelText('sourcesOutput', 'Source ID is required for connection test.');
       return;
     }
 
@@ -373,7 +384,7 @@ function wireSourceTest() {
       document.getElementById('sourcesOutput').textContent = format(data);
       await refreshSources();
     } catch (error) {
-      alert(error.message);
+      setPanelText('sourcesOutput', `Connection test failed: ${error.message}`);
     }
   });
 }
@@ -386,7 +397,7 @@ function wireSourceUpdate() {
   button.addEventListener('click', async () => {
     const sourceId = String(document.getElementById('syncSourceId').value || '').trim();
     if (!sourceId) {
-      alert('source id is required');
+      setPanelText('sourcesOutput', 'Source ID is required for update.');
       return;
     }
 
@@ -412,7 +423,7 @@ function wireSourceUpdate() {
       document.getElementById('sourcesOutput').textContent = format(data);
       await refreshSources();
     } catch (error) {
-      alert(error.message);
+      setPanelText('sourcesOutput', `Could not update source: ${error.message}`);
     }
   });
 }

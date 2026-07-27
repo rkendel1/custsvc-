@@ -46,10 +46,22 @@
       }
 
       .wordmark {
-        font-family: 'Sora', sans-serif;
-        font-size: 1.2rem;
-        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
       }
+
+      .wordmark img {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .wordmark strong { font-family: 'Sora', sans-serif; font-size: 1.2rem; font-weight: 800; }
 
       .wordmark span { color: var(--brand); }
 
@@ -179,16 +191,21 @@
         background: #f9fbff;
       }
 
-      pre {
+      .status-box {
         margin: 0.7rem 0 0;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: #fff;
         padding: 0.76rem;
-        white-space: pre-wrap;
-        overflow: auto;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-        font-size: 0.82rem;
+        color: #33436b;
+        line-height: 1.45;
+        font-size: 0.92rem;
+      }
+
+      .status-box strong {
+        display: block;
+        margin-bottom: 0.28rem;
+        color: #1d2f59;
       }
 
       @media (max-width: 940px) {
@@ -202,7 +219,10 @@
   <body>
     <div class="shell">
       <header class="topbar">
-        <div class="wordmark">Knowledge<span>OS</span></div>
+        <a class="wordmark" href="/">
+          <img src="/koslogo.svg" alt="KnowledgeOS logo" />
+          <strong>Knowledge<span>OS</span></strong>
+        </a>
         <nav class="topnav">
           <a href="/">Home</a>
           <a href="/demo">Power demo</a>
@@ -216,8 +236,7 @@
       <section class="hero">
         <h1 style="font-size:1.48rem;">Tenant Dashboard Demo</h1>
         <p>
-          This dashboard illustrates how one tenant sees runtime health, operational pressure, knowledge quality,
-          and service signals in a single pane. Use it to validate internal value right after setup.
+          See how each tenant tracks service quality, workload pressure, and where to improve next.
         </p>
       </section>
 
@@ -245,11 +264,11 @@
         </aside>
 
         <article class="panel">
-          <h2 style="font-size:1.02rem;">Tenant API Response</h2>
+          <h2 style="font-size:1.02rem;">Tenant Summary</h2>
           <p style="color: var(--muted); margin: 0.35rem 0 0; font-size: 0.9rem;">
-            Use this live output to validate tenant scope, access control behavior, and dashboard payload shape.
+            Get a plain-language view of tenant readiness and impact signals.
           </p>
-          <pre id="output">Load a tenant dashboard.</pre>
+          <div id="output" class="status-box"><strong>Status</strong>Load a tenant dashboard.</div>
         </article>
       </section>
     </div>
@@ -261,11 +280,16 @@
       const loadBtn = document.getElementById('loadBtn');
       const resetBtn = document.getElementById('resetBtn');
 
+      function setStatus(title, lines = []) {
+        const items = Array.isArray(lines) ? lines : [String(lines || '')];
+        output.innerHTML = `<strong>${title}</strong>${items.filter(Boolean).join('<br />')}`;
+      }
+
       async function loadDashboard() {
         const tenantId = tenantIdInput.value.trim();
         const sessionToken = sessionTokenInput.value.trim();
         if (!tenantId) {
-          output.textContent = 'Tenant ID is required.';
+          setStatus('Missing tenant', 'Tenant ID is required.');
           return;
         }
 
@@ -278,18 +302,24 @@
         try {
           data = text ? JSON.parse(text) : {};
         } catch (_error) {
-          output.textContent = text;
+          setStatus('Unexpected response', text);
           return;
         }
 
-        output.textContent = JSON.stringify(
-          {
-            status: response.status,
-            ...data,
-          },
-          null,
-          2,
-        );
+        if (!response.ok) {
+          setStatus('Could not load dashboard', data.error || `Request failed (${response.status})`);
+          return;
+        }
+
+        const dashboard = data?.dashboard || {};
+        setStatus('Tenant loaded', [
+          `Tenant: ${data?.tenant?.company_name || tenantId}`,
+          `Runtime: ${dashboard.runtime_status || 'not deployed'}`,
+          `Knowledge objects: ${dashboard.documents ?? 0}`,
+          `Questions tracked: ${dashboard.questions ?? 0}`,
+          `Confidence score: ${dashboard.confidence ?? 0}`,
+          `Priority gaps: ${dashboard.knowledge_gaps ?? 0}`,
+        ]);
       }
 
       loadBtn.addEventListener('click', () => {
@@ -299,7 +329,7 @@
       });
 
       resetBtn.addEventListener('click', () => {
-        output.textContent = 'Load a tenant dashboard.';
+        setStatus('Status', 'Load a tenant dashboard.');
       });
     </script>
   </body>

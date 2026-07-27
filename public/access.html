@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Access</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #1d1f2b;
+        --muted: #5f667d;
+        --panel: #ffffff;
+        --line: #dbe2f1;
+        --brand: #1254ff;
+        --canvas: #f6f8fc;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(1000px 460px at 10% -8%, #fff0d4 0%, transparent 60%),
+          radial-gradient(860px 470px at 88% -10%, #dbeafe 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      .card {
+        width: min(460px, 92vw);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 1.1rem;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
+      }
+
+      .brand img {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .brand strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.15rem;
+      }
+
+      .brand span { color: var(--brand); }
+
+      h1 {
+        margin: 0.8rem 0 0.35rem;
+        font-family: 'Sora', sans-serif;
+        font-size: 1.45rem;
+        letter-spacing: -0.02em;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      label {
+        display: block;
+        margin-top: 0.7rem;
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      input {
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.62rem 0.65rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      button {
+        margin-top: 0.8rem;
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        padding: 0.64rem 1rem;
+        font-weight: 800;
+        color: #fff;
+        background: linear-gradient(135deg, #1254ff, #2f88ff);
+        cursor: pointer;
+      }
+
+      .status {
+        margin-top: 0.65rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f4f7ff;
+        padding: 0.62rem;
+        color: #33436b;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="card">
+      <a class="brand" href="/">
+        <img src="/koslogo.svg" alt="KnowledgeOS logo" />
+        <strong>Knowledge<span>OS</span></strong>
+      </a>
+      <h1>Protected area</h1>
+      <p>Enter your workspace password to continue.</p>
+
+      <form id="accessForm">
+        <label>Password
+          <input id="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">Unlock</button>
+      </form>
+      <div id="status" class="status">Waiting for password.</div>
+    </section>
+
+    <script>
+      const form = document.getElementById('accessForm');
+      const passwordInput = document.getElementById('password');
+      const status = document.getElementById('status');
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get('next') || '/admin';
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        status.textContent = 'Checking password...';
+
+        const response = await fetch('/api/access/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+
+        const text = await response.text();
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (_error) { body = {}; }
+
+        if (!response.ok) {
+          status.textContent = body.error || 'Access denied.';
+          return;
+        }
+
+        status.textContent = 'Access granted. Redirecting...';
+        window.location.href = next;
+      });
+    </script>
+  </body>
+</html>

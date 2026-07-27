@@ -46,10 +46,22 @@
       }
 
       .wordmark {
-        font-family: 'Sora', sans-serif;
-        font-weight: 800;
-        font-size: 1.2rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
       }
+
+      .wordmark img {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .wordmark strong { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.2rem; }
 
       .wordmark span { color: var(--brand); }
 
@@ -172,13 +184,21 @@
         color: #3d4870;
       }
 
-      pre {
+      .status-box {
         background: #f4f7ff;
         border: 1px solid var(--line);
         border-radius: 12px;
         padding: 0.75rem;
         margin-top: 0.8rem;
-        overflow: auto;
+        color: #33436b;
+        font-size: 0.9rem;
+        line-height: 1.4;
+      }
+
+      .status-box strong {
+        display: block;
+        margin-bottom: 0.25rem;
+        color: #1d2f59;
       }
 
       @media (max-width: 900px) {
@@ -190,7 +210,10 @@
   <body>
     <div class="shell">
       <header class="topbar">
-        <div class="wordmark">Knowledge<span>OS</span></div>
+        <a class="wordmark" href="/">
+          <img src="/koslogo.svg" alt="KnowledgeOS logo" />
+          <strong>Knowledge<span>OS</span></strong>
+        </a>
         <nav class="topnav">
           <a href="/">Home</a>
           <a href="/demo">Power demo</a>
@@ -203,11 +226,11 @@
       <div class="layout">
         <section class="panel">
           <h2>Launch Wizard</h2>
-          <p style="color: var(--muted);">Set up your account, connect targets, and start onboarding in one guided flow.</p>
+          <p style="color: var(--muted);">Create your workspace, choose your rollout path, and go live quickly.</p>
           <ul class="steps">
-            <li><strong>Step 1. Company profile</strong><span>Who you are and what you want to deploy first.</span></li>
-            <li><strong>Step 2. Target systems</strong><span>Select all integrations you plan to connect.</span></li>
-            <li><strong>Step 3. Confirm and provision</strong><span>Create tenant and jump directly to onboarding.</span></li>
+            <li><strong>Step 1. Company profile</strong><span>Tell us who you are and your top support goal.</span></li>
+            <li><strong>Step 2. Knowledge sources</strong><span>Select where your trusted answers already live.</span></li>
+            <li><strong>Step 3. Create workspace</strong><span>We provision your tenant and send you into onboarding.</span></li>
           </ul>
         </section>
 
@@ -258,8 +281,8 @@
 
             <div class="step-pane" data-step="3">
               <h3 style="font-size:1rem;">Review and provision</h3>
-              <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">We will create your tenant and route you directly to the onboarding wizard.</p>
-              <pre id="reviewPanel">Review will appear here before submit.</pre>
+              <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">You are one click away from your workspace.</p>
+              <div id="reviewPanel" class="status-box"><strong>Review</strong>Review will appear here before submit.</div>
             </div>
 
             <div class="wizard-nav">
@@ -268,7 +291,7 @@
               <button id="submitSignup" type="submit" class="btn-primary" style="display:none;">Create Account</button>
             </div>
           </form>
-          <pre id="signupOutput">Complete the wizard to provision your tenant.</pre>
+          <div id="signupOutput" class="status-box"><strong>Status</strong>Complete the wizard to provision your tenant.</div>
         </section>
       </div>
     </div>
@@ -306,10 +329,21 @@
         }
       }
 
+      function setStatus(title, message) {
+        output.innerHTML = `<strong>${title}</strong>${message}`;
+      }
+
       function renderReview() {
         const payload = Object.fromEntries(new FormData(form).entries());
         payload.targets = selectedTargets();
-        reviewPanel.textContent = JSON.stringify(payload, null, 2);
+        reviewPanel.innerHTML = [
+          '<strong>Review</strong>',
+          `Name: ${payload.name || 'N/A'}`,
+          `Email: ${payload.email || 'N/A'}`,
+          `Company: ${payload.company || 'N/A'}`,
+          `Use case: ${payload.primaryUseCase || 'N/A'}`,
+          `Targets: ${payload.targets.join(', ') || 'None selected yet'}`,
+        ].join('<br />');
       }
 
       function renderStep() {
@@ -351,10 +385,10 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          output.textContent = data.error || 'Signup failed';
+          setStatus('Could not create workspace', data.error || 'Signup failed');
           return;
         }
-        output.textContent = JSON.stringify(data, null, 2);
+        setStatus('Workspace created', 'Redirecting you to guided onboarding...');
         window.location.href = data.onboarding_url;
       });
     </script>
