@@ -21,6 +21,11 @@
   const state = {
     bundle: null,
     history: [],
+    session: {
+      turns: [],
+      subject: null,
+      topics: [],
+    },
     executions: {},
     context: {
       role,
@@ -223,6 +228,38 @@
       .filter(Boolean);
   }
 
+  function normalizeSentence(line) {
+    return cleanRetrievedText(line)
+      .replace(/^[-*•\u2022\s]+/, '')
+      .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function hasSuspiciousTruncation(line) {
+    const value = String(line || '').trim();
+    if (!value) return true;
+    const lower = value.toLowerCase();
+    if (/--\s*\d+\s*of\s*\d+\s*--/i.test(lower)) return true;
+    if (/(\b(and|or|with|including|into|to|for|in|on|at)\s*)$/i.test(value)) return true;
+
+    // Ends with an unusually short dangling token without punctuation, often from clipped text.
+    if (!/[.!?)]$/.test(value)) {
+      const lastTokenMatch = value.match(/([a-z0-9]{1,3})$/i);
+      if (lastTokenMatch && !['api', 'ai', 'ml', 'aws', 'ios'].includes(lastTokenMatch[1].toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function ensureTerminalPunctuation(line) {
+    const value = String(line || '').trim();
+    if (!value) return value;
+    if (/[.!?)]$/.test(value)) return value;
+    return `${value}.`;
+  }
+
   function isLikelyBoilerplateLine(line) {
     const normalized = String(line || '').toLowerCase();
     if (!normalized) return true;
@@ -289,6 +326,76 @@
     return tokenize(question).filter((token) => token.length > 2 && !stopWords.has(token));
   }
 
+  function hasExplicitSubject(question) {
+    const value = String(question || '').trim();
+    if (!value) return false;
+    if (/\brandy\b/i.test(value)) return true;
+    return /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/.test(value);
+  }
+
+  function isFollowUpQuestion(question) {
+    const value = String(question || '').trim();
+    if (!value) return false;
+    const lower = value.toLowerCase();
+    if (/\b(he|she|they|him|her|them|his|their|it|this|that|those|these)\b/.test(lower)) return true;
+    if (/^(and|also|what about|how about|can you expand|tell me more)/.test(lower)) return true;
+    const keywords = extractQuestionKeywords(value);
+    return !hasExplicitSubject(value) && keywords.length <= 8;
+  }
+
+  function extractSubjectFromText(text) {
+    const value = String(text || '');
+    if (!value) return null;
+    if (/\brandy\s+kendel\b/i.test(value)) return 'Randy Kendel';
+    if (/\brandy\b/i.test(value)) return 'Randy';
+
+    const match = value.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+    if (!match?.[1]) return null;
+    const candidate = String(match[1]).trim();
+    if (['Here', 'Based', 'Question', 'Answer', 'Context'].includes(candidate)) return null;
+    return candidate;
+  }
+
+  function updateSessionMemory(question, response = {}) {
+    const turn = {
+      question: String(question || '').trim(),
+      answer: String(response?.answer || '').trim(),
+      intent: String(response?.intent || 'general_question'),
+      at: new Date().toISOString(),
+    };
+    state.session.turns.push(turn);
+    if (state.session.turns.length > 12) {
+      state.session.turns = state.session.turns.slice(-12);
+    }
+
+    const subject = extractSubjectFromText(turn.question) || extractSubjectFromText(turn.answer);
+    if (subject) state.session.subject = subject;
+
+    const nextTopics = [...extractQuestionKeywords(turn.question), ...extractQuestionKeywords(turn.answer)].slice(0, 20);
+    const topicSet = new Set([...(state.session.topics || []), ...nextTopics]);
+    state.session.topics = [...topicSet].slice(-30);
+  }
+
+  function buildSessionAwareQuestion(question) {
+    const input = String(question || '').trim();
+    if (!input) return input;
+    if (!isFollowUpQuestion(input)) return input;
+
+    const subject = String(state.session.subject || '').trim();
+    const topicHints = (state.session.topics || []).slice(-6).join(' ');
+    let effective = input;
+
+    if (subject && !new RegExp(`\\b${subject.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i').test(input)) {
+      effective = `${input} about ${subject}`;
+    }
+
+    if (topicHints && !/\babout\b/i.test(effective)) {
+      effective = `${effective} (${topicHints})`;
+    }
+
+    return effective;
+  }
+
   function isLikelyPromotionalNoise(line) {
     const normalized = String(line || '').toLowerCase();
     const noiseMarkers = [
@@ -334,9 +441,10 @@
   function chooseBestSentences(question, corpusText, limit = 3) {
     const seen = new Set();
     const candidates = splitIntoSentences(corpusText)
-      .map((line) => line.trim())
+      .map((line) => normalizeSentence(line))
       .filter(Boolean)
       .filter((line) => !isLikelyBoilerplateLine(line))
+      .filter((line) => !hasSuspiciousTruncation(line))
       .map((line) => ({ line, score: scoreSentence(question, line) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score);
@@ -350,6 +458,43 @@
       if (selected.length >= limit) break;
     }
     return selected;
+  }
+
+  function buildProductsAnswer(question, corpusText) {
+    const normalizedQuestion = String(question || '').toLowerCase();
+    const asksProducts = (
+      normalizedQuestion.includes('product')
+      || normalizedQuestion.includes('products')
+      || normalizedQuestion.includes('created')
+      || normalizedQuestion.includes('built')
+      || normalizedQuestion.includes('launched')
+    );
+    if (!asksProducts) return null;
+
+    const candidates = chooseBestSentences(question, corpusText, 10)
+      .filter((line) => {
+        const lower = line.toLowerCase();
+        return (
+          lower.includes('created')
+          || lower.includes('built')
+          || lower.includes('launched')
+          || lower.includes('shipped')
+          || lower.includes('platform')
+          || lower.includes('product')
+        );
+      });
+
+    const picked = [];
+    for (const line of candidates) {
+      const normalized = ensureTerminalPunctuation(normalizeSentence(line));
+      if (!normalized || hasSuspiciousTruncation(normalized)) continue;
+      if (picked.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) continue;
+      picked.push(normalized);
+      if (picked.length >= 3) break;
+    }
+
+    if (!picked.length) return null;
+    return `Based on the indexed profile, here are the products and initiatives mentioned:\n- ${picked.join('\n- ')}`;
   }
 
   function buildExperienceAnswer(question, corpusText) {
@@ -376,6 +521,9 @@
     const experienceAnswer = buildExperienceAnswer(question, chunkText);
     if (experienceAnswer) return experienceAnswer;
 
+    const productsAnswer = buildProductsAnswer(question, chunkText);
+    if (productsAnswer) return productsAnswer;
+
     const candidates = chooseBestSentences(question, chunkText, 6);
 
     const picked = [];
@@ -388,11 +536,13 @@
     if (!picked.length) {
       const fallback = cleanRetrievedText(chunkText).slice(0, 420);
       if (!fallback) return "I don't have an answer for that yet.";
-      return fallback;
+      return ensureTerminalPunctuation(fallback);
     }
 
-    const compact = picked.map((line) => String(line).slice(0, 220).trim());
-    return `Here is what I found:\n- ${compact.join('\n- ')}`;
+    const complete = picked
+      .map((line) => ensureTerminalPunctuation(normalizeSentence(line)))
+      .filter((line) => line && !hasSuspiciousTruncation(line));
+    return `Here is what I found:\n- ${complete.join('\n- ')}`;
   }
 
   function termFrequency(tokens) {
@@ -1096,15 +1246,16 @@
   async function answerQuestion(question) {
     const bundle = await loadBundle();
     initializeAiIfNeeded(bundle);
-    const intentResult = detectIntent(question);
-    const results = await search(question, { limit: 5 });
+    const effectiveQuestion = buildSessionAwareQuestion(question);
+    const intentResult = detectIntent(effectiveQuestion);
+    const results = await search(effectiveQuestion, { limit: 5 });
     const best = results[0] || null;
 
     if (best && best.score >= minAnswerConfidence && state.ai.mode === AI_MODE.LOCAL) {
       try {
-        const generated = await generateWithLocalModel(question, best.chunk.text || '');
+        const generated = await generateWithLocalModel(effectiveQuestion, best.chunk.text || '');
         if (generated && !looksLowQualityGeneratedAnswer(generated)) {
-          return {
+          const response = {
             answer: cleanRetrievedText(generated),
             score: best.score,
             confidence: Number(Math.max(0.4, Math.min(0.99, best.score)).toFixed(3)),
@@ -1115,7 +1266,10 @@
             sourceStoreType: best.source.type,
             answered: true,
             generated_by: 'local-transformers',
+            effectiveQuestion,
           };
+          updateSessionMemory(question, response);
+          return response;
         }
       } catch (_error) {
         // Fall back to deterministic retrieval answer when local generation fails.
@@ -1133,8 +1287,8 @@
         reviewerConfidence * confidenceWeights.reviewer
       ).toFixed(3));
       const evidenceCorpus = results.map((item) => String(item?.chunk?.text || '')).join('\n');
-      const formattedAnswer = formatDeterministicAnswer(question, evidenceCorpus || best.chunk.text || '');
-      return {
+      const formattedAnswer = formatDeterministicAnswer(effectiveQuestion, evidenceCorpus || best.chunk.text || '');
+      const response = {
         answer: formattedAnswer,
         score: best.score,
         confidence,
@@ -1150,13 +1304,20 @@
         sourceStoreId: best.source.id,
         sourceStoreType: best.source.type,
         answered: true,
+        effectiveQuestion,
       };
+      updateSessionMemory(question, response);
+      return response;
     }
 
-    const fallback = await remoteFallback(question);
-    if (fallback) return { ...fallback, answered: true, intent: intentResult.intent, process_started: false };
+    const fallback = await remoteFallback(effectiveQuestion);
+    if (fallback) {
+      const response = { ...fallback, answered: true, intent: intentResult.intent, process_started: false, effectiveQuestion };
+      updateSessionMemory(question, response);
+      return response;
+    }
 
-    return {
+    const response = {
       answer: "I don't have an answer for that yet.",
       score: best ? best.score : 0,
       confidence: best ? Number(best.score.toFixed(3)) : 0,
@@ -1164,7 +1325,10 @@
       process_started: false,
       topChunkId: best?.chunk?.id || null,
       answered: false,
+      effectiveQuestion,
     };
+    updateSessionMemory(question, response);
+    return response;
   }
 
   async function sendTelemetry(entry) {
@@ -1318,6 +1482,7 @@
 
         const answered = response.answered;
         state.history.push({ question, ...response, answered, at: new Date().toISOString() });
+        if (state.history.length > 100) state.history = state.history.slice(-100);
 
         const telemetryPayload = {
           intent: response.intent || 'general_question',
@@ -1395,6 +1560,17 @@
       department: state.context.department,
       permissions: state.context.permissions,
     }),
+    getSessionMemory: () => ({
+      subject: state.session.subject,
+      topics: [...state.session.topics],
+      turns: [...state.session.turns],
+    }),
+    clearSessionMemory: () => {
+      state.session.subject = null;
+      state.session.topics = [];
+      state.session.turns = [];
+      return { ok: true };
+    },
     search,
     getKnowledgeSource,
     getAIStatus,
