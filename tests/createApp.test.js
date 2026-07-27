@@ -23,7 +23,7 @@ test('telemetry endpoint accepts privacy-preserving payload without question con
       telemetry.length = 0;
       telemetry.push(...events);
     },
-    writeBundle: () => ({ safeName: 'company.intelligence.bundle.json' }),
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
   const app = createApp({ rootDir: os.tmpdir(), storage });
   const { server, baseUrl } = await startServer(app);
@@ -39,6 +39,26 @@ test('telemetry endpoint accepts privacy-preserving payload without question con
       process_started: true,
       duration: 45,
     }),
+  });
+
+  test('telemetry endpoint rejects payloads without question and intent', async (t) => {
+    const storage = {
+      listDocuments: () => [],
+      saveDocuments: () => {},
+      listTelemetry: () => [],
+      saveTelemetry: () => {},
+      writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+    };
+    const app = createApp({ rootDir: os.tmpdir(), storage });
+    const { server, baseUrl } = await startServer(app);
+    t.after(() => server.close());
+
+    const response = await fetch(`${baseUrl}/api/telemetry`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confidence: 0.2 }),
+    });
+    assert.equal(response.status, 400);
   });
   assert.equal(response.status, 201);
   assert.equal(telemetry.length, 1);

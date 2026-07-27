@@ -41,6 +41,9 @@
     billing_question: 0.86,
     general_question: 0.72,
   };
+  const intentProcessMap = {
+    refund_request: 'refund_process',
+  };
 
   function normalizeAudience(value) {
     const item = String(value || '').toUpperCase();
@@ -328,7 +331,7 @@
         score: best.score,
         confidence,
         intent: intentResult.intent,
-        process_started: intentResult.intent === 'refund_request',
+        process_started: Boolean(intentProcessMap[intentResult.intent]),
         topChunkId: best.chunk.id,
         answered: true,
       };
@@ -465,7 +468,7 @@
         const answered = response.answered;
         state.history.push({ question, ...response, answered, at: new Date().toISOString() });
 
-        sendTelemetry({
+        const telemetryPayload = {
           intent: response.intent || 'general_question',
           answered,
           score: response.score,
@@ -478,8 +481,9 @@
           department: state.context.department,
           permissions: state.context.permissions,
           includeContent: telemetryIncludeContent,
-          question: telemetryIncludeContent ? question : undefined,
-        });
+          ...(telemetryIncludeContent ? { question } : {}),
+        };
+        sendTelemetry(telemetryPayload);
       } catch (error) {
         appendMessage(messages, 'AI', `Unable to answer right now: ${error.message}`);
       }

@@ -1,5 +1,6 @@
 function createAgentRuntime(options = {}) {
-  const allowedActions = new Set(options.available_actions || ['start_process', 'retrieve_policy', 'ask_question']);
+  const actionList = options.allowedActions || options.available_actions || ['start_process', 'retrieve_policy', 'ask_question'];
+  const allowedActions = new Set(actionList);
 
   async function reason({ question, intent, confidence }) {
     const safeIntent = intent || 'general_question';

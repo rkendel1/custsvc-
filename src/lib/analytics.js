@@ -33,6 +33,8 @@ function buildAnalytics(telemetryEvents) {
     const question = String(event.question || '').trim();
     const intent = String(event.intent || '').trim();
     if (!question && !intent) continue;
+    // Privacy mode may provide only intent-level telemetry. In that mode,
+    // top-question metrics stay sparse while aggregate intent/confidence trends still update.
     totalQuestions += 1;
 
     if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;

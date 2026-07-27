@@ -27,6 +27,7 @@ function inferIntent(question) {
 
 function extractFields(text) {
   const input = String(text || '');
+  // Lightweight extraction for local runtime hints (not strict RFC email validation).
   const email = input.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || null;
   const amount = input.match(/amount[\s:]*([\$]\d+(?:\.\d{2})?)/i)?.[1]
     || input.match(/([\$]\d+(?:\.\d{2})?)/)?.[1]
@@ -90,6 +91,7 @@ function createAIRuntime(options = {}) {
     const intent = inferIntent(question);
     return {
       answer: top?.text || `Intent detected: ${intent.intent}`,
+      // Keep generation confidence slightly conservative relative to classifier confidence.
       confidence: Number(Math.max(MIN_LOCAL_CONFIDENCE, intent.confidence - LOCAL_CONFIDENCE_ADJUSTMENT).toFixed(3)),
       mode: 'local-llm',
       intent: intent.intent,
