@@ -820,13 +820,90 @@ function parseCookies(req) {
 }
 
 function resolveTenantId(req) {
+  const fromSubdomain = resolveTenantIdFromHost(req);
   return (
     req.header('x-tenant-id') ||
     req.query.tenant_id ||
     req.body?.tenant_id ||
     req.body?.tenantId ||
+    fromSubdomain ||
     null
   );
+}
+
+function sanitizeDomainHost(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/^\*\./, '')
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
+}
+
+function resolveTenantBaseDomain(req) {
+  const configured = sanitizeDomainHost(
+    process.env.TENANT_BASE_DOMAIN
+      || process.env.APP_BASE_DOMAIN
+      || process.env.PUBLIC_BASE_DOMAIN,
+  );
+  if (configured) return configured;
+
+  const configuredPublicOrigin = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
+  if (configuredPublicOrigin) {
+    try {
+      const host = sanitizeDomainHost(new URL(configuredPublicOrigin).hostname || '');
+      if (host && !isPrivateHost(host) && host !== 'localhost') return host;
+    } catch (_error) {
+      // Ignore invalid configured origin and fall back to request host.
+    }
+  }
+
+  const hostHeader = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
+  const candidate = sanitizeDomainHost(hostHeader);
+  if (!candidate || isPrivateHost(candidate) || candidate === 'localhost') return '';
+  const labels = candidate.split('.');
+  if (labels.length < 2) return '';
+  return labels.slice(-2).join('.');
+}
+
+function resolveTenantIdFromHost(req) {
+  const baseDomain = resolveTenantBaseDomain(req);
+  if (!baseDomain) return null;
+
+  const hostHeader = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
+  const host = sanitizeDomainHost(hostHeader);
+  if (!host || host === baseDomain || host === `www.${baseDomain}`) return null;
+  if (!host.endsWith(`.${baseDomain}`)) return null;
+
+  const subdomain = host.slice(0, -(baseDomain.length + 1));
+  if (!subdomain || subdomain.includes('.')) return null;
+  if (!/^[a-z0-9-]{1,63}$/.test(subdomain)) return null;
+  if (subdomain === 'www') return null;
+  return subdomain;
+}
+
+function resolveTenantOrigin(req, tenantId, fallbackPort = 3000) {
+  const normalizedTenantId = String(tenantId || '').trim().toLowerCase();
+  if (!normalizedTenantId) return resolvePublicOrigin(req, fallbackPort);
+
+  const baseDomain = resolveTenantBaseDomain(req);
+  if (!baseDomain) return resolvePublicOrigin(req, fallbackPort);
+
+  const configuredPublicOrigin = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || '').trim();
+  if (configuredPublicOrigin) {
+    try {
+      const proto = new URL(configuredPublicOrigin).protocol || 'https:';
+      return `${proto}//${normalizedTenantId}.${baseDomain}`;
+    } catch (_error) {
+      // Fall through to request-derived protocol.
+    }
+  }
+
+  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+  const protocol = forwardedProto || req?.protocol || 'http';
+  return `${protocol}://${normalizedTenantId}.${baseDomain}`;
 }
 
 function resolveScopedTenantId(req) {
@@ -2205,6 +2282,7 @@ function createApp(options = {}) {
       deploymentProfile: selectedDeploymentProfile,
       audiences: selectedAudiences,
       runtimeOrigin: publicOrigin,
+      tenantOrigin: resolveTenantOrigin(req, normalizedTenantId, Number(process.env.APP_PORT || 3000)),
     });
 
     deployments.push(deployment);
@@ -3617,6 +3695,7 @@ function createApp(options = {}) {
       deploymentProfile: selectedDeploymentProfile,
       audiences: onboardingState.audiences,
       runtimeOrigin: publicOrigin,
+      tenantOrigin: resolveTenantOrigin(req, tenant.tenant_id, Number(process.env.APP_PORT || 3000)),
     });
     const deployments = listData(storage, 'listDeployments');
     deployments.push(deployment);
@@ -3953,6 +4032,7 @@ function createApp(options = {}) {
       deploymentProfile: selectedDeploymentProfile,
       audiences: selectedAudiences,
       runtimeOrigin: publicOrigin,
+      tenantOrigin: resolveTenantOrigin(req, req.tenantId, Number(process.env.APP_PORT || 3000)),
     });
 
     const deployments = listData(storage, 'listDeployments');

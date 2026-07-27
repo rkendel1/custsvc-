@@ -220,6 +220,11 @@ KnowledgeOS runs locally or in cloud environments such as Fly.io with managed Po
 - App runs with explicit host and port configuration
 - Health endpoint is available at `/health`
 - Production requires `SOURCE_SECRET_KEY`
+- Set `PUBLIC_BASE_URL` to your apex domain (for example `https://tryghostpost.com`)
+- Set `TENANT_BASE_DOMAIN` to your wildcard tenant domain root (for example `tryghostpost.com`)
+- Provision Fly certificates for both apex and wildcard tenant hostnames:
+     - `flyctl certs add tryghostpost.com`
+     - `flyctl certs add '*.tryghostpost.com'`
 
 ### Deployment reliability and data safety
 

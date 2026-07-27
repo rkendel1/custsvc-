@@ -10,12 +10,20 @@ function normalizeOrigin(value, fallback = 'http://127.0.0.1:3000') {
   }
 }
 
-function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', audiences = [], runtimeOrigin = null } = {}) {
+function createDeployment({
+  tenantId,
+  companyName,
+  deploymentProfile = 'BOTH',
+  audiences = [],
+  runtimeOrigin = null,
+  tenantOrigin = null,
+} = {}) {
   if (!tenantId) throw new Error('tenant_id is required');
 
   const deploymentId = `deploy-${randomUUID()}`;
   const resolvedOrigin = normalizeOrigin(runtimeOrigin);
-  const runtimeUrl = `${resolvedOrigin}/runtime/${tenantId}/${deploymentId}`;
+  const resolvedTenantOrigin = normalizeOrigin(tenantOrigin || resolvedOrigin, resolvedOrigin);
+  const runtimeUrl = `${resolvedTenantOrigin}/runtime/${tenantId}/${deploymentId}`;
   const apiKey = `kos_${randomUUID().replace(/-/g, '')}`;
 
   return {
@@ -26,6 +34,7 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
     deployed_at: new Date().toISOString(),
     deployment_profile: deploymentProfile,
     runtime_url: runtimeUrl,
+    tenant_origin: resolvedTenantOrigin,
     audience_rules: Array.isArray(audiences) ? audiences : [],
     bundle: {
       name: 'knowledgeos.bundle.v6',

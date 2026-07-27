@@ -1,6 +1,24 @@
 const TENANT_ROLES = ['Owner', 'Admin', 'Editor', 'Viewer'];
 const MAX_SUBDOMAIN_LABEL_LENGTH = 48;
 
+function resolveTenantBaseDomain() {
+  const configured = String(
+    process.env.TENANT_BASE_DOMAIN
+    || process.env.APP_BASE_DOMAIN
+    || process.env.PUBLIC_BASE_DOMAIN
+    || '',
+  ).trim().toLowerCase();
+
+  const sanitized = configured
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/^\*\./, '')
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
+
+  return sanitized || 'knowledgeos.com';
+}
+
 function slugifyCompanyName(companyName) {
   const slug = String(companyName || 'tenant')
     .toLowerCase()
@@ -12,6 +30,7 @@ function slugifyCompanyName(companyName) {
 }
 
 function createDefaultTenantStructure({ tenantId, companyName, ownerEmail, deploymentProfile = 'BOTH' }) {
+  const tenantBaseDomain = resolveTenantBaseDomain();
   return {
     tenant_id: tenantId,
     company_name: companyName,
@@ -26,7 +45,7 @@ function createDefaultTenantStructure({ tenantId, companyName, ownerEmail, deplo
     roles: [...TENANT_ROLES],
     runtime_config: {
       mode: 'private-runtime',
-      deployment_domain: `${tenantId}.knowledgeos.com`,
+      deployment_domain: `${tenantId}.${tenantBaseDomain}`,
       default_audience: 'Customers',
       isolation: 'tenant-scoped',
     },
@@ -37,4 +56,5 @@ module.exports = {
   TENANT_ROLES,
   slugifyCompanyName,
   createDefaultTenantStructure,
+  resolveTenantBaseDomain,
 };

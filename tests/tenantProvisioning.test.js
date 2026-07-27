@@ -35,6 +35,23 @@ test('tenant provisioner returns launch shape', () => {
   assert.ok(tenant.runtime_config.deployment_domain.endsWith('.knowledgeos.com'));
 });
 
+test('tenant provisioner uses TENANT_BASE_DOMAIN for runtime deployment domain', () => {
+  const previousTenantBaseDomain = process.env.TENANT_BASE_DOMAIN;
+  process.env.TENANT_BASE_DOMAIN = 'tryghostpost.com';
+  try {
+    const tenant = provisionTenant({
+      companyName: 'Ghostpost Labs',
+      ownerEmail: 'owner@ghostpost.com',
+      deploymentProfile: 'BOTH',
+    });
+
+    assert.equal(tenant.runtime_config.deployment_domain, `${tenant.tenant_id}.tryghostpost.com`);
+  } finally {
+    if (previousTenantBaseDomain === undefined) delete process.env.TENANT_BASE_DOMAIN;
+    else process.env.TENANT_BASE_DOMAIN = previousTenantBaseDomain;
+  }
+});
+
 test('signup provisions tenant and tenant lookup returns dashboard', async (t) => {
   const rootDir = createTempRoot();
   const app = createApp({ rootDir, storage: createStorage(rootDir) });
