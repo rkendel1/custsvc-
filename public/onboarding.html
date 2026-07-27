@@ -1298,11 +1298,21 @@
             credentials,
           };
           const data = await postJson('/api/sources', payload);
+          const sourceId = data?.source?.source_id || '';
+          let syncedCount = 0;
+          if (sourceId) {
+            const syncResult = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/sync`, {
+              documents: [],
+            });
+            syncedCount = Number(syncResult?.synced_count || 0);
+          }
           setStatus('Source connected', [
             `${data?.source?.name || 'Source'} is now connected.`,
-            'Run Check connection to confirm everything is healthy.',
+            syncedCount > 0
+              ? `${syncedCount} website document(s) were synced and are ready for questions.`
+              : 'No documents were synced yet. Use Check connection and retry sync if needed.',
           ]);
-          document.getElementById('testSourceBtn').dataset.sourceId = data.source?.source_id || '';
+          document.getElementById('testSourceBtn').dataset.sourceId = sourceId;
         } catch (error) {
           setStatus('Could not connect source', error.message);
         }

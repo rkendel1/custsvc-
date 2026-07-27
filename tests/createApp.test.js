@@ -524,6 +524,64 @@ test('source monitoring endpoints register and sync website sources', async (t) 
   assert.equal(listed.sources.length, 1);
 });
 
+test('source sync creates snapshot documents for non-website connectors', async (t) => {
+  const documents = [];
+  const sources = [];
+  const sessions = [{ token: 'owner-token', tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const memberships = [{ tenant_id: 'public', user_id: 'owner-1', role: 'Owner', status: 'active' }];
+  const storage = {
+    listDocuments: () => [...documents],
+    saveDocuments: (nextDocuments) => {
+      documents.length = 0;
+      documents.push(...nextDocuments);
+    },
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    listSessions: () => [...sessions],
+    saveSessions: () => {},
+    listTenantMemberships: () => [...memberships],
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const createResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
+    body: JSON.stringify({
+      name: 'Internal KB',
+      type: 'GENERIC',
+      tenant_id: 'public',
+      config: { notes: 'seed notes' },
+    }),
+  });
+  const created = await createResponse.json();
+  assert.equal(createResponse.status, 201);
+  assert.ok(created.source.source_id);
+
+  const syncResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/sync`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
+    body: JSON.stringify({ tenant_id: 'public', documents: [] }),
+  });
+  const synced = await syncResponse.json();
+  assert.equal(syncResponse.status, 200);
+  assert.equal(synced.synced_count >= 1, true);
+
+  const docsResponse = await fetch(`${baseUrl}/api/documents`, {
+    headers: { 'x-session-token': 'owner-token' },
+  });
+  const docsBody = await docsResponse.json();
+  assert.equal(docsResponse.status, 200);
+  assert.equal(Array.isArray(docsBody.documents), true);
+  assert.equal(docsBody.documents.some((doc) => doc.type === 'SOURCE_SNAPSHOT'), true);
+});
+
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {
     listDocuments: () => [],

@@ -47,6 +47,56 @@ async function extractPdfTextLocal(buffer) {
   }
 }
 
+function extractHtmlTitle(html, fallback = 'Website content') {
+  const raw = String(html || '');
+  const match = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const title = String(match?.[1] || fallback).replace(/\s+/g, ' ').trim();
+  return title || fallback;
+}
+
+async function fetchWebsiteSourceSnapshot(siteUrl) {
+  const normalizedUrl = String(siteUrl || '').trim();
+  if (!normalizedUrl) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(normalizedUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'text/html,text/plain;q=0.9,*/*;q=0.5',
+        'user-agent': 'KnowledgeOS-SourceSync/1.0',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`website fetch failed (${response.status})`);
+    }
+
+    const raw = await response.text();
+    const text = stripHtml(raw).slice(0, 80_000);
+    if (!text) return null;
+
+    const fallbackTitle = (() => {
+      try {
+        const parsed = new URL(normalizedUrl);
+        return parsed.hostname || 'Website content';
+      } catch (_error) {
+        return 'Website content';
+      }
+    })();
+
+    return {
+      title: extractHtmlTitle(raw, fallbackTitle),
+      body: text,
+      source_url: normalizedUrl,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function ensureLocalPdfParserPackage(rootDir) {
   const sourceDir = path.join(rootDir, 'node_modules', 'pdf-parse', 'dist');
   if (!fs.existsSync(sourceDir)) return;
@@ -515,6 +565,7 @@ function toDocumentFromInput(input = {}, tenantId) {
     review_frequency: input.review_frequency || null,
     confidence: Number(input.confidence || 0.7),
     embeddings,
+    source_id: input.source_id || null,
     source_url: input.source_url || null,
     createdAt: new Date().toISOString(),
   };
@@ -1418,6 +1469,215 @@ function createApp(options = {}) {
         source_url: document.source_url || null,
       },
     });
+  }
+
+  async function syncWebsiteSourceContent(tenantId, source) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return { syncedCount: 0, updated: source, error: null };
+    if (String(source?.type || '').toUpperCase() !== 'WEBSITE') {
+      return { syncedCount: 0, updated: source, error: null };
+    }
+
+    const siteUrl = normalizeSourceSiteUrl(source?.site_url || '');
+    if (!siteUrl) {
+      return { syncedCount: 0, updated: source, error: null };
+    }
+
+    try {
+      const snapshot = await fetchWebsiteSourceSnapshot(siteUrl);
+      if (!snapshot?.body) {
+        return {
+          syncedCount: 0,
+          updated: {
+            ...source,
+            last_sync_at: new Date().toISOString(),
+            last_sync_status: 'error',
+            last_sync_error: 'Website content could not be extracted',
+            updated_at: new Date().toISOString(),
+          },
+          error: null,
+        };
+      }
+
+      const docs = listData(storage, 'listDocuments');
+      const existingIndex = docs.findIndex((doc) => (
+        doc.tenant_id === normalizedTenantId
+        && String(doc.type || '').toUpperCase() === 'URL'
+        && normalizeSourceSiteUrl(doc.source_url || doc.sourceUrl || '') === siteUrl
+      ));
+
+      let syncedCount = 0;
+      if (existingIndex >= 0) {
+        const existing = docs[existingIndex];
+        const nextDoc = {
+          ...existing,
+          title: snapshot.title,
+          body: snapshot.body,
+          visibility: 'PUBLIC',
+          audience: 'PUBLIC',
+          source_url: siteUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        docs[existingIndex] = nextDoc;
+        await upsertVectorDocument(nextDoc);
+      } else {
+        const created = toDocumentFromInput({
+          title: snapshot.title,
+          body: snapshot.body,
+          type: 'URL',
+          visibility: 'PUBLIC',
+          audience: 'PUBLIC',
+          source_url: siteUrl,
+        }, normalizedTenantId);
+        if (created) {
+          docs.push(created);
+          await upsertVectorDocument(created);
+          syncedCount = 1;
+        }
+      }
+
+      saveData(storage, 'saveDocuments', docs);
+      rebuildTenantBundle(normalizedTenantId);
+
+      return {
+        syncedCount,
+        updated: {
+          ...source,
+          last_sync_at: new Date().toISOString(),
+          last_sync_status: 'success',
+          last_sync_error: null,
+          documents_synced: Number(source.documents_synced || 0) + syncedCount,
+          updated_at: new Date().toISOString(),
+        },
+        error: null,
+      };
+    } catch (error) {
+      return {
+        syncedCount: 0,
+        updated: {
+          ...source,
+          last_sync_at: new Date().toISOString(),
+          last_sync_status: 'error',
+          last_sync_error: error?.message || 'website sync failed',
+          updated_at: new Date().toISOString(),
+        },
+        error,
+      };
+    }
+  }
+
+  async function syncConnectorSnapshotContent(tenantId, source) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return { syncedCount: 0, updated: source, error: null };
+
+    try {
+      const fullConfig = await getSourceFullConfig(source, normalizedTenantId);
+      const connector = await testConnector({
+        type: source.type,
+        config: fullConfig,
+        source,
+      });
+
+      if (!connector?.ok) {
+        return {
+          syncedCount: 0,
+          updated: {
+            ...source,
+            last_sync_at: new Date().toISOString(),
+            last_sync_status: 'error',
+            last_sync_error: connector?.error || 'connector sync failed',
+            updated_at: new Date().toISOString(),
+          },
+          error: new Error(connector?.error || 'connector sync failed'),
+        };
+      }
+
+      const detailLines = Object.entries(connector.details || {})
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+        .map(([key, value]) => `${key}: ${String(value)}`);
+
+      const body = [
+        `Source sync snapshot for ${String(source.type || 'GENERIC').toUpperCase()}`,
+        `Source name: ${String(source.name || source.source_id || 'Connected source')}`,
+        source.site_url ? `Source URL: ${String(source.site_url)}` : '',
+        detailLines.length ? 'Provider details:' : '',
+        ...detailLines,
+      ].filter(Boolean).join('\n');
+
+      const docs = listData(storage, 'listDocuments');
+      const existingIndex = docs.findIndex((doc) => (
+        doc.tenant_id === normalizedTenantId
+        && String(doc.type || '').toUpperCase() === 'SOURCE_SNAPSHOT'
+        && String(doc.source_id || '') === String(source.source_id || '')
+      ));
+
+      let syncedCount = 0;
+      if (existingIndex >= 0) {
+        const existing = docs[existingIndex];
+        const nextDoc = {
+          ...existing,
+          title: `${String(source.type || 'Source')} source snapshot`,
+          body,
+          visibility: 'PUBLIC',
+          audience: 'PUBLIC',
+          source_id: source.source_id,
+          source_url: source.site_url || null,
+          updatedAt: new Date().toISOString(),
+        };
+        docs[existingIndex] = nextDoc;
+        await upsertVectorDocument(nextDoc);
+      } else {
+        const created = toDocumentFromInput({
+          title: `${String(source.type || 'Source')} source snapshot`,
+          body,
+          type: 'SOURCE_SNAPSHOT',
+          visibility: 'PUBLIC',
+          audience: 'PUBLIC',
+          source_id: source.source_id,
+          source_url: source.site_url || null,
+        }, normalizedTenantId);
+        if (created) {
+          docs.push(created);
+          await upsertVectorDocument(created);
+          syncedCount = 1;
+        }
+      }
+
+      saveData(storage, 'saveDocuments', docs);
+      rebuildTenantBundle(normalizedTenantId);
+
+      return {
+        syncedCount,
+        updated: {
+          ...source,
+          last_sync_at: new Date().toISOString(),
+          last_sync_status: 'success',
+          last_sync_error: null,
+          documents_synced: Number(source.documents_synced || 0) + syncedCount,
+          updated_at: new Date().toISOString(),
+        },
+        error: null,
+      };
+    } catch (error) {
+      return {
+        syncedCount: 0,
+        updated: {
+          ...source,
+          last_sync_at: new Date().toISOString(),
+          last_sync_status: 'error',
+          last_sync_error: error?.message || 'connector sync failed',
+          updated_at: new Date().toISOString(),
+        },
+        error,
+      };
+    }
+  }
+
+  async function syncSourceContent(tenantId, source) {
+    if (String(source?.type || '').toUpperCase() === 'WEBSITE') {
+      return syncWebsiteSourceContent(tenantId, source);
+    }
+    return syncConnectorSnapshotContent(tenantId, source);
   }
 
   async function getSourceFullConfig(source, tenantId) {
@@ -2440,6 +2700,8 @@ function createApp(options = {}) {
           {
             ...item,
             type: item.type || (source.type === 'WEBSITE' ? 'URL' : 'TEXT'),
+            visibility: item.visibility || (source.type === 'WEBSITE' ? 'PUBLIC' : 'INTERNAL'),
+            audience: item.audience || (source.type === 'WEBSITE' ? 'PUBLIC' : null),
             source_url: item.source_url || source.site_url || null,
           },
           tenantId,
@@ -2450,6 +2712,26 @@ function createApp(options = {}) {
       }
       saveData(storage, 'saveDocuments', docs);
       rebuildTenantBundle(tenantId);
+    } else {
+      const synced = await syncSourceContent(tenantId, source);
+      sources[index] = synced.updated;
+      saveData(storage, 'saveSources', sources);
+      await connectorVault.appendAudit({
+        tenant_id: tenantId,
+        source_id: sourceId,
+        action: 'source.sync',
+        status: synced.error ? 'failed' : 'ok',
+        details: {
+          synced_count: synced.syncedCount,
+          mode: String(source.type || '').toUpperCase() === 'WEBSITE' ? 'website-crawl' : 'connector-snapshot',
+          error: synced.error ? (synced.error.message || 'source sync failed') : null,
+        },
+      });
+
+      return res.json({
+        source: await toSourceResponse(sources[index], tenantId),
+        synced_count: synced.syncedCount,
+      });
     }
 
     const updated = {
