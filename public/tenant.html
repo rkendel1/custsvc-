@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowledgeOS Tenant Dashboard</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Tenant Dashboard</h1>
+    <p>Knowledge Health · Documents · Confidence · Questions · Knowledge Gaps · Runtime Status</p>
+    <label>Tenant ID <input id="tenantId" value="acme" /></label>
+    <button id="loadBtn">Load Dashboard</button>
+    <pre id="output">Load a tenant dashboard.</pre>
+
+    <script>
+      const output = document.getElementById('output');
+      document.getElementById('loadBtn').addEventListener('click', async () => {
+        const tenantId = document.getElementById('tenantId').value.trim();
+        const response = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`);
+        const data = await response.json();
+        output.textContent = JSON.stringify(data, null, 2);
+      });
+    </script>
+  </body>
+</html>

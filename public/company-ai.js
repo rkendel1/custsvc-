@@ -2,7 +2,7 @@
   const script = document.currentScript;
   const bundleUrl = script?.dataset?.bundleUrl || '/bundles/company.intelligence.bundle.json';
   const apiBase = script?.dataset?.apiBase || '';
-  const widgetTitle = script?.dataset?.title || 'Company Intelligence';
+  const widgetTitle = script?.dataset?.title || 'KnowledgeOS Assistant';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
   const aiModeSetting = String(script?.dataset?.aiMode || 'LOCAL').toUpperCase();
   const telemetryIncludeContent = String(script?.dataset?.telemetryIncludeContent || '').toLowerCase() === 'true';

@@ -35,9 +35,23 @@ function createStorage(baseDir) {
 
   const docsPath = path.join(dataDir, 'documents.json');
   const telemetryPath = path.join(dataDir, 'telemetry.json');
+  const tenantsPath = path.join(dataDir, 'tenants.json');
+  const usersPath = path.join(dataDir, 'users.json');
+  const membershipsPath = path.join(dataDir, 'tenant_memberships.json');
+  const subscriptionsPath = path.join(dataDir, 'subscriptions.json');
+  const deploymentsPath = path.join(dataDir, 'deployments.json');
+  const runtimeInstancesPath = path.join(dataDir, 'runtime_instances.json');
+  const onboardingPath = path.join(dataDir, 'onboarding.json');
 
   ensureJsonFile(docsPath, []);
   ensureJsonFile(telemetryPath, []);
+  ensureJsonFile(tenantsPath, []);
+  ensureJsonFile(usersPath, []);
+  ensureJsonFile(membershipsPath, []);
+  ensureJsonFile(subscriptionsPath, []);
+  ensureJsonFile(deploymentsPath, []);
+  ensureJsonFile(runtimeInstancesPath, []);
+  ensureJsonFile(onboardingPath, []);
 
   function sanitizeBundleName(name) {
     let raw = String(name || 'company.intelligence.bundle.json');
@@ -65,6 +79,48 @@ function createStorage(baseDir) {
     },
     saveTelemetry(events) {
       writeJson(telemetryPath, events);
+    },
+    listTenants() {
+      return readJson(tenantsPath, []);
+    },
+    saveTenants(tenants) {
+      writeJson(tenantsPath, tenants);
+    },
+    listUsers() {
+      return readJson(usersPath, []);
+    },
+    saveUsers(users) {
+      writeJson(usersPath, users);
+    },
+    listTenantMemberships() {
+      return readJson(membershipsPath, []);
+    },
+    saveTenantMemberships(memberships) {
+      writeJson(membershipsPath, memberships);
+    },
+    listSubscriptions() {
+      return readJson(subscriptionsPath, []);
+    },
+    saveSubscriptions(subscriptions) {
+      writeJson(subscriptionsPath, subscriptions);
+    },
+    listDeployments() {
+      return readJson(deploymentsPath, []);
+    },
+    saveDeployments(deployments) {
+      writeJson(deploymentsPath, deployments);
+    },
+    listRuntimeInstances() {
+      return readJson(runtimeInstancesPath, []);
+    },
+    saveRuntimeInstances(instances) {
+      writeJson(runtimeInstancesPath, instances);
+    },
+    listOnboarding() {
+      return readJson(onboardingPath, []);
+    },
+    saveOnboarding(onboardingItems) {
+      writeJson(onboardingPath, onboardingItems);
     },
     writeBundle(name, bundle) {
       const safeName = sanitizeBundleName(name);
