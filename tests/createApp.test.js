@@ -637,6 +637,47 @@ test('source sync creates snapshot documents for non-website connectors', async 
   assert.equal(docsBody.documents.some((doc) => doc.type === 'SOURCE_SNAPSHOT'), true);
 });
 
+test('source listing marks health as error when last sync failed', async (t) => {
+  const sources = [
+    {
+      source_id: 'source-1',
+      tenant_id: 'public',
+      name: 'Personal website',
+      type: 'WEBSITE',
+      status: 'connected',
+      config: {},
+      site_url: 'https://www.randykendel.com/',
+      last_sync_status: 'error',
+      last_sync_error: 'Website content could not be extracted',
+      last_sync_at: new Date().toISOString(),
+      poll_minutes: 60,
+      secret_fields: [],
+      documents_synced: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: () => {},
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const listResponse = await fetch(`${baseUrl}/api/sources`);
+  const listed = await listResponse.json();
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(Array.isArray(listed.sources), true);
+  assert.equal(listed.sources.length, 1);
+  assert.equal(listed.sources[0].health, 'error');
+});
+
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {
     listDocuments: () => [],

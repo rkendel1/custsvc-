@@ -582,6 +582,9 @@ function sourceHealth(source, fullConfig = source?.config || {}) {
   const validation = validateSourceConfig(source?.type || 'GENERIC', fullConfig);
   if (!validation.ok) return 'misconfigured';
 
+  const lastSyncStatus = String(source?.last_sync_status || '').toLowerCase();
+  if (lastSyncStatus === 'error') return 'error';
+
   const lastSyncAt = source?.last_sync_at ? Date.parse(source.last_sync_at) : null;
   const pollMinutes = Number(source?.poll_minutes || 60);
   if (!lastSyncAt || !Number.isFinite(lastSyncAt)) return 'pending';
@@ -1540,16 +1543,17 @@ function createApp(options = {}) {
     try {
       const snapshot = await fetchWebsiteSourceSnapshot(siteUrl);
       if (!snapshot?.body) {
+        const extractionError = new Error('Website content could not be extracted');
         return {
           syncedCount: 0,
           updated: {
             ...source,
             last_sync_at: new Date().toISOString(),
             last_sync_status: 'error',
-            last_sync_error: 'Website content could not be extracted',
+            last_sync_error: extractionError.message,
             updated_at: new Date().toISOString(),
           },
-          error: null,
+          error: extractionError,
         };
       }
 
