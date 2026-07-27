@@ -310,44 +310,50 @@
             <div id="sourceScreenIngest" class="source-screen">
               <div class="card">
                 <h3 style="font-size:0.95rem; margin: 0 0 0.45rem;">Ingest source documents</h3>
-                <p style="color: var(--muted); margin: 0 0 0.5rem; font-size: 0.9rem;">Use a connected source ID to attach imported docs.</p>
-                <label>Source ID <input id="ingestSourceId" placeholder="source-..." /></label>
-                <form id="sourceDocForm">
-                  <label>Document title <input name="title" placeholder="Policy excerpt" required /></label>
-                  <label>Document body
-                    <textarea name="body" rows="4" placeholder="Paste source content" required></textarea>
+                <p style="color: var(--muted); margin: 0 0 0.5rem; font-size: 0.9rem;">One ingest tool for text, URL, and PDF. We auto-fill defaults from the selected source, and you can edit before submitting.</p>
+                <label>Source ID
+                  <input id="ingestSourceId" placeholder="source-..." list="sourceIdSuggestions" />
+                </label>
+                <datalist id="sourceIdSuggestions"></datalist>
+                <form id="sourceIngestForm" enctype="multipart/form-data">
+                  <label>Ingest mode
+                    <select name="ingest_mode" id="sourceIngestMode">
+                      <option value="text" selected>Text / markdown</option>
+                      <option value="url">URL content</option>
+                      <option value="pdf">PDF upload</option>
+                    </select>
+                  </label>
+                  <label>Document title
+                    <input name="title" id="sourceIngestTitle" placeholder="Auto-generated from source or file name" />
+                  </label>
+                  <label id="sourceIngestUrlWrap" style="display:none;">Source URL
+                    <input name="source_url" id="sourceIngestUrl" type="url" placeholder="https://example.com/help/article" />
+                  </label>
+                  <label id="sourceIngestBodyWrap">Document body
+                    <textarea name="body" id="sourceIngestBody" rows="4" placeholder="Paste source content"></textarea>
+                  </label>
+                  <label id="sourceIngestPdfWrap" style="display:none;">PDF file
+                    <input name="file" id="sourceIngestFile" type="file" accept="application/pdf" />
                   </label>
                   <label>Type
-                    <select name="type">
+                    <select name="type" id="sourceIngestType">
                       <option value="TEXT">TEXT</option>
                       <option value="MARKDOWN">MARKDOWN</option>
                       <option value="FAQ">FAQ</option>
                       <option value="POLICY">POLICY</option>
                       <option value="URL">URL</option>
+                      <option value="PDF">PDF</option>
                     </select>
                   </label>
                   <label>Visibility
-                    <select name="visibility">
+                    <select name="visibility" id="sourceIngestVisibility">
                       <option value="PUBLIC">PUBLIC</option>
                       <option value="INTERNAL" selected>INTERNAL</option>
                       <option value="CONFIDENTIAL">CONFIDENTIAL</option>
                       <option value="EXECUTIVE">EXECUTIVE</option>
                     </select>
                   </label>
-                  <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Add source document</button>
-                </form>
-                <form id="sourcePdfForm" enctype="multipart/form-data" style="margin-top: 0.7rem;">
-                  <label>PDF title override <input name="title" placeholder="Optional title" /></label>
-                  <label>Visibility
-                    <select name="visibility">
-                      <option value="PUBLIC">PUBLIC</option>
-                      <option value="INTERNAL" selected>INTERNAL</option>
-                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-                      <option value="EXECUTIVE">EXECUTIVE</option>
-                    </select>
-                  </label>
-                  <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
-                  <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Upload source PDF</button>
+                  <button type="submit" class="btn-ghost" style="margin-top: 0.5rem;">Ingest into source</button>
                 </form>
                 <pre id="sourcesIngestOutput">Ingestion status will appear here.</pre>
               </div>
@@ -355,7 +361,7 @@
           </div>
 
           <div class="wizard-step" data-step="2" data-advanced>
-            <h3 style="font-size:1rem;">Advanced: add and organize knowledge</h3>
+            <h3 style="font-size:1rem;">Advanced: direct knowledge editing (not source-attached)</h3>
             <div class="card-grid" style="margin-top: 0.7rem;">
               <div class="card">
                 <h3 style="font-size:0.98rem;">Knowledge Object</h3>
@@ -397,7 +403,8 @@
                 </form>
               </div>
               <div class="card">
-                <h3 style="font-size:0.98rem;">Bulk + URL + PDF</h3>
+                <h3 style="font-size:0.98rem;">Bulk + URL + PDF direct import</h3>
+                <p style="color: var(--muted); margin: 0.35rem 0 0.55rem; font-size: 0.86rem;">This is the same object model as above, but not attached to a connected source.</p>
                 <form id="bulkDocForm">
                   <label>Items JSON array
                     <textarea name="items" rows="6" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]' required></textarea>

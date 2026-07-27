@@ -161,6 +161,7 @@ function parseMaybeJsonArray(value) {
 }
 
 let sourceTemplates = [];
+let cachedSources = [];
 const EMBEDDING_MODEL_REPO = 'Xenova/all-MiniLM-L6-v2';
 const EMBEDDING_ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 let embeddingPipeline = null;
@@ -250,9 +251,26 @@ async function refreshSources() {
   const output = document.getElementById('sourcesOutput');
   try {
     const data = await requestJson('/api/sources');
+    cachedSources = Array.isArray(data.sources) ? data.sources : [];
     output.textContent = format(data.sources);
+    refreshIngestSourceSuggestions();
   } catch (error) {
     output.textContent = `Unable to load sources: ${error.message}`;
+  }
+}
+
+function refreshIngestSourceSuggestions() {
+  const datalist = document.getElementById('sourceIdSuggestions');
+  if (!datalist) return;
+
+  datalist.innerHTML = '';
+  for (const source of cachedSources) {
+    const sourceId = String(source?.source_id || '').trim();
+    if (!sourceId) continue;
+    const option = document.createElement('option');
+    option.value = sourceId;
+    option.label = `${sourceId} (${String(source?.name || source?.type || 'source')})`;
+    datalist.appendChild(option);
   }
 }
 
@@ -532,64 +550,170 @@ function wireSourceUpdate() {
   });
 }
 
-function wireSourceDocumentForm() {
-  const form = document.getElementById('sourceDocForm');
+function wireSourceIngestForm() {
+  const form = document.getElementById('sourceIngestForm');
   if (!form) return;
+
+  const sourceIdInput = document.getElementById('ingestSourceId');
+  const modeInput = document.getElementById('sourceIngestMode');
+  const titleInput = document.getElementById('sourceIngestTitle');
+  const bodyInput = document.getElementById('sourceIngestBody');
+  const typeInput = document.getElementById('sourceIngestType');
+  const visibilityInput = document.getElementById('sourceIngestVisibility');
+  const urlInput = document.getElementById('sourceIngestUrl');
+  const pdfInput = document.getElementById('sourceIngestFile');
+  const urlWrap = document.getElementById('sourceIngestUrlWrap');
+  const bodyWrap = document.getElementById('sourceIngestBodyWrap');
+  const pdfWrap = document.getElementById('sourceIngestPdfWrap');
+
+  if (!sourceIdInput || !modeInput || !titleInput || !bodyInput || !typeInput || !visibilityInput || !urlInput || !pdfInput || !urlWrap || !bodyWrap || !pdfWrap) {
+    return;
+  }
+
+  function inferTitleFromUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      const parsed = new URL(raw);
+      const segment = String(parsed.pathname || '').split('/').filter(Boolean).pop() || parsed.hostname;
+      return decodeURIComponent(segment).replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  function selectedSource() {
+    const sourceId = String(sourceIdInput.value || '').trim();
+    return cachedSources.find((item) => String(item?.source_id || '').trim() === sourceId) || null;
+  }
+
+  function defaultVisibilityForSource(source) {
+    const sourceType = String(source?.type || '').toUpperCase();
+    return sourceType === 'WEBSITE' ? 'PUBLIC' : 'INTERNAL';
+  }
+
+  function syncModeUi() {
+    const mode = String(modeInput.value || 'text').toLowerCase();
+    const source = selectedSource();
+
+    const isPdf = mode === 'pdf';
+    const isUrl = mode === 'url';
+
+    urlWrap.style.display = isUrl ? 'block' : 'none';
+    bodyWrap.style.display = isPdf ? 'none' : 'block';
+    pdfWrap.style.display = isPdf ? 'block' : 'none';
+
+    bodyInput.required = !isPdf;
+    urlInput.required = isUrl;
+    pdfInput.required = isPdf;
+
+    if (isPdf) {
+      typeInput.value = 'PDF';
+      typeInput.disabled = true;
+    } else if (isUrl) {
+      typeInput.disabled = false;
+      typeInput.value = 'URL';
+    } else {
+      typeInput.disabled = false;
+      typeInput.value = (String(source?.type || '').toUpperCase() === 'WEBSITE') ? 'URL' : 'TEXT';
+    }
+
+    visibilityInput.value = defaultVisibilityForSource(source);
+
+    if (!String(titleInput.value || '').trim()) {
+      if (isPdf && pdfInput.files?.[0]?.name) {
+        titleInput.value = String(pdfInput.files[0].name).replace(/\.[a-z0-9]+$/i, '').trim();
+      } else if (isUrl) {
+        titleInput.value = inferTitleFromUrl(urlInput.value) || String(source?.name || 'Source URL').trim();
+      } else if (source?.name) {
+        titleInput.value = `${String(source.name).trim()} note`;
+      }
+    }
+  }
+
+  sourceIdInput.addEventListener('change', syncModeUi);
+  sourceIdInput.addEventListener('input', syncModeUi);
+  modeInput.addEventListener('change', syncModeUi);
+  urlInput.addEventListener('change', () => {
+    if (!String(titleInput.value || '').trim()) {
+      titleInput.value = inferTitleFromUrl(urlInput.value) || titleInput.value;
+    }
+  });
+  pdfInput.addEventListener('change', () => {
+    if (!String(titleInput.value || '').trim() && pdfInput.files?.[0]?.name) {
+      titleInput.value = String(pdfInput.files[0].name).replace(/\.[a-z0-9]+$/i, '').trim();
+    }
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const sourceId = String(document.getElementById('ingestSourceId')?.value || document.getElementById('syncSourceId')?.value || '').trim();
+    const sourceId = String(sourceIdInput.value || document.getElementById('syncSourceId')?.value || '').trim();
     if (!sourceId) {
-      setPanelText('sourcesIngestOutput', 'Source ID is required to add a source document.');
+      setPanelText('sourcesIngestOutput', 'Source ID is required to ingest a document.');
       return;
     }
 
-    const formData = new FormData(form);
-    const payload = Object.fromEntries(formData.entries());
-    payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.body || ''}`);
+    const mode = String(modeInput.value || 'text').toLowerCase();
+    const source = selectedSource();
+    const visibility = String(visibilityInput.value || defaultVisibilityForSource(source));
+    const title = String(titleInput.value || '').trim();
 
     try {
-      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      form.reset();
-      setPanelText('sourcesIngestOutput', `Source document ingested: ${data?.document?.id || 'created'}`);
+      if (mode === 'pdf') {
+        if (!pdfInput.files?.length) {
+          setPanelText('sourcesIngestOutput', 'Select a PDF file first.');
+          return;
+        }
+        const formData = new FormData();
+        formData.set('visibility', visibility);
+        formData.set('file', pdfInput.files[0]);
+        if (title) formData.set('title', title);
+
+        const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents/pdf`, {
+          method: 'POST',
+          body: formData,
+        });
+        form.reset();
+        syncModeUi();
+        setPanelText('sourcesIngestOutput', `Source PDF ingested: ${data?.document?.id || 'created'}`);
+      } else {
+        const body = String(bodyInput.value || '').trim();
+        if (!body) {
+          setPanelText('sourcesIngestOutput', 'Document body is required.');
+          return;
+        }
+
+        const sourceUrl = mode === 'url'
+          ? String(urlInput.value || '').trim()
+          : String(source?.site_url || '');
+
+        const payload = {
+          title: title || (mode === 'url' ? inferTitleFromUrl(sourceUrl) : 'Imported document'),
+          body,
+          type: String(typeInput.value || (mode === 'url' ? 'URL' : 'TEXT')),
+          visibility,
+          source_url: sourceUrl || undefined,
+        };
+        payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.body || ''}`);
+
+        const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        form.reset();
+        syncModeUi();
+        setPanelText('sourcesIngestOutput', `Source document ingested: ${data?.document?.id || 'created'}`);
+      }
+
       await refreshSources();
       await refreshDocuments();
     } catch (error) {
-      setPanelText('sourcesIngestOutput', `Could not add source document: ${error.message}`);
+      setPanelText('sourcesIngestOutput', `Could not ingest source document: ${error.message}`);
     }
   });
-}
 
-function wireSourcePdfForm() {
-  const form = document.getElementById('sourcePdfForm');
-  if (!form) return;
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const sourceId = String(document.getElementById('ingestSourceId')?.value || document.getElementById('syncSourceId')?.value || '').trim();
-    if (!sourceId) {
-      setPanelText('sourcesIngestOutput', 'Source ID is required to upload a source PDF.');
-      return;
-    }
-
-    const formData = new FormData(form);
-    try {
-      const data = await requestJson(`/api/sources/${encodeURIComponent(sourceId)}/documents/pdf`, {
-        method: 'POST',
-        body: formData,
-      });
-      form.reset();
-      setPanelText('sourcesIngestOutput', `Source PDF ingested: ${data?.document?.id || 'created'}`);
-      await refreshSources();
-      await refreshDocuments();
-    } catch (error) {
-      setPanelText('sourcesIngestOutput', `Could not upload source PDF: ${error.message}`);
-    }
-  });
+  syncModeUi();
 }
 
 function wireSourceScreens() {
@@ -762,8 +886,7 @@ async function bootstrapAdmin() {
   wireSourceTest();
   wireSourceUpdate();
   wireSourceScreens();
-  wireSourceDocumentForm();
-  wireSourcePdfForm();
+  wireSourceIngestForm();
   wireCompile();
   wireSignOut();
 
