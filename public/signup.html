@@ -245,7 +245,7 @@
               <input name="company" required />
             </label>
             <label>Company size
-              <select name="companySize" required>
+              <select id="companySizeSelect" name="companySize" required>
                 <option value="1-50" selected>1-50 employees</option>
                 <option value="51-200">51-200 employees</option>
                 <option value="201-500">201-500 employees</option>
@@ -253,14 +253,14 @@
               </select>
             </label>
             <label>Primary goal
-              <select name="primaryUseCase">
+              <select id="primaryUseCaseSelect" name="primaryUseCase">
                 <option value="Customer Website" selected>Improve customer support answers</option>
                 <option value="Internal Copilot">Help internal teams execute faster</option>
                 <option value="Both">Support both customers and internal teams</option>
               </select>
             </label>
             <label>Launch profile
-              <select name="deploymentProfile" required>
+              <select id="deploymentProfileSelect" name="deploymentProfile" required>
                 <option value="BOTH" selected>Customer + Internal</option>
                 <option value="CUSTOMER">Customer-facing only</option>
                 <option value="EMPLOYEE">Internal teams only</option>
@@ -284,11 +284,40 @@
       const output = document.getElementById('signupOutput');
       const submitBtn = document.getElementById('createWorkspaceBtn');
       const embedScript = document.getElementById('embedScript');
+      const companySizeSelect = document.getElementById('companySizeSelect');
+      const primaryUseCaseSelect = document.getElementById('primaryUseCaseSelect');
+      const deploymentProfileSelect = document.getElementById('deploymentProfileSelect');
 
       function setStatus(title, lines = []) {
         const items = Array.isArray(lines) ? lines : [String(lines || '')];
         output.innerHTML = `<strong>${title}</strong>${items.filter(Boolean).join('<br />')}`;
       }
+
+      function renderOptions(selectNode, options, fallbackValue = '') {
+        if (!selectNode || !Array.isArray(options) || !options.length) return;
+        const previous = String(selectNode.value || '').trim();
+        const selectedValue = options.some((item) => item.value === previous) ? previous : fallbackValue;
+        selectNode.innerHTML = options
+          .map((item) => `<option value="${item.value}">${item.label || item.value}</option>`)
+          .join('');
+        if (selectedValue) selectNode.value = selectedValue;
+      }
+
+      async function loadStandards() {
+        try {
+          const response = await fetch('/api/standards/onboarding');
+          const standards = await response.json();
+          if (!response.ok) return;
+
+          renderOptions(companySizeSelect, standards.company_size_options, '1-50');
+          renderOptions(primaryUseCaseSelect, standards.primary_use_case_options, 'Customer Website');
+          renderOptions(deploymentProfileSelect, standards.deployment_profile_options, 'BOTH');
+        } catch (_error) {
+          // Keep static defaults if standards endpoint is unavailable.
+        }
+      }
+
+      loadStandards();
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();

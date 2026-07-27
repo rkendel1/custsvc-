@@ -153,6 +153,23 @@ const ALLOWED_COMPANY_SIZES = ['1-50', '51-200', '201-500', '500+'];
 const ALLOWED_PRIMARY_USE_CASES = ['Customer Website', 'Internal Copilot', 'Both'];
 const ALLOWED_DEPLOYMENT_PROFILES = ['BOTH', 'CUSTOMER', 'EMPLOYEE', 'PRIVATE_ENTERPRISE'];
 const ALLOWED_AUDIENCES = ['Customers', 'Employees', 'Managers', 'Executives', 'Partners', 'Developers'];
+const COMPANY_SIZE_LABELS = {
+  '1-50': '1-50 employees',
+  '51-200': '51-200 employees',
+  '201-500': '201-500 employees',
+  '500+': '500+ employees',
+};
+const PRIMARY_USE_CASE_LABELS = {
+  'Customer Website': 'Improve customer support answers',
+  'Internal Copilot': 'Help internal teams execute faster',
+  Both: 'Support both customers and internal teams',
+};
+const DEPLOYMENT_PROFILE_LABELS = {
+  BOTH: 'Customer + Internal',
+  CUSTOMER: 'Customer-facing only',
+  EMPLOYEE: 'Internal teams only',
+  PRIVATE_ENTERPRISE: 'Private enterprise',
+};
 
 function normalizeSelection(value, allowed, fallback = '') {
   const input = String(value || '').trim();
@@ -167,6 +184,13 @@ function normalizeSelectionList(values, allowed, fallback = []) {
     .map((item) => normalizeSelection(item, allowed))
     .filter(Boolean);
   return normalized.length ? [...new Set(normalized)] : fallback;
+}
+
+function buildOptions(values, labels = {}) {
+  return values.map((value) => ({
+    value,
+    label: labels[value] || value,
+  }));
 }
 
 const SOURCE_TEMPLATES = {
@@ -1560,6 +1584,23 @@ function createApp(options = {}) {
       ...template,
     }));
     res.json({ templates });
+  });
+
+  app.get('/api/standards/onboarding', readLimiter, (_req, res) => {
+    const importSourceOptions = ALLOWED_IMPORT_SOURCES
+      .filter((type) => type !== 'GENERIC')
+      .map((type) => ({
+        value: type,
+        label: SOURCE_TEMPLATES[type]?.display_name || type,
+      }));
+
+    return res.json({
+      company_size_options: buildOptions(ALLOWED_COMPANY_SIZES, COMPANY_SIZE_LABELS),
+      primary_use_case_options: buildOptions(ALLOWED_PRIMARY_USE_CASES, PRIMARY_USE_CASE_LABELS),
+      deployment_profile_options: buildOptions(ALLOWED_DEPLOYMENT_PROFILES, DEPLOYMENT_PROFILE_LABELS),
+      audience_options: buildOptions(ALLOWED_AUDIENCES),
+      import_source_options: importSourceOptions,
+    });
   });
 
   app.get('/api/sources', readLimiter, async (req, res) => {

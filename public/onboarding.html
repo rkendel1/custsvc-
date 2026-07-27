@@ -421,6 +421,9 @@
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
       const nextStep = document.getElementById('nextStep');
+      const companySizeChoiceInput = document.getElementById('companySizeChoice');
+      const primaryUseCaseChoiceInput = document.getElementById('primaryUseCaseChoice');
+      const deploymentChoiceInput = document.getElementById('deploymentChoice');
       const sourceTypeInput = document.getElementById('sourceType');
       const authState = document.getElementById('authState');
       const signOutBtn = document.getElementById('signOutBtn');
@@ -523,9 +526,9 @@
             name,
             email,
             company,
-            companySize: document.getElementById('companySizeChoice').value,
-            primaryUseCase: document.getElementById('primaryUseCaseChoice').value,
-            deploymentProfile: document.getElementById('deploymentChoice').value,
+            companySize: companySizeChoiceInput.value,
+            primaryUseCase: primaryUseCaseChoiceInput.value,
+            deploymentProfile: deploymentChoiceInput.value,
           });
 
           tenantId = String(data?.tenant?.tenant_id || '').trim();
