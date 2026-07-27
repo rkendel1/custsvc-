@@ -1,4 +1,13 @@
-const DEFAULT_ALLOWED_ACTIONS = ['start_process', 'retrieve_policy', 'ask_question'];
+const { createModelManager } = require('./modelManager');
+const { createWasmAiEngine } = require('./wasmAiEngine');
+
+const DEFAULT_ALLOWED_ACTIONS = ['start_process', 'retrieve_policy', 'ask_question', 'complete_step'];
+const AI_MODES = {
+  LOCAL: 'LOCAL',
+  RETRIEVAL_ONLY: 'RETRIEVAL_ONLY',
+  REMOTE_FALLBACK: 'REMOTE_FALLBACK',
+  DISABLED: 'DISABLED',
+};
 const INTENT_CONFIDENCE = {
   refund_request: 0.96,
   cancel_request: 0.9,
@@ -15,6 +24,20 @@ function detectBackend(preferredBackend) {
   return 'wasm-simd';
 }
 
+function detectAICompatibility() {
+  const hasNavigator = typeof navigator !== 'undefined';
+  const memoryGb = hasNavigator && Number(navigator.deviceMemory) > 0 ? Number(navigator.deviceMemory) : 4;
+  const memoryMb = Math.round(memoryGb * 1024);
+  const webgpu = hasNavigator && Boolean(navigator.gpu);
+  return {
+    wasm: typeof WebAssembly !== 'undefined',
+    wasm_simd: true,
+    webgpu,
+    memory_available_mb: memoryMb,
+    recommended_model: memoryMb >= 4096 ? 'company-assistant-medium' : 'company-assistant-small',
+  };
+}
+
 function inferIntent(question) {
   const q = String(question || '').toLowerCase();
   if (q.includes('refund')) return { intent: 'refund_request', confidence: INTENT_CONFIDENCE.refund_request };
@@ -27,7 +50,6 @@ function inferIntent(question) {
 
 function extractFields(text) {
   const input = String(text || '');
-  // Lightweight extraction for local runtime hints (not strict RFC email validation).
   const email = input.match(/[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/i)?.[0] || null;
   const amount = input.match(/amount[\s:]*([\$]\d+(?:\.\d{2})?)/i)?.[1]
     || input.match(/([\$]\d+(?:\.\d{2})?)/)?.[1]
@@ -36,52 +58,137 @@ function extractFields(text) {
   return { email, amount, orderId };
 }
 
+function normalizeMode(value, fallback = AI_MODES.LOCAL) {
+  const candidate = String(value || fallback).toUpperCase();
+  return AI_MODES[candidate] || fallback;
+}
+
+function canRunLocally(model, compatibility) {
+  if (!model) return false;
+  if (!compatibility.wasm) return false;
+  const requiredMemory = Number(model?.requirements?.memory_mb || 0);
+  if (requiredMemory && requiredMemory > Number(compatibility.memory_available_mb || 0)) return false;
+  if (model?.requirements?.wasm_simd && !compatibility.wasm_simd) return false;
+  if (!model?.requirements?.webgpu_optional && model?.requirements?.webgpu_required && !compatibility.webgpu) return false;
+  return true;
+}
+
+function pickBestModel(models = [], compatibility = detectAICompatibility(), preferredModelId = null) {
+  if (!Array.isArray(models) || !models.length) return null;
+  if (preferredModelId) return models.find((item) => item.id === preferredModelId) || null;
+  const localModels = models.filter((item) => item.type === 'llm' && item.runtime === 'wasm');
+  const compatible = localModels.filter((item) => canRunLocally(item, compatibility));
+  if (!compatible.length) return null;
+  compatible.sort((a, b) => Number(a?.requirements?.memory_mb || 0) - Number(b?.requirements?.memory_mb || 0));
+  if (compatibility.memory_available_mb >= 4096) return compatible[compatible.length - 1];
+  return compatible[0];
+}
+
 function createAIRuntime(options = {}) {
   const allowedActions = Array.isArray(options.allowedActions) && options.allowedActions.length
     ? options.allowedActions.map((item) => String(item))
     : [...DEFAULT_ALLOWED_ACTIONS];
+  const modelManager = options.modelManager || createModelManager();
+  const engine = options.engine || createWasmAiEngine();
   const state = {
     initialized: false,
     backend: detectBackend(options.preferredBackend),
     model: null,
     bundle: null,
     capabilities: new Set(),
+    mode: normalizeMode(options.mode, AI_MODES.LOCAL),
+    compatibility: detectAICompatibility(),
   };
 
   async function loadModel(bundle = {}, preferredModelId = null) {
     state.bundle = bundle || {};
     const models = Array.isArray(bundle?.models) ? bundle.models : [];
-    const pick = preferredModelId
-      ? models.find((item) => item.id === preferredModelId)
-      : models.find((item) => item.type === 'llm' && item.runtime === 'wasm');
-    state.model = pick || null;
+    state.model = pickBestModel(models, state.compatibility, preferredModelId);
     return state.model;
   }
 
   async function initialize(bundle = {}, runtimeOptions = {}) {
     state.backend = detectBackend(runtimeOptions.preferredBackend || options.preferredBackend);
+    state.compatibility = detectAICompatibility();
+    state.mode = normalizeMode(runtimeOptions.mode || options.mode, AI_MODES.LOCAL);
+    modelManager.discoverModels(bundle);
     await loadModel(bundle, runtimeOptions.modelId || null);
+    if (state.mode === AI_MODES.DISABLED) {
+      state.initialized = true;
+      state.capabilities = new Set(['disabled']);
+      return getAIStatus();
+    }
+
+    const localReady = canRunLocally(state.model, state.compatibility);
+    if (state.mode === AI_MODES.LOCAL && localReady && state.model) {
+      await modelManager.downloadModel(state.model.id);
+      await modelManager.verifyModel(state.model.id);
+      await modelManager.initializeModel(state.model.id);
+      await engine.initialize(state.model);
+    } else if (state.mode === AI_MODES.LOCAL && !localReady) {
+      state.mode = AI_MODES.RETRIEVAL_ONLY;
+    }
+
+    if (state.mode === AI_MODES.REMOTE_FALLBACK && !state.model) state.mode = AI_MODES.RETRIEVAL_ONLY;
     state.initialized = true;
     state.capabilities = new Set([state.backend]);
-    if (state.model) state.capabilities.add('local-inference');
-    return {
-      initialized: true,
-      backend: state.backend,
-      model: state.model,
-      tier: state.model ? 1 : 0,
-      offlineReady: true,
-    };
+    if (state.model && state.mode === AI_MODES.LOCAL) state.capabilities.add('local-inference');
+    return getAIStatus();
+  }
+
+  async function initializeAI(bundle = {}, runtimeOptions = {}) {
+    return initialize(bundle, runtimeOptions);
   }
 
   function ensureInitialized() {
     if (!state.initialized) throw new Error('AI runtime not initialized');
   }
 
+  function getModels() {
+    return Array.isArray(state.bundle?.models) ? state.bundle.models : [];
+  }
+
+  async function downloadModel(modelId) {
+    ensureInitialized();
+    const target = modelId || state.model?.id;
+    if (!target) throw new Error('model not found');
+    return modelManager.downloadModel(target, state.bundle);
+  }
+
+  function removeModel(modelId) {
+    ensureInitialized();
+    const target = modelId || state.model?.id;
+    if (!target) throw new Error('model not found');
+    const removed = modelManager.removeModel(target);
+    if (state.model?.id === target) state.model = null;
+    return removed;
+  }
+
+  function getAIStatus() {
+    return {
+      initialized: state.initialized,
+      backend: state.backend,
+      model: state.model,
+      tier: state.model ? 1 : 0,
+      offlineReady: state.mode === AI_MODES.LOCAL && Boolean(state.model),
+      mode: state.mode,
+      compatibility: state.compatibility,
+      capabilities: [...state.capabilities],
+    };
+  }
+
   async function generate({ question = '', context = [] } = {}) {
     ensureInitialized();
     const content = Array.isArray(context) ? context : [];
     const top = content[0] || null;
-    if (!state.model) {
+    if (state.mode === AI_MODES.DISABLED) {
+      return {
+        answer: 'AI is disabled for this runtime.',
+        confidence: 0,
+        mode: 'disabled',
+      };
+    }
+    if (!state.model || state.mode !== AI_MODES.LOCAL) {
       return {
         answer: top?.text || "I don't have an answer for that yet.",
         confidence: top ? 0.6 : 0.15,
@@ -89,9 +196,9 @@ function createAIRuntime(options = {}) {
       };
     }
     const intent = inferIntent(question);
+    const generated = await engine.generate({ prompt: question, context: content });
     return {
-      answer: top?.text || `Intent detected: ${intent.intent}`,
-      // Keep generation confidence slightly conservative relative to classifier confidence.
+      answer: generated.text || top?.text || `Intent detected: ${intent.intent}`,
       confidence: Number(Math.max(MIN_LOCAL_CONFIDENCE, intent.confidence - LOCAL_CONFIDENCE_ADJUSTMENT).toFixed(3)),
       mode: 'local-llm',
       intent: intent.intent,
@@ -100,21 +207,31 @@ function createAIRuntime(options = {}) {
 
   async function embed(text) {
     ensureInitialized();
-    const tokens = String(text || '').toLowerCase().split(/\W+/).filter(Boolean);
-    return tokens.map((token) => token.length / 20);
+    if (!state.model || state.mode !== AI_MODES.LOCAL) {
+      const tokens = String(text || '').toLowerCase().split(/\W+/).filter(Boolean);
+      return tokens.map((token) => token.length / 20);
+    }
+    return engine.embed(text);
   }
 
   async function classify(input) {
     ensureInitialized();
-    return inferIntent(input);
+    if (!state.model || state.mode !== AI_MODES.LOCAL) return inferIntent(input);
+    return engine.classify(input);
   }
 
   async function extract(input) {
     ensureInitialized();
-    return extractFields(input);
+    if (!state.model || state.mode !== AI_MODES.LOCAL) return extractFields(input);
+    const extracted = await engine.extract(input);
+    return { ...extractFields(input), ...(extracted || {}) };
   }
 
   async function* stream({ question = '', context = [] } = {}) {
+    if (state.model && state.mode === AI_MODES.LOCAL) {
+      for await (const token of engine.stream({ prompt: question, context })) yield token;
+      return;
+    }
     const response = await generate({ question, context });
     const words = String(response.answer || '').split(/\s+/).filter(Boolean);
     for (const word of words) {
@@ -132,7 +249,7 @@ function createAIRuntime(options = {}) {
     return { action, payload, ok: true };
   }
 
-  function buildTelemetry({ intent, confidence, knowledgeGap = false, processStarted = false, duration = 0 }, options = {}) {
+  function buildTelemetry({ intent, confidence, knowledgeGap = false, processStarted = false, duration = 0 }, telemetryOptions = {}) {
     const entry = {
       intent: String(intent || 'general_question'),
       confidence: Number(confidence || 0),
@@ -140,13 +257,18 @@ function createAIRuntime(options = {}) {
       process_started: Boolean(processStarted),
       duration: Number(duration || 0),
     };
-    if (options.includeContent && options.question) entry.question = String(options.question);
+    if (telemetryOptions.includeContent && telemetryOptions.question) entry.question = String(telemetryOptions.question);
     return entry;
   }
 
   return {
     loadModel,
     initialize,
+    initializeAI,
+    getAIStatus,
+    getModels,
+    downloadModel,
+    removeModel,
     generate,
     embed,
     classify,
@@ -158,6 +280,8 @@ function createAIRuntime(options = {}) {
 }
 
 module.exports = {
+  AI_MODES,
   createAIRuntime,
   detectBackend,
+  detectAICompatibility,
 };

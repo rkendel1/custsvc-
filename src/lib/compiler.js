@@ -555,21 +555,75 @@ function validateProcesses(processes, knowledge) {
   return issues;
 }
 
+function defaultModelManifest() {
+  return {
+    id: 'company-assistant-small',
+    type: 'llm',
+    runtime: 'wasm',
+    engine: 'llama.cpp',
+    quantization: 'int4',
+    size: '350mb',
+    artifact: {
+      manifest: 'models/company-assistant-small/model.json',
+      weights: 'models/company-assistant-small/model.gguf',
+      tokenizer: 'models/company-assistant-small/tokenizer.json',
+    },
+    checksum: {
+      algorithm: 'sha256',
+      value: '',
+    },
+    requirements: {
+      memory_mb: 1024,
+      wasm_simd: true,
+      webgpu_optional: true,
+    },
+    capabilities: ['generate', 'embed', 'classify', 'extract'],
+  };
+}
+
+function normalizeModelManifest(model = {}) {
+  const fallback = defaultModelManifest();
+  return {
+    ...fallback,
+    ...model,
+    artifact: {
+      ...fallback.artifact,
+      ...(model.artifact || {}),
+    },
+    checksum: {
+      ...fallback.checksum,
+      ...(model.checksum || {}),
+    },
+    requirements: {
+      ...fallback.requirements,
+      ...(model.requirements || {}),
+    },
+    capabilities: Array.isArray(model.capabilities) && model.capabilities.length
+      ? model.capabilities.map((item) => String(item))
+      : [...fallback.capabilities],
+  };
+}
+
+function buildRuntimeRequirements(models = []) {
+  return models.map((model) => ({
+    model_id: model.id,
+    memory_mb: Number(model?.requirements?.memory_mb || 0),
+    wasm_simd: Boolean(model?.requirements?.wasm_simd),
+    webgpu_optional: Boolean(model?.requirements?.webgpu_optional),
+    capabilities: Array.isArray(model.capabilities) ? model.capabilities : [],
+  }));
+}
+
 function compileBundle(documents, options = {}) {
   const safeDocs = Array.isArray(documents) ? documents : [];
   const company = options.company || 'Acme';
   const safeProcesses = Array.isArray(options.processes) ? options.processes : [];
   const models = Array.isArray(options.models) && options.models.length
-    ? options.models
-    : [
-      {
-        id: 'company-assistant-small',
-        type: 'llm',
-        runtime: 'wasm',
-        quantization: 'int4',
-        size: '350mb',
-      },
-    ];
+    ? options.models.map(normalizeModelManifest)
+    : [defaultModelManifest()];
+  const runtimeRequirements = Array.isArray(options.runtime_requirements) && options.runtime_requirements.length
+    ? options.runtime_requirements
+    : buildRuntimeRequirements(models);
   const knowledge = safeDocs.map(toKnowledgeObject);
   const chunks = knowledge.flatMap((item, index) => toChunks(item, index));
   const graph = buildGraph(knowledge);
@@ -604,9 +658,9 @@ function compileBundle(documents, options = {}) {
   }
 
   return {
-    version: 4,
-    format: 'company.intelligence.bundle.v4',
-    format_legacy: 'company.intelligence.bundle',
+    version: 5,
+    format: 'company.intelligence.bundle.v5',
+    format_legacy: 'company.intelligence.bundle.v4',
     company,
     generatedAt,
     documentCount: safeDocs.length,
@@ -642,6 +696,7 @@ function compileBundle(documents, options = {}) {
     },
     capabilities: [...capabilitySet],
     models,
+    runtime_requirements: runtimeRequirements,
     analytics: {
       processes: {
         total: processes.length,
