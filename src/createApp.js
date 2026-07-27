@@ -342,6 +342,20 @@ function normalizeSourceConfig(config) {
   return output;
 }
 
+function normalizeSourceSiteUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    const protocol = String(parsed.protocol || '').toLowerCase();
+    const host = String(parsed.host || '').toLowerCase();
+    const pathname = String(parsed.pathname || '/').replace(/\/+$/, '') || '/';
+    return `${protocol}//${host}${pathname}`;
+  } catch (_error) {
+    return raw;
+  }
+}
+
 function isSensitiveConfigKey(key) {
   return /(secret|token|password|key)/i.test(String(key || ''));
 }
@@ -2188,12 +2202,57 @@ function createApp(options = {}) {
     const tenantId = resolveScopedTenantId(req);
     const { publicConfig, secretConfig } = splitSensitiveConfig(configValidation.config);
     const sources = listData(storage, 'listSources');
+    const normalizedIncomingSiteUrl = normalizeSourceSiteUrl(site_url);
+
+    const duplicateIndex = normalizedIncomingSiteUrl
+      ? sources.findIndex((item) => (
+        item.tenant_id === tenantId
+        && String(item.type || '').toUpperCase() === configValidation.type
+        && normalizeSourceSiteUrl(item.site_url) === normalizedIncomingSiteUrl
+      ))
+      : -1;
+
+    if (duplicateIndex >= 0) {
+      const existing = sources[duplicateIndex];
+      if (Object.keys(secretConfig).length) {
+        await connectorVault.setSecrets({
+          tenantId,
+          sourceId: existing.source_id,
+          encryptedPayload: encryptSourceSecretPayload(secretConfig),
+        });
+      }
+
+      const updated = {
+        ...existing,
+        name: String(name),
+        type: configValidation.type,
+        site_url: normalizedIncomingSiteUrl,
+        poll_minutes: Math.max(5, Number(poll_minutes || existing.poll_minutes || 60)),
+        status: 'connected',
+        config: publicConfig,
+        secret_fields: Object.keys(secretConfig),
+        updated_at: new Date().toISOString(),
+      };
+      sources[duplicateIndex] = updated;
+      saveData(storage, 'saveSources', sources);
+
+      await connectorVault.appendAudit({
+        tenant_id: tenantId,
+        source_id: existing.source_id,
+        action: 'source.upsert',
+        status: 'ok',
+        details: { deduped: true, type: updated.type, site_url: normalizedIncomingSiteUrl },
+      });
+
+      return res.status(200).json({ source: await toSourceResponse(updated, tenantId), deduped: true });
+    }
+
     const source = {
       source_id: `source-${randomUUID()}`,
       tenant_id: tenantId,
       name: String(name),
       type: configValidation.type,
-      site_url: site_url ? String(site_url) : null,
+      site_url: normalizedIncomingSiteUrl || null,
       poll_minutes: Math.max(5, Number(poll_minutes || 60)),
       status: 'connected',
       config: publicConfig,
@@ -2953,6 +3012,9 @@ function createApp(options = {}) {
       ALLOWED_AUDIENCES,
       tenant.audiences || ['Customers', 'Employees'],
     );
+
+    // Ensure deployment always points at a freshly compiled tenant bundle.
+    rebuildTenantBundle(req.tenantId);
 
     const publicOrigin = resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000));
     const deployment = createDeployment({

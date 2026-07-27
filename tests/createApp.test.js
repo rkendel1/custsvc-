@@ -490,6 +490,21 @@ test('source monitoring endpoints register and sync website sources', async (t) 
   assert.equal(createResponse.status, 201);
   assert.ok(created.source.source_id);
 
+  const duplicateCreateResponse = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
+    body: JSON.stringify({
+      name: 'Support Site',
+      type: 'WEBSITE',
+      site_url: 'https://example.com/help/',
+      tenant_id: 'public',
+    }),
+  });
+  const deduped = await duplicateCreateResponse.json();
+  assert.equal(duplicateCreateResponse.status, 200);
+  assert.equal(deduped.deduped, true);
+  assert.equal(deduped.source.source_id, created.source.source_id);
+
   const syncResponse = await fetch(`${baseUrl}/api/sources/${created.source.source_id}/sync`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-session-token': 'owner-token' },
