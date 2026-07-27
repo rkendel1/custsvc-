@@ -3,46 +3,670 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KnowledgeOS Demo</title>
+    <title>KnowledgeOS Power Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      button { margin-right: 0.5rem; margin-bottom: 0.5rem; }
-      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+      :root {
+        --ink: #1a2233;
+        --muted: #5d6884;
+        --canvas: #f4f8ff;
+        --panel: #ffffff;
+        --line: #d8e3fa;
+        --brand: #0d5fe9;
+        --brand-2: #00a88f;
+        --accent: #ff7c43;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(900px 460px at 8% -10%, #fff1d8 0%, transparent 60%),
+          radial-gradient(860px 500px at 92% -8%, #d8e9ff 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 3rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        text-decoration: none;
+        color: var(--ink);
+      }
+
+      .wordmark img {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        object-fit: cover;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .wordmark strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+
+      .wordmark span { color: var(--brand); }
+
+      .topnav {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      .hero {
+        margin-top: 0.95rem;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: linear-gradient(145deg, #ffffff 0%, #eef5ff 100%);
+        padding: clamp(1.1rem, 2.8vw, 2rem);
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 0.8rem;
+      }
+
+      .badge {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.32rem 0.72rem;
+        background: #fff;
+        color: #325189;
+        font-size: 0.8rem;
+        font-weight: 800;
+      }
+
+      .hero p {
+        color: var(--muted);
+        max-width: 60ch;
+        margin: 0.75rem 0 1rem;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        border: none;
+        border-radius: 999px;
+        padding: 0.64rem 1rem;
+        font-weight: 800;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .btn.primary {
+        color: #fff;
+        background: linear-gradient(135deg, var(--brand), #3b89ff);
+        box-shadow: 0 12px 26px rgba(13, 95, 233, 0.28);
+      }
+
+      .btn.ghost {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .metric-grid {
+        display: grid;
+        gap: 0.58rem;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.7rem 0.78rem;
+      }
+
+      .metric strong {
+        display: block;
+        font-family: 'Sora', sans-serif;
+        font-size: 1.04rem;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .frame {
+        margin-top: 0.9rem;
+        display: grid;
+        grid-template-columns: 0.88fr 1.12fr;
+        gap: 0.86rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 0.9rem;
+      }
+
+      .persona-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.45rem;
+      }
+
+      .persona-btn {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+        padding: 0.56rem;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .persona-btn.active {
+        border-color: transparent;
+        color: #fff;
+        background: linear-gradient(135deg, #0d5fe9, #00a88f);
+      }
+
+      .journey {
+        list-style: none;
+        margin: 0.7rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .journey li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.62rem;
+        background: #fff;
+      }
+
+      .journey strong {
+        display: block;
+        margin-bottom: 0.2rem;
+      }
+
+      .journey span {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .scenario {
+        margin-top: 0.7rem;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+      }
+
+      .scenario button {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 10px;
+        padding: 0.6rem;
+        text-align: left;
+        color: var(--ink);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .scenario small {
+        display: block;
+        margin-top: 0.2rem;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .output {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, #ffffff 0%, #f4f9ff 100%);
+        padding: 0.9rem;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.42rem;
+        margin-bottom: 0.55rem;
+      }
+
+      .chip {
+        border-radius: 999px;
+        padding: 0.3rem 0.62rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        border: 1px solid var(--line);
+        color: #36528b;
+        background: #fff;
+      }
+
+      pre {
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 0.75rem;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
+      .footer-nav {
+        margin-top: 0.9rem;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fff;
+        padding: 0.8rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+      }
+
+      .footer-nav-links {
+        display: flex;
+        gap: 0.62rem;
+        flex-wrap: wrap;
+      }
+
+      .footer-nav a {
+        text-decoration: none;
+        font-weight: 700;
+        color: var(--brand);
+      }
+
+      .roi-board {
+        margin-top: 0.9rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.8rem;
+      }
+
+      .roi-input-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-top: 0.55rem;
+      }
+
+      .roi-input-grid label {
+        display: block;
+        font-weight: 700;
+        font-size: 0.84rem;
+        color: #41517f;
+      }
+
+      .roi-input-grid input {
+        width: 100%;
+        margin-top: 0.24rem;
+        padding: 0.48rem 0.56rem;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      .roi-results {
+        margin-top: 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 0.65rem;
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .roi-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+        font-size: 0.9rem;
+      }
+
+      .roi-row strong {
+        font-family: 'Sora', sans-serif;
+        font-size: 0.95rem;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .frame,
+        .roi-board,
+        .scenario,
+        .persona-tabs,
+        .roi-input-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>KnowledgeOS Interactive Demo</h1>
-    <p>Seeded tenant: <strong>Acme Manufacturing</strong></p>
-    <div>
-      <button data-view="customer">Customer View</button>
-      <button data-view="support">Support View</button>
-      <button data-view="manager">Manager View</button>
-      <button data-view="executive">Executive View</button>
+    <div class="shell">
+      <header class="topbar">
+        <a class="wordmark" href="/">
+          <img src="/koslogo.png" alt="KnowledgeOS logo" />
+          <strong>Knowledge<span>OS</span></strong>
+        </a>
+        <nav class="topnav">
+          <a href="/">Home</a>
+          <a href="/demo">Power demo</a>
+          <a href="/tenant">Dashboard demo</a>
+          <a href="/admin">Console</a>
+          <a href="/onboarding">Onboarding</a>
+          <a href="/signup">Get started</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <div>
+          <div class="badge">Power Demo</div>
+          <h1>One tenant, four perspectives, instant business value.</h1>
+          <p>
+            This demo shows how the same intelligence runtime serves customers, support teams,
+            managers, and executives without splitting into separate systems.
+          </p>
+          <div class="hero-actions">
+            <button id="runStoryBtn" class="btn primary">Run 60-second story</button>
+            <a href="/admin" class="btn ghost">Open live console</a>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><strong>External</strong><span>Consistent customer answers with policy citations</span></div>
+          <div class="metric"><strong>Internal</strong><span>Guided support and approval-aware process steps</span></div>
+          <div class="metric"><strong>Leadership</strong><span>Knowledge gaps and operational trend visibility</span></div>
+        </div>
+      </section>
+
+      <section class="roi-board">
+        <article class="panel">
+          <h2 style="font-size:1.05rem;">Executive ROI Simulator</h2>
+          <p style="margin:0.45rem 0 0; color: var(--muted); font-size: 0.9rem;">
+            Translate runtime performance into financial value using your operating assumptions.
+          </p>
+
+          <div class="roi-input-grid">
+            <label>Monthly support tickets
+              <input id="roiTickets" type="number" min="0" value="18000" />
+            </label>
+            <label>AI deflection rate (%)
+              <input id="roiDeflection" type="number" min="0" max="100" value="18" />
+            </label>
+            <label>Cost per ticket ($)
+              <input id="roiTicketCost" type="number" min="0" step="0.01" value="11.5" />
+            </label>
+            <label>Ops hourly cost ($)
+              <input id="roiHourly" type="number" min="0" step="0.01" value="42" />
+            </label>
+            <label>Manager hours saved / week
+              <input id="roiMgrHours" type="number" min="0" step="0.1" value="26" />
+            </label>
+            <label>Analyst hours saved / week
+              <input id="roiAnalystHours" type="number" min="0" step="0.1" value="34" />
+            </label>
+          </div>
+
+          <div class="hero-actions" style="margin-top:0.65rem;">
+            <button id="roiConservative" class="btn ghost" type="button">Conservative preset</button>
+            <button id="roiAggressive" class="btn ghost" type="button">Aggressive preset</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2 style="font-size:1.05rem;">Projected Value Snapshot</h2>
+          <p style="margin:0.45rem 0 0; color: var(--muted); font-size: 0.9rem;">
+            Use this as an executive narrative for pilot justification and expansion planning.
+          </p>
+          <div class="roi-results">
+            <div class="roi-row"><span>Monthly ticket-cost savings</span><strong id="roiTicketSavings">$0</strong></div>
+            <div class="roi-row"><span>Monthly ops-efficiency savings</span><strong id="roiOpsSavings">$0</strong></div>
+            <div class="roi-row"><span>Total monthly value</span><strong id="roiMonthlyValue">$0</strong></div>
+            <div class="roi-row"><span>Annualized impact</span><strong id="roiAnnualValue">$0</strong></div>
+          </div>
+          <pre id="roiNarrative" style="margin-top:0.62rem;">ROI narrative will appear here.</pre>
+        </article>
+      </section>
+
+      <section class="frame">
+        <aside class="panel">
+          <h2 style="font-size:1.05rem;">Demo Journey</h2>
+          <ul class="journey">
+            <li><strong>1. Customer asks</strong><span>Runtime answers from governed knowledge with confidence.</span></li>
+            <li><strong>2. Support executes</strong><span>Agent gets guided next action for process completion.</span></li>
+            <li><strong>3. Manager approves</strong><span>Policy-driven approval workflows trigger automatically.</span></li>
+            <li><strong>4. Executive learns</strong><span>Telemetry highlights where knowledge investment is needed next.</span></li>
+          </ul>
+
+          <h3 style="font-size:0.95rem; margin-top: 0.8rem;">Jump to scenario</h3>
+          <div class="scenario">
+            <button data-scenario="customer">Return request<small>Customer answer + citation</small></button>
+            <button data-scenario="support">Escalation assist<small>Support next-step recommendation</small></button>
+            <button data-scenario="manager">Approval gate<small>Manager queue and risk</small></button>
+            <button data-scenario="executive">Trend insight<small>Gap + strategic insight</small></button>
+          </div>
+        </aside>
+
+        <div class="panel">
+          <h2 style="font-size:1.05rem; margin-bottom: 0.55rem;">Tenant: <span id="companyName">Loading...</span></h2>
+          <div class="persona-tabs">
+            <button class="persona-btn active" data-view="customer">Customer</button>
+            <button class="persona-btn" data-view="support">Support</button>
+            <button class="persona-btn" data-view="manager">Manager</button>
+            <button class="persona-btn" data-view="executive">Executive</button>
+          </div>
+
+          <div class="output" style="margin-top: 0.7rem;">
+            <div class="chips">
+              <span class="chip" id="tenantChip">Tenant: acme</span>
+              <span class="chip" id="viewChip">View: customer</span>
+              <span class="chip" id="valueChip">Outcome: faster response</span>
+            </div>
+            <pre id="demoOutput">Loading demo...</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="footer-nav">
+        <div>
+          <strong style="font-family:'Sora',sans-serif;">Explore end-to-end</strong>
+          <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.2rem;">Move from story demo to live onboarding, admin controls, and tenant dashboard.</div>
+        </div>
+        <div class="footer-nav-links">
+          <a href="/">Landing</a>
+          <a href="/signup">Signup</a>
+          <a href="/onboarding">Onboarding</a>
+          <a href="/admin">Admin Console</a>
+          <a href="/tenant">Tenant Dashboard</a>
+        </div>
+      </section>
     </div>
-    <pre id="demoOutput">Loading demo...</pre>
 
     <script>
       const output = document.getElementById('demoOutput');
-      let demo = null;
+      const companyName = document.getElementById('companyName');
+      const tenantChip = document.getElementById('tenantChip');
+      const viewChip = document.getElementById('viewChip');
+      const valueChip = document.getElementById('valueChip');
+      const runStoryBtn = document.getElementById('runStoryBtn');
+      const roiTickets = document.getElementById('roiTickets');
+      const roiDeflection = document.getElementById('roiDeflection');
+      const roiTicketCost = document.getElementById('roiTicketCost');
+      const roiHourly = document.getElementById('roiHourly');
+      const roiMgrHours = document.getElementById('roiMgrHours');
+      const roiAnalystHours = document.getElementById('roiAnalystHours');
+      const roiConservative = document.getElementById('roiConservative');
+      const roiAggressive = document.getElementById('roiAggressive');
+      const roiTicketSavings = document.getElementById('roiTicketSavings');
+      const roiOpsSavings = document.getElementById('roiOpsSavings');
+      const roiMonthlyValue = document.getElementById('roiMonthlyValue');
+      const roiAnnualValue = document.getElementById('roiAnnualValue');
+      const roiNarrative = document.getElementById('roiNarrative');
+      const personaButtons = Array.from(document.querySelectorAll('.persona-btn'));
+      const scenarioButtons = Array.from(document.querySelectorAll('[data-scenario]'));
 
-      function show(view) {
-        if (!demo) return;
+      let demo = null;
+      let storyTimer = null;
+
+      const viewOutcomes = {
+        customer: 'Outcome: customer answer confidence',
+        support: 'Outcome: faster case resolution',
+        manager: 'Outcome: controlled approvals and risk',
+        executive: 'Outcome: strategic knowledge investment',
+      };
+
+      function formatCurrency(value) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+      }
+
+      function toNumber(value) {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : 0;
+      }
+
+      function updateRoi() {
+        const tickets = toNumber(roiTickets.value);
+        const deflection = Math.max(0, Math.min(100, toNumber(roiDeflection.value))) / 100;
+        const ticketCost = toNumber(roiTicketCost.value);
+        const hourly = toNumber(roiHourly.value);
+        const managerWeekly = toNumber(roiMgrHours.value);
+        const analystWeekly = toNumber(roiAnalystHours.value);
+
+        const ticketSavings = tickets * deflection * ticketCost;
+        const opsSavings = (managerWeekly + analystWeekly) * 4.33 * hourly;
+        const monthly = ticketSavings + opsSavings;
+        const annual = monthly * 12;
+
+        roiTicketSavings.textContent = formatCurrency(ticketSavings);
+        roiOpsSavings.textContent = formatCurrency(opsSavings);
+        roiMonthlyValue.textContent = formatCurrency(monthly);
+        roiAnnualValue.textContent = formatCurrency(annual);
+
+        const avoided = Math.round(tickets * deflection);
+        roiNarrative.textContent = JSON.stringify(
+          {
+            avoided_tickets_per_month: avoided,
+            monthly_value_usd: Math.round(monthly),
+            annual_value_usd: Math.round(annual),
+            executive_message: 'KnowledgeOS converts service quality gains into measurable financial leverage while strengthening governance.',
+          },
+          null,
+          2,
+        );
+      }
+
+      function setActiveView(view) {
+        if (!demo || !demo.views[view]) return;
+        personaButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.view === view));
+        viewChip.textContent = `View: ${view}`;
+        valueChip.textContent = viewOutcomes[view] || 'Outcome: insight';
         output.textContent = JSON.stringify(demo.views[view], null, 2);
       }
 
-      async function load() {
-        const response = await fetch('/api/demo');
-        demo = await response.json();
-        show('customer');
+      function runStory() {
+        const sequence = ['customer', 'support', 'manager', 'executive'];
+        let idx = 0;
+        clearInterval(storyTimer);
+        setActiveView(sequence[idx]);
+        storyTimer = setInterval(() => {
+          idx += 1;
+          if (idx >= sequence.length) {
+            clearInterval(storyTimer);
+            return;
+          }
+          setActiveView(sequence[idx]);
+        }, 1600);
       }
 
-      document.querySelectorAll('button[data-view]').forEach((button) => {
-        button.addEventListener('click', () => show(button.dataset.view));
+      async function loadDemo() {
+        const response = await fetch('/api/demo');
+        if (!response.ok) throw new Error(`Unable to load demo (${response.status})`);
+        demo = await response.json();
+        companyName.textContent = demo.company_name || 'Acme Manufacturing';
+        tenantChip.textContent = `Tenant: ${demo.tenant_id || 'acme'}`;
+        setActiveView('customer');
+      }
+
+      personaButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          clearInterval(storyTimer);
+          setActiveView(button.dataset.view);
+        });
       });
 
-      load().catch((error) => {
+      scenarioButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          clearInterval(storyTimer);
+          setActiveView(button.dataset.scenario);
+        });
+      });
+
+      runStoryBtn.addEventListener('click', runStory);
+
+      [roiTickets, roiDeflection, roiTicketCost, roiHourly, roiMgrHours, roiAnalystHours].forEach((input) => {
+        input.addEventListener('input', updateRoi);
+      });
+
+      roiConservative.addEventListener('click', () => {
+        roiTickets.value = 12000;
+        roiDeflection.value = 10;
+        roiTicketCost.value = 9.5;
+        roiHourly.value = 38;
+        roiMgrHours.value = 12;
+        roiAnalystHours.value = 18;
+        updateRoi();
+      });
+
+      roiAggressive.addEventListener('click', () => {
+        roiTickets.value = 26000;
+        roiDeflection.value = 26;
+        roiTicketCost.value = 13.5;
+        roiHourly.value = 55;
+        roiMgrHours.value = 36;
+        roiAnalystHours.value = 44;
+        updateRoi();
+      });
+
+      loadDemo().catch((error) => {
         output.textContent = error.message;
       });
+      updateRoi();
     </script>
   </body>
 </html>

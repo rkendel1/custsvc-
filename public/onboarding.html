@@ -41,11 +41,13 @@
         align-items: center;
         justify-content: space-between;
         gap: 1rem;
+        flex-wrap: wrap;
       }
 
       .wordmark { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.2rem; }
       .wordmark span { color: var(--brand); }
       .topbar a { text-decoration: none; color: var(--muted); font-weight: 600; }
+      .topnav { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
       .layout {
         margin-top: 1rem;
@@ -172,7 +174,13 @@
     <div class="shell">
       <header class="topbar">
         <div class="wordmark">Knowledge<span>OS</span></div>
-        <a href="/">Back to site</a>
+        <nav class="topnav">
+          <a href="/">Home</a>
+          <a href="/demo">Power demo</a>
+          <a href="/tenant">Dashboard demo</a>
+          <a href="/admin">Console</a>
+          <a href="/signup">Get started</a>
+        </nav>
       </header>
 
       <div class="layout">

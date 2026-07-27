@@ -3,30 +3,303 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KnowledgeOS Tenant Dashboard</title>
+    <title>KnowledgeOS Tenant Dashboard Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      pre { background: #f3f4f6; padding: 0.8rem; border-radius: 8px; }
+      :root {
+        --ink: #1b2335;
+        --muted: #5d6884;
+        --canvas: #f5f8ff;
+        --panel: #ffffff;
+        --line: #d6e2f8;
+        --brand: #0d5fe9;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        background:
+          radial-gradient(920px 430px at 12% -10%, #fff0d4 0%, transparent 58%),
+          radial-gradient(860px 500px at 90% -6%, #dbeafe 0%, transparent 62%),
+          var(--canvas);
+      }
+
+      h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
+
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 1.2rem 1rem 2.8rem;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+      }
+
+      .wordmark {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 800;
+      }
+
+      .wordmark span { color: var(--brand); }
+
+      .topnav {
+        display: flex;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.92rem;
+      }
+
+      .hero {
+        margin-top: 0.9rem;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 1rem;
+        background: linear-gradient(145deg, #ffffff 0%, #eef5ff 100%);
+      }
+
+      .hero p {
+        margin: 0.55rem 0 0;
+        color: var(--muted);
+        max-width: 68ch;
+      }
+
+      .grid {
+        margin-top: 0.85rem;
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 0.82rem;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        padding: 0.9rem;
+      }
+
+      .metric-grid {
+        margin-top: 0.62rem;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 0.6rem;
+      }
+
+      .metric strong {
+        display: block;
+        font-family: 'Sora', sans-serif;
+        font-size: 1rem;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      label {
+        display: block;
+        font-weight: 700;
+        font-size: 0.92rem;
+        margin-top: 0.55rem;
+      }
+
+      input {
+        width: 100%;
+        margin-top: 0.24rem;
+        padding: 0.56rem 0.62rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      .actions {
+        margin-top: 0.72rem;
+        display: flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 0.58rem 0.94rem;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        color: #fff;
+        background: linear-gradient(135deg, #0d5fe9, #3b89ff);
+      }
+
+      .btn-ghost {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .quick-links {
+        margin-top: 0.7rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .quick-links a {
+        text-decoration: none;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.32rem 0.7rem;
+        font-weight: 700;
+        color: #3b4f80;
+        font-size: 0.82rem;
+        background: #f9fbff;
+      }
+
+      pre {
+        margin: 0.7rem 0 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.76rem;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
+      @media (max-width: 940px) {
+        .grid,
+        .metric-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>Tenant Dashboard</h1>
-    <p>Knowledge Health · Documents · Confidence · Questions · Knowledge Gaps · Runtime Status</p>
-    <label>Tenant ID <input id="tenantId" value="acme" /></label>
-    <label>Session Token <input id="sessionToken" placeholder="kos_..." /></label>
-    <button id="loadBtn">Load Dashboard</button>
-    <pre id="output">Load a tenant dashboard.</pre>
+    <div class="shell">
+      <header class="topbar">
+        <div class="wordmark">Knowledge<span>OS</span></div>
+        <nav class="topnav">
+          <a href="/">Home</a>
+          <a href="/demo">Power demo</a>
+          <a href="/tenant">Dashboard demo</a>
+          <a href="/admin">Console</a>
+          <a href="/onboarding">Onboarding</a>
+          <a href="/signup">Get started</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <h1 style="font-size:1.48rem;">Tenant Dashboard Demo</h1>
+        <p>
+          This dashboard illustrates how one tenant sees runtime health, operational pressure, knowledge quality,
+          and service signals in a single pane. Use it to validate internal value right after setup.
+        </p>
+      </section>
+
+      <section class="grid">
+        <aside class="panel">
+          <h2 style="font-size:1.02rem;">Load Tenant Data</h2>
+          <label>Tenant ID <input id="tenantId" value="acme" /></label>
+          <label>Session Token <input id="sessionToken" placeholder="kos_..." /></label>
+          <div class="actions">
+            <button id="loadBtn" class="btn-primary">Load dashboard</button>
+            <button id="resetBtn" class="btn-ghost">Reset output</button>
+          </div>
+          <div class="quick-links">
+            <a href="/demo">View role-based story</a>
+            <a href="/admin">Manage sources</a>
+            <a href="/onboarding">Run onboarding wizard</a>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><strong>Knowledge Health</strong><span>Coverage, freshness, contradiction signals</span></div>
+            <div class="metric"><strong>Support Pressure</strong><span>Open issues, escalations, cycle-time bottlenecks</span></div>
+            <div class="metric"><strong>Runtime Trust</strong><span>Confidence profile and answer quality telemetry</span></div>
+            <div class="metric"><strong>Prioritized Gaps</strong><span>Which knowledge to fix first for max impact</span></div>
+          </div>
+        </aside>
+
+        <article class="panel">
+          <h2 style="font-size:1.02rem;">Tenant API Response</h2>
+          <p style="color: var(--muted); margin: 0.35rem 0 0; font-size: 0.9rem;">
+            Use this live output to validate tenant scope, access control behavior, and dashboard payload shape.
+          </p>
+          <pre id="output">Load a tenant dashboard.</pre>
+        </article>
+      </section>
+    </div>
 
     <script>
       const output = document.getElementById('output');
-      document.getElementById('loadBtn').addEventListener('click', async () => {
-        const tenantId = document.getElementById('tenantId').value.trim();
-        const sessionToken = document.getElementById('sessionToken').value.trim();
+      const tenantIdInput = document.getElementById('tenantId');
+      const sessionTokenInput = document.getElementById('sessionToken');
+      const loadBtn = document.getElementById('loadBtn');
+      const resetBtn = document.getElementById('resetBtn');
+
+      async function loadDashboard() {
+        const tenantId = tenantIdInput.value.trim();
+        const sessionToken = sessionTokenInput.value.trim();
+        if (!tenantId) {
+          output.textContent = 'Tenant ID is required.';
+          return;
+        }
+
         const response = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
           headers: sessionToken ? { 'x-session-token': sessionToken } : {},
         });
-        const data = await response.json();
-        output.textContent = JSON.stringify(data, null, 2);
+
+        const text = await response.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (_error) {
+          output.textContent = text;
+          return;
+        }
+
+        output.textContent = JSON.stringify(
+          {
+            status: response.status,
+            ...data,
+          },
+          null,
+          2,
+        );
+      }
+
+      loadBtn.addEventListener('click', () => {
+        loadDashboard().catch((error) => {
+          output.textContent = error.message;
+        });
+      });
+
+      resetBtn.addEventListener('click', () => {
+        output.textContent = 'Load a tenant dashboard.';
       });
     </script>
   </body>
