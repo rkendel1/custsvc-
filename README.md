@@ -276,19 +276,25 @@ cp .env.docker.dev.example .env
 Start:
 
 ```bash
-npm run docker:dev:up
+npm run dev:up
 ```
 
 Logs:
 
 ```bash
-npm run docker:dev:logs
+npm run dev:logs
 ```
 
 Stop:
 
 ```bash
-npm run docker:dev:down
+npm run dev:down
+```
+
+Reset local stack and delete compose volumes (fresh DB/data):
+
+```bash
+npm run dev:reset
 ```
 
 Local endpoints:
@@ -314,14 +320,25 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 Build and run with production compose file:
 
 ```bash
-npm run docker:prod:up
+npm run prod:up
 ```
 
 Stop:
 
 ```bash
-npm run docker:prod:down
+npm run prod:down
 ```
+
+Stop and delete production compose volumes for a clean slate:
+
+```bash
+npm run prod:reset
+```
+
+Compatibility scripts still available:
+
+- `npm run docker:dev:up|down|logs|reset`
+- `npm run docker:prod:up|down|logs|reset`
 
 Required production env values:
 
