@@ -38,6 +38,20 @@ function stripHtml(text) {
   return output.replace(/\s+/g, ' ').trim();
 }
 
+function sanitizeHtmlForExtraction(html) {
+  const raw = String(html || '');
+  if (!raw) return '';
+
+  return raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, ' ')
+    .replace(/<meta\b[^>]*>/gi, ' ')
+    .replace(/<link\b[^>]*>/gi, ' ');
+}
+
 async function extractPdfTextLocal(buffer) {
   const parser = new PDFParse({ data: buffer });
   try {
@@ -193,7 +207,8 @@ async function fetchWebsiteSourceSnapshots(siteUrl, options = {}) {
       if (!contentType.includes('text/html') && !contentType.includes('text/plain')) continue;
 
       const raw = await response.text();
-      const text = stripHtml(raw).slice(0, perPageTextLimit).trim();
+      const sanitizedHtml = sanitizeHtmlForExtraction(raw);
+      const text = stripHtml(sanitizedHtml).slice(0, perPageTextLimit).trim();
       if (!text) continue;
 
       const fallbackTitle = (() => {
@@ -208,7 +223,7 @@ async function fetchWebsiteSourceSnapshots(siteUrl, options = {}) {
       })();
 
       snapshots.push({
-        title: extractHtmlTitle(raw, fallbackTitle),
+        title: extractHtmlTitle(sanitizedHtml, fallbackTitle),
         body: text,
         source_url: currentKey,
       });

@@ -214,6 +214,11 @@
       .replace(/\bAnswer:\s*/gi, ' ')
       .replace(/\bYou are a concise company assistant\.?/gi, ' ')
       .replace(/\bAnswer only from the provided context\.?/gi, ' ')
+      .replace(/form\.antibot[^\n]*?/gi, ' ')
+      .replace(/\(function\(w,d,s,l,i\)\{[\s\S]*?\}\)\(window,document,'script','dataLayer','GTM-[A-Z0-9]+'\);?/gi, ' ')
+      .replace(/"@context"\s*:\s*"https:\/\/schema\.org"[\s\S]{0,2500}/gi, ' ')
+      .replace(/\{\s*"@type"\s*:\s*"(?:WebPage|WebSite|Article|WebApplication)"[\s\S]{0,1400}\}/gi, ' ')
+      .replace(/\b(skip to main content|breadcrumb|dmv practice tests|permit practice test|road signs practice test)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .replace(/\s+([,.;:!?])/g, '$1')
       .trim();
@@ -278,6 +283,14 @@
       || normalized.includes('run button for the internet')
       || normalized.includes('hide your secrets within your messages')
       || normalized.includes('local-first privacy web workers wasm')
+      || normalized.includes('form.antibot')
+      || normalized.includes('googletagmanager')
+      || normalized.includes('dataLayer')
+      || normalized.includes('@context')
+      || normalized.includes('schema.org')
+      || normalized.includes('breadcrumb')
+      || normalized.includes('skip to main content')
+      || normalized.includes('dmv practice tests')
     );
   }
 
@@ -1351,11 +1364,40 @@
 
   function appendMessage(container, who, text) {
     const node = document.createElement('div');
-    node.style.margin = '0.5rem 0';
-    const label = document.createElement('strong');
-    label.textContent = `${who}: `;
-    node.appendChild(label);
-    node.appendChild(document.createTextNode(text));
+    const isUser = String(who || '').toLowerCase() === 'you';
+    Object.assign(node.style, {
+      margin: '0.5rem 0',
+      display: 'flex',
+      justifyContent: isUser ? 'flex-end' : 'flex-start',
+    });
+
+    const bubble = document.createElement('div');
+    Object.assign(bubble.style, {
+      maxWidth: '86%',
+      padding: '0.55rem 0.65rem',
+      borderRadius: '11px',
+      lineHeight: '1.35',
+      whiteSpace: 'pre-wrap',
+      border: isUser ? '1px solid #9ec5ff' : '1px solid #e4e8f0',
+      background: isUser ? '#eaf3ff' : '#ffffff',
+      color: isUser ? '#143a74' : '#202a3a',
+    });
+
+    const label = document.createElement('div');
+    label.textContent = isUser ? 'You' : 'AI';
+    Object.assign(label.style, {
+      fontSize: '11px',
+      fontWeight: '700',
+      letterSpacing: '0.02em',
+      marginBottom: '0.18rem',
+      color: isUser ? '#1a4f95' : '#5a667a',
+    });
+
+    const content = document.createElement('div');
+    content.textContent = String(text || '');
+    bubble.appendChild(label);
+    bubble.appendChild(content);
+    node.appendChild(bubble);
     container.appendChild(node);
     container.scrollTop = container.scrollHeight;
   }
