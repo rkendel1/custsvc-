@@ -26,13 +26,15 @@ function buildAnalytics(telemetryEvents) {
   const roleUsage = {};
   const departmentUsage = {};
   const confidenceBuckets = { high: 0, medium: 0, low: 0 };
+  let unansweredTotal = 0;
 
   for (const event of events) {
     const question = String(event.question || '').trim();
-    if (!question) continue;
+    const intentFromEvent = String(event.intent || '').trim();
+    if (!question && !intentFromEvent) continue;
 
-    byQuestion[question] = (byQuestion[question] || 0) + 1;
-    const intent = classifyIntent(question);
+    if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;
+    const intent = intentFromEvent || classifyIntent(question);
     intentCounts[intent] = (intentCounts[intent] || 0) + 1;
     const role = String(event.role || 'Customer');
     roleUsage[role] = (roleUsage[role] || 0) + 1;
@@ -44,16 +46,19 @@ function buildAnalytics(telemetryEvents) {
     else confidenceBuckets.low += 1;
 
     if (!event.answered) {
-      unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
-      const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_CHAR_LENGTH);
-      for (const keyword of keywords) {
-        missingKeywords[keyword] = (missingKeywords[keyword] || 0) + 1;
+      unansweredTotal += 1;
+      if (question) {
+        unansweredByQuestion[question] = (unansweredByQuestion[question] || 0) + 1;
+        const keywords = tokenize(question).filter((x) => x.length >= MIN_KEYWORD_CHAR_LENGTH);
+        for (const keyword of keywords) {
+          missingKeywords[keyword] = (missingKeywords[keyword] || 0) + 1;
+        }
       }
     }
   }
 
-  const unansweredCount = Object.values(unansweredByQuestion).reduce((a, b) => a + b, 0);
-  const totalQuestions = Object.values(byQuestion).reduce((a, b) => a + b, 0);
+  const unansweredCount = unansweredTotal;
+  const totalQuestions = events.filter((event) => String(event.question || '').trim() || String(event.intent || '').trim()).length;
 
   return {
     totalQuestions,

@@ -559,6 +559,17 @@ function compileBundle(documents, options = {}) {
   const safeDocs = Array.isArray(documents) ? documents : [];
   const company = options.company || 'Acme';
   const safeProcesses = Array.isArray(options.processes) ? options.processes : [];
+  const models = Array.isArray(options.models) && options.models.length
+    ? options.models
+    : [
+      {
+        id: 'company-assistant-small',
+        type: 'llm',
+        runtime: 'wasm',
+        quantization: 'int4',
+        size: '350mb',
+      },
+    ];
   const knowledge = safeDocs.map(toKnowledgeObject);
   const chunks = knowledge.flatMap((item, index) => toChunks(item, index));
   const graph = buildGraph(knowledge);
@@ -593,8 +604,8 @@ function compileBundle(documents, options = {}) {
   }
 
   return {
-    version: 3,
-    format: 'company.intelligence.bundle.v3',
+    version: 4,
+    format: 'company.intelligence.bundle.v4',
     format_legacy: 'company.intelligence.bundle',
     company,
     generatedAt,
@@ -630,6 +641,7 @@ function compileBundle(documents, options = {}) {
       processes: processes.map((item) => item.id),
     },
     capabilities: [...capabilitySet],
+    models,
     analytics: {
       processes: {
         total: processes.length,
