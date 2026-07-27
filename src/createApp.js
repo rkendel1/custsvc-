@@ -13,6 +13,7 @@ const { createDeployment } = require('./lib/tenant/deployment');
 const { createConnectorVault } = require('./lib/connectorVault');
 const { testConnector } = require('./lib/connectors');
 const { createPgVectorStore, normalizeEmbedding } = require('./lib/pgVectorStore');
+const { tokenize, termFrequency, magnitude, similarity } = require('./lib/tokenize');
 
 function stripHtml(text) {
   const input = String(text || '');
@@ -406,6 +407,55 @@ function normalizeSourceSiteUrl(value) {
   }
 }
 
+function createSemanticEmbedding(text, dimensions = 64) {
+  const size = Math.max(16, Number(dimensions) || 64);
+  const vector = new Array(size).fill(0);
+  const tokens = tokenize(text || '');
+  if (!tokens.length) return vector;
+
+  for (const token of tokens) {
+    let hash = 2166136261;
+    for (let i = 0; i < token.length; i += 1) {
+      hash ^= token.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    const index = Math.abs(hash) % size;
+    vector[index] += 1;
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + (value * value), 0));
+  if (!norm) return vector;
+  return vector.map((value) => Number((value / norm).toFixed(6)));
+}
+
+function cosineSimilarityVectors(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || !a.length || !b.length) return 0;
+  const length = Math.min(a.length, b.length);
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (let i = 0; i < length; i += 1) {
+    const va = Number(a[i] || 0);
+    const vb = Number(b[i] || 0);
+    dot += va * vb;
+    magA += va * va;
+    magB += vb * vb;
+  }
+  if (!magA || !magB) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+function normalizedTermOverlap(queryTokens = [], docTokens = []) {
+  if (!queryTokens.length || !docTokens.length) return 0;
+  const uniqueQuery = [...new Set(queryTokens)];
+  const docSet = new Set(docTokens);
+  let hits = 0;
+  for (const token of uniqueQuery) {
+    if (docSet.has(token)) hits += 1;
+  }
+  return hits / uniqueQuery.length;
+}
+
 function isSensitiveConfigKey(key) {
   return /(secret|token|password|key)/i.test(String(key || ''));
 }
@@ -544,7 +594,7 @@ function toDocumentFromInput(input = {}, tenantId) {
   const title = String(input.title || '').trim();
   const body = String(input.body || '').trim();
   if (!title || !body) return null;
-  const embeddings = normalizeEmbedding(input.embeddings) || [];
+  const embeddings = normalizeEmbedding(input.embeddings) || createSemanticEmbedding(`${title}\n${body}`);
   return {
     id: `doc-${randomUUID()}`,
     tenant_id: tenantId,
@@ -1456,19 +1506,23 @@ function createApp(options = {}) {
   async function upsertVectorDocument(document) {
     const embedding = normalizeEmbedding(document?.embeddings);
     if (!embedding) return { ok: false, reason: 'embedding_missing_or_invalid' };
-    return pgVectorStore.upsertDocument({
-      tenantId: document.tenant_id,
-      docId: document.id,
-      body: document.body,
-      embedding,
-      metadata: {
-        title: document.title,
-        type: document.type,
-        visibility: document.visibility,
-        audience: document.audience,
-        source_url: document.source_url || null,
-      },
-    });
+    try {
+      return await pgVectorStore.upsertDocument({
+        tenantId: document.tenant_id,
+        docId: document.id,
+        body: document.body,
+        embedding,
+        metadata: {
+          title: document.title,
+          type: document.type,
+          visibility: document.visibility,
+          audience: document.audience,
+          source_url: document.source_url || null,
+        },
+      });
+    } catch (_error) {
+      return { ok: false, reason: 'pgvector_upsert_failed' };
+    }
   }
 
   async function syncWebsiteSourceContent(tenantId, source) {
@@ -1516,6 +1570,7 @@ function createApp(options = {}) {
           visibility: 'PUBLIC',
           audience: 'PUBLIC',
           source_url: siteUrl,
+          embeddings: normalizeEmbedding(existing?.embeddings) || createSemanticEmbedding(`${snapshot.title}\n${snapshot.body}`),
           updatedAt: new Date().toISOString(),
         };
         docs[existingIndex] = nextDoc;
@@ -1622,6 +1677,7 @@ function createApp(options = {}) {
           audience: 'PUBLIC',
           source_id: source.source_id,
           source_url: source.site_url || null,
+          embeddings: normalizeEmbedding(existing?.embeddings) || createSemanticEmbedding(`${String(source.type || 'Source')} source snapshot\n${body}`),
           updatedAt: new Date().toISOString(),
         };
         docs[existingIndex] = nextDoc;
@@ -2246,6 +2302,7 @@ function createApp(options = {}) {
       last_reviewed,
       review_frequency,
       confidence,
+      embeddings: normalizeEmbedding(req.body?.embeddings) || createSemanticEmbedding(`${String(title)}\n${normalizedBody}`),
       createdAt: new Date().toISOString(),
     };
     docs.push(document);
@@ -2315,6 +2372,7 @@ function createApp(options = {}) {
         owner,
         department,
         sourceUrl: String(url),
+        embeddings: normalizeEmbedding(req.body?.embeddings) || createSemanticEmbedding(`${String(title || `URL: ${url}`)}\n${text}`),
         createdAt: new Date().toISOString(),
       };
       docs.push(document);
@@ -2348,6 +2406,7 @@ function createApp(options = {}) {
         type: 'PDF',
         visibility,
         audience: visibility,
+        embeddings: createSemanticEmbedding(`${String(title)}\n${text}`),
         createdAt: new Date().toISOString(),
       };
       docs.push(document);
@@ -2400,6 +2459,108 @@ function createApp(options = {}) {
     const limit = Number(req.body?.limit || 5);
     const matches = await pgVectorStore.searchByEmbedding({ tenantId, embedding, limit });
     return res.json({ tenant_id: tenantId, matches });
+  });
+
+  app.post('/api/search/hybrid', writeLimiter, async (req, res) => {
+    const tenantId = resolveScopedTenantId(req);
+    const query = String(req.body?.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ error: 'query is required' });
+    }
+
+    const limit = Math.max(1, Math.min(50, Number(req.body?.limit || 10)));
+    const visibilityFilter = req.body?.visibility
+      ? new Set((Array.isArray(req.body.visibility) ? req.body.visibility : [req.body.visibility]).map((v) => normalizeVisibility(v)))
+      : null;
+    const typeFilter = req.body?.type
+      ? new Set((Array.isArray(req.body.type) ? req.body.type : [req.body.type]).map((v) => String(v || '').toUpperCase()).filter(Boolean))
+      : null;
+
+    const queryTokens = tokenize(query);
+    const queryTf = termFrequency(queryTokens);
+    const queryMag = magnitude(queryTf);
+    const semanticQueryEmbedding = normalizeEmbedding(req.body?.embedding) || createSemanticEmbedding(query);
+
+    const docs = listData(storage, 'listDocuments')
+      .filter((doc) => doc.tenant_id === tenantId)
+      .filter((doc) => (visibilityFilter ? visibilityFilter.has(normalizeVisibility(doc.visibility || 'INTERNAL')) : true))
+      .filter((doc) => (typeFilter ? typeFilter.has(String(doc.type || '').toUpperCase()) : true));
+
+    const vectorMatches = await pgVectorStore.searchByEmbedding({
+      tenantId,
+      embedding: semanticQueryEmbedding,
+      limit: Math.max(limit * 3, 30),
+    }).catch(() => []);
+    const vectorScoreByDocId = new Map(
+      (Array.isArray(vectorMatches) ? vectorMatches : [])
+        .map((match) => [String(match.doc_id || ''), Number(match.score || 0)])
+        .filter(([docId]) => Boolean(docId)),
+    );
+
+    const ranked = docs.map((doc) => {
+      const title = String(doc.title || '').trim();
+      const body = String(doc.body || '').trim();
+      const haystack = `${title}\n${body}`;
+      const docTokens = tokenize(haystack);
+      const docTf = termFrequency(docTokens);
+      const docMag = magnitude(docTf);
+
+      const keywordScore = normalizedTermOverlap(queryTokens, docTokens);
+      const fullTextScore = similarity(queryTf, queryMag, docTf, docMag);
+      const semanticScore = cosineSimilarityVectors(
+        semanticQueryEmbedding,
+        normalizeEmbedding(doc.embeddings) || createSemanticEmbedding(haystack),
+      );
+      const nearestNeighborScore = Number(vectorScoreByDocId.get(String(doc.id || '')) || 0);
+
+      const combinedScore = Number((
+        (semanticScore * 0.35)
+        + (fullTextScore * 0.3)
+        + (keywordScore * 0.2)
+        + (nearestNeighborScore * 0.15)
+      ).toFixed(6));
+
+      return {
+        id: doc.id,
+        tenant_id: doc.tenant_id,
+        title: doc.title,
+        type: doc.type,
+        visibility: doc.visibility,
+        audience: doc.audience,
+        source_id: doc.source_id || null,
+        source_url: doc.source_url || doc.sourceUrl || null,
+        summary: String(doc.summary || '').trim() || String(body).slice(0, 260),
+        score: combinedScore,
+        scores: {
+          semantic: Number(semanticScore.toFixed(6)),
+          full_text: Number(fullTextScore.toFixed(6)),
+          keyword: Number(keywordScore.toFixed(6)),
+          nearest_neighbor: Number(nearestNeighborScore.toFixed(6)),
+        },
+      };
+    });
+
+    const matches = ranked
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return res.json({
+      tenant_id: tenantId,
+      query,
+      total_indexed: docs.length,
+      matches,
+      strategy: {
+        type: 'hybrid',
+        components: ['semantic', 'full_text', 'keyword', 'nearest_neighbor'],
+        weights: {
+          semantic: 0.35,
+          full_text: 0.3,
+          keyword: 0.2,
+          nearest_neighbor: 0.15,
+        },
+      },
+    });
   });
 
   app.post('/api/telemetry', writeLimiter, (req, res) => {

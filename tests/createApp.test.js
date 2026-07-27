@@ -450,6 +450,61 @@ test('document vector search endpoint validates embedding payload and returns sc
   assert.equal(Array.isArray(body.matches), true);
 });
 
+test('hybrid search blends semantic, full-text, keyword, and nearest-neighbor scoring', async (t) => {
+  const documents = [];
+  const storage = {
+    listDocuments: () => [...documents],
+    saveDocuments: (nextDocuments) => {
+      documents.length = 0;
+      documents.push(...nextDocuments);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-a' },
+    body: JSON.stringify({
+      title: 'Refund policy',
+      body: 'Customers can request a full refund within 30 days of purchase.',
+      visibility: 'PUBLIC',
+      type: 'POLICY',
+    }),
+  });
+
+  await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-b' },
+    body: JSON.stringify({
+      title: 'Internal payroll guide',
+      body: 'Payroll closes on the 25th of each month.',
+      visibility: 'INTERNAL',
+      type: 'SOP',
+    }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/search/hybrid`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-a' },
+    body: JSON.stringify({ query: 'What is the refund window?', limit: 5 }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.tenant_id, 'tenant-a');
+  assert.equal(Array.isArray(body.matches), true);
+  assert.equal(body.matches.length >= 1, true);
+  assert.equal(body.matches[0].title, 'Refund policy');
+  assert.equal(typeof body.matches[0].scores.semantic, 'number');
+  assert.equal(typeof body.matches[0].scores.full_text, 'number');
+  assert.equal(typeof body.matches[0].scores.keyword, 'number');
+  assert.equal(typeof body.matches[0].scores.nearest_neighbor, 'number');
+});
+
 test('source monitoring endpoints register and sync website sources', async (t) => {
   const documents = [];
   const sources = [];
