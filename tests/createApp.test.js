@@ -1116,6 +1116,51 @@ test('source endpoints accept console cookie auth without session token', async 
   });
   assert.equal(pdfUpload.status !== 401, true);
 });
+ 
+ test('source endpoints accept valid tenant session token when console password mode is enabled', async (t) => {
+   const previousAuthSecret = process.env.APP_AUTH_SECRET;
+   process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+   t.after(() => {
+     if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+     else process.env.APP_AUTH_SECRET = previousAuthSecret;
+   });
+
+   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-source-session-auth-'));
+   const app = createApp({ rootDir });
+   const { server, baseUrl } = await startServer(app);
+   t.after(() => server.close());
+
+   const signupResponse = await fetch(`${baseUrl}/api/access/signup`, {
+     method: 'POST',
+     headers: { 'content-type': 'application/json' },
+     body: JSON.stringify({
+       tenant_id: 'sourceauth',
+       email: 'owner@sourceauth.dev',
+       password: 'password123',
+     }),
+   });
+   assert.equal(signupResponse.status, 201);
+   const signupBody = await signupResponse.json();
+   const sessionToken = String(signupBody?.session?.token || '').trim();
+   assert.equal(Boolean(sessionToken), true);
+
+   const sourceCreate = await fetch(`${baseUrl}/api/sources`, {
+     method: 'POST',
+     headers: {
+       'content-type': 'application/json',
+       'x-session-token': sessionToken,
+     },
+     body: JSON.stringify({
+       tenant_id: 'sourceauth',
+       name: 'Tenant Docs',
+       type: 'GENERIC',
+       config: {},
+     }),
+   });
+   const sourceBody = await sourceCreate.json();
+   assert.equal(sourceCreate.status, 201);
+   assert.equal(sourceBody?.source?.tenant_id, 'sourceauth');
+ });
 
 test('source templates endpoint returns connector field requirements', async (t) => {
   const storage = {

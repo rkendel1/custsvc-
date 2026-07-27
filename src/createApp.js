@@ -1582,6 +1582,23 @@ function requireTenantRole(storage, allowedRoles = ['Owner', 'Admin', 'Administr
   };
 }
 
+function hasValidTenantSessionToken(storage, req) {
+  const token = String(resolveSessionToken(req) || '').trim();
+  if (!token) return false;
+
+  const tenantId = String(resolveTenantId(req) || '').trim();
+  if (!tenantId) return false;
+
+  const sessions = listData(storage, 'listSessions');
+  const session = sessions.find(
+    (item) => item.token === token && item.tenant_id === tenantId && item.status === 'active',
+  );
+  if (!session) return false;
+
+  if (session.expires_at && Date.now() > Date.parse(session.expires_at)) return false;
+  return true;
+}
+
 function isValidEmail(email) {
   const value = String(email || '').trim().toLowerCase();
   if (!value || value.length > 254 || value.includes(' ')) return false;
@@ -2782,6 +2799,8 @@ function createApp(options = {}) {
     if (!String(req.path || '').startsWith('/api/')) return next();
     if (String(req.path || '').startsWith('/api/access/')) return next();
     if (String(req.path || '').startsWith('/api/embed/')) return next();
+    if (String(req.path || '').startsWith('/api/sources/') && hasValidTenantSessionToken(storage, req)) return next();
+    if (req.path === '/api/sources' && hasValidTenantSessionToken(storage, req)) return next();
     if (req.path === '/api/demo' || req.path === '/api/health' || req.path === '/api/system/status') return next();
     if (req.path === '/api/signup' || req.path === '/api/tenants' || req.path === '/api/onboarding/session') return next();
     return requireConsoleAccess(req, res, next);
