@@ -759,6 +759,12 @@
   }
 
   async function search(query, options = {}) {
+    const limit = Number(options.limit || 5);
+    const remoteMatches = await searchViaEmbedApi(query, { limit, context: options.context || state.context });
+    if (remoteMatches.length) {
+      return remoteMatches;
+    }
+
     const bundle = await loadBundle();
     const context = options.context || state.context;
     const queryTokens = tokenize(query);
@@ -825,8 +831,64 @@
     }
     }
     results.sort((a, b) => b.score - a.score);
-    const limit = Number(options.limit || 5);
     return results.slice(0, limit);
+  }
+
+  async function searchViaEmbedApi(query, options = {}) {
+    if (!apiBase || !tenantId) return [];
+    const input = String(query || '').trim();
+    if (!input) return [];
+
+    try {
+      const token = await getEmbedSessionToken();
+      if (!token) return [];
+
+      const response = await fetch(`${apiBase}/api/embed/search`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-embed-token': token,
+        },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          query: input,
+          limit: Number(options.limit || 5),
+          role: options.context?.role || state.context.role,
+          department: options.context?.department || state.context.department,
+          permissions: options.context?.permissions || state.context.permissions,
+        }),
+      });
+      if (!response.ok) return [];
+      const payload = await response.json();
+      const matches = Array.isArray(payload?.matches) ? payload.matches : [];
+
+      return matches
+        .map((match) => {
+          const text = String(match?.excerpt || match?.summary || '').trim();
+          if (!text) return null;
+          return {
+            chunk: {
+              id: String(match.id || ''),
+              knowledgeId: String(match.id || ''),
+              text,
+              audience: String(match.audience || match.visibility || 'PUBLIC'),
+              visibility: String(match.visibility || 'PUBLIC'),
+              department: null,
+              confidence: Number(match?.scores?.semantic || match.score || 0.7),
+              last_reviewed: null,
+              review_frequency: 90,
+            },
+            score: Number(match.score || 0),
+            source: {
+              id: String(match.source_id || 'server-hybrid'),
+              type: 'embed-search-api',
+            },
+          };
+        })
+        .filter(Boolean);
+    } catch (_error) {
+      return [];
+    }
   }
 
   async function answerQuestion(question) {

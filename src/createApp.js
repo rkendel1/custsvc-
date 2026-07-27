@@ -1611,6 +1611,126 @@ function createApp(options = {}) {
     }
   }
 
+  async function runHybridSearch(tenantId, options = {}) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    const query = String(options.query || '').trim();
+    if (!normalizedTenantId || !query) {
+      return {
+        tenant_id: normalizedTenantId,
+        query,
+        total_indexed: 0,
+        matches: [],
+        strategy: {
+          type: 'hybrid',
+          components: ['semantic', 'full_text', 'keyword', 'nearest_neighbor'],
+          weights: {
+            semantic: 0.35,
+            full_text: 0.3,
+            keyword: 0.2,
+            nearest_neighbor: 0.15,
+          },
+        },
+      };
+    }
+
+    const limit = Math.max(1, Math.min(50, Number(options.limit || 10)));
+    const visibilityFilter = options.visibility
+      ? new Set((Array.isArray(options.visibility) ? options.visibility : [options.visibility]).map((v) => normalizeVisibility(v)))
+      : null;
+    const typeFilter = options.type
+      ? new Set((Array.isArray(options.type) ? options.type : [options.type]).map((v) => String(v || '').toUpperCase()).filter(Boolean))
+      : null;
+
+    const queryTokens = tokenize(query);
+    const queryTf = termFrequency(queryTokens);
+    const queryMag = magnitude(queryTf);
+    const semanticQueryEmbedding = normalizeEmbedding(options.embedding) || createSemanticEmbedding(query);
+
+    const docs = listData(storage, 'listDocuments')
+      .filter((doc) => doc.tenant_id === normalizedTenantId)
+      .filter((doc) => (visibilityFilter ? visibilityFilter.has(normalizeVisibility(doc.visibility || 'INTERNAL')) : true))
+      .filter((doc) => (typeFilter ? typeFilter.has(String(doc.type || '').toUpperCase()) : true));
+
+    const vectorMatches = await pgVectorStore.searchByEmbedding({
+      tenantId: normalizedTenantId,
+      embedding: semanticQueryEmbedding,
+      limit: Math.max(limit * 3, 30),
+    }).catch(() => []);
+    const vectorScoreByDocId = new Map(
+      (Array.isArray(vectorMatches) ? vectorMatches : [])
+        .map((match) => [String(match.doc_id || ''), Number(match.score || 0)])
+        .filter(([docId]) => Boolean(docId)),
+    );
+
+    const ranked = docs.map((doc) => {
+      const title = String(doc.title || '').trim();
+      const body = String(doc.body || '').trim();
+      const haystack = `${title}\n${body}`;
+      const docTokens = tokenize(haystack);
+      const docTf = termFrequency(docTokens);
+      const docMag = magnitude(docTf);
+
+      const keywordScore = normalizedTermOverlap(queryTokens, docTokens);
+      const fullTextScore = similarity(queryTf, queryMag, docTf, docMag);
+      const semanticScore = cosineSimilarityVectors(
+        semanticQueryEmbedding,
+        normalizeEmbedding(doc.embeddings) || createSemanticEmbedding(haystack),
+      );
+      const nearestNeighborScore = Number(vectorScoreByDocId.get(String(doc.id || '')) || 0);
+
+      const combinedScore = Number((
+        (semanticScore * 0.35)
+        + (fullTextScore * 0.3)
+        + (keywordScore * 0.2)
+        + (nearestNeighborScore * 0.15)
+      ).toFixed(6));
+
+      const summary = String(doc.summary || '').trim() || String(body).slice(0, 260);
+      const excerpt = String(body).slice(0, 4000);
+      return {
+        id: doc.id,
+        tenant_id: doc.tenant_id,
+        title: doc.title,
+        type: doc.type,
+        visibility: doc.visibility,
+        audience: doc.audience,
+        source_id: doc.source_id || null,
+        source_url: doc.source_url || doc.sourceUrl || null,
+        summary,
+        excerpt,
+        score: combinedScore,
+        scores: {
+          semantic: Number(semanticScore.toFixed(6)),
+          full_text: Number(fullTextScore.toFixed(6)),
+          keyword: Number(keywordScore.toFixed(6)),
+          nearest_neighbor: Number(nearestNeighborScore.toFixed(6)),
+        },
+      };
+    });
+
+    const matches = ranked
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return {
+      tenant_id: normalizedTenantId,
+      query,
+      total_indexed: docs.length,
+      matches,
+      strategy: {
+        type: 'hybrid',
+        components: ['semantic', 'full_text', 'keyword', 'nearest_neighbor'],
+        weights: {
+          semantic: 0.35,
+          full_text: 0.3,
+          keyword: 0.2,
+          nearest_neighbor: 0.15,
+        },
+      },
+    };
+  }
+
   async function syncWebsiteSourceContent(tenantId, source) {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) return { syncedCount: 0, updated: source, error: null };
@@ -2334,6 +2454,45 @@ function createApp(options = {}) {
     return res.sendFile(bundlePath);
   });
 
+  app.post('/api/embed/search', writeLimiter, async (req, res) => {
+    const tenantId = String(req.body?.tenant_id || req.query?.tenant_id || '').trim();
+    if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
+
+    const verification = verifyEmbedSessionToken(resolveEmbedToken(req), {
+      tenantId,
+      origin: req.header('origin') || '',
+    });
+    if (!verification.ok) {
+      return res.status(401).json({ error: 'invalid embed session token', reason: verification.reason });
+    }
+
+    const query = String(req.body?.query || '').trim();
+    if (!query) return res.status(400).json({ error: 'query is required' });
+
+    const roleValue = String(req.body?.role || 'customer').toLowerCase();
+    const visibilityByRole = {
+      customer: ['PUBLIC'],
+      partner: ['PUBLIC', 'INTERNAL'],
+      support: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      engineering: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL'],
+      executive: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'EXECUTIVE'],
+      administrator: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'EXECUTIVE'],
+    };
+    const requestedVisibility = Array.isArray(req.body?.visibility) && req.body.visibility.length
+      ? req.body.visibility
+      : (visibilityByRole[roleValue] || ['PUBLIC']);
+
+    const payload = await runHybridSearch(tenantId, {
+      query,
+      limit: Number(req.body?.limit || 5),
+      visibility: requestedVisibility,
+      type: req.body?.type,
+      embedding: req.body?.embedding,
+    });
+
+    return res.json(payload);
+  });
+
   app.use((req, res, next) => {
     if (!shouldRequireConsolePassword(req)) return next();
     if (!String(req.path || '').startsWith('/api/')) return next();
@@ -2562,99 +2721,14 @@ function createApp(options = {}) {
       return res.status(400).json({ error: 'query is required' });
     }
 
-    const limit = Math.max(1, Math.min(50, Number(req.body?.limit || 10)));
-    const visibilityFilter = req.body?.visibility
-      ? new Set((Array.isArray(req.body.visibility) ? req.body.visibility : [req.body.visibility]).map((v) => normalizeVisibility(v)))
-      : null;
-    const typeFilter = req.body?.type
-      ? new Set((Array.isArray(req.body.type) ? req.body.type : [req.body.type]).map((v) => String(v || '').toUpperCase()).filter(Boolean))
-      : null;
-
-    const queryTokens = tokenize(query);
-    const queryTf = termFrequency(queryTokens);
-    const queryMag = magnitude(queryTf);
-    const semanticQueryEmbedding = normalizeEmbedding(req.body?.embedding) || createSemanticEmbedding(query);
-
-    const docs = listData(storage, 'listDocuments')
-      .filter((doc) => doc.tenant_id === tenantId)
-      .filter((doc) => (visibilityFilter ? visibilityFilter.has(normalizeVisibility(doc.visibility || 'INTERNAL')) : true))
-      .filter((doc) => (typeFilter ? typeFilter.has(String(doc.type || '').toUpperCase()) : true));
-
-    const vectorMatches = await pgVectorStore.searchByEmbedding({
-      tenantId,
-      embedding: semanticQueryEmbedding,
-      limit: Math.max(limit * 3, 30),
-    }).catch(() => []);
-    const vectorScoreByDocId = new Map(
-      (Array.isArray(vectorMatches) ? vectorMatches : [])
-        .map((match) => [String(match.doc_id || ''), Number(match.score || 0)])
-        .filter(([docId]) => Boolean(docId)),
-    );
-
-    const ranked = docs.map((doc) => {
-      const title = String(doc.title || '').trim();
-      const body = String(doc.body || '').trim();
-      const haystack = `${title}\n${body}`;
-      const docTokens = tokenize(haystack);
-      const docTf = termFrequency(docTokens);
-      const docMag = magnitude(docTf);
-
-      const keywordScore = normalizedTermOverlap(queryTokens, docTokens);
-      const fullTextScore = similarity(queryTf, queryMag, docTf, docMag);
-      const semanticScore = cosineSimilarityVectors(
-        semanticQueryEmbedding,
-        normalizeEmbedding(doc.embeddings) || createSemanticEmbedding(haystack),
-      );
-      const nearestNeighborScore = Number(vectorScoreByDocId.get(String(doc.id || '')) || 0);
-
-      const combinedScore = Number((
-        (semanticScore * 0.35)
-        + (fullTextScore * 0.3)
-        + (keywordScore * 0.2)
-        + (nearestNeighborScore * 0.15)
-      ).toFixed(6));
-
-      return {
-        id: doc.id,
-        tenant_id: doc.tenant_id,
-        title: doc.title,
-        type: doc.type,
-        visibility: doc.visibility,
-        audience: doc.audience,
-        source_id: doc.source_id || null,
-        source_url: doc.source_url || doc.sourceUrl || null,
-        summary: String(doc.summary || '').trim() || String(body).slice(0, 260),
-        score: combinedScore,
-        scores: {
-          semantic: Number(semanticScore.toFixed(6)),
-          full_text: Number(fullTextScore.toFixed(6)),
-          keyword: Number(keywordScore.toFixed(6)),
-          nearest_neighbor: Number(nearestNeighborScore.toFixed(6)),
-        },
-      };
-    });
-
-    const matches = ranked
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
-
-    return res.json({
-      tenant_id: tenantId,
+    const payload = await runHybridSearch(tenantId, {
       query,
-      total_indexed: docs.length,
-      matches,
-      strategy: {
-        type: 'hybrid',
-        components: ['semantic', 'full_text', 'keyword', 'nearest_neighbor'],
-        weights: {
-          semantic: 0.35,
-          full_text: 0.3,
-          keyword: 0.2,
-          nearest_neighbor: 0.15,
-        },
-      },
+      limit: Number(req.body?.limit || 10),
+      visibility: req.body?.visibility,
+      type: req.body?.type,
+      embedding: req.body?.embedding,
     });
+    return res.json(payload);
   });
 
   app.post('/api/telemetry', writeLimiter, (req, res) => {

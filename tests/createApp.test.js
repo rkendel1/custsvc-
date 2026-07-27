@@ -312,6 +312,42 @@ test('embed runtime auto-provisions deployment and bundle for authenticated tena
   const bundle = await bundleResponse.json();
   assert.equal(bundle.company, 'randy');
 
+  const createDocResponse = await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+    },
+    body: JSON.stringify({
+      title: 'Refund policy',
+      body: 'Refunds are available within 30 days of purchase.',
+      visibility: 'PUBLIC',
+      type: 'POLICY',
+    }),
+  });
+  assert.equal(createDocResponse.status, 201);
+
+  const searchResponse = await fetch(`${baseUrl}/api/embed/search`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-embed-token': sessionBody.token,
+      cookie,
+    },
+    body: JSON.stringify({
+      tenant_id: 'randy',
+      query: 'refund window',
+      limit: 3,
+      role: 'customer',
+    }),
+  });
+  const searchBody = await searchResponse.json();
+  assert.equal(searchResponse.status, 200);
+  assert.equal(searchBody.tenant_id, 'randy');
+  assert.equal(Array.isArray(searchBody.matches), true);
+  assert.equal(searchBody.matches.length >= 1, true);
+  assert.equal(searchBody.matches[0].title, 'Refund policy');
+
   const tenantBundlePath = path.join(rootDir, 'bundles', 'randy.knowledgeos.bundle.json');
   assert.equal(fs.existsSync(tenantBundlePath), true);
 });
