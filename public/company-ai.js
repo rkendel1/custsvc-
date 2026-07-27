@@ -123,12 +123,16 @@
   function getKnowledgeSource(chunk, bundle = state.bundle) {
     const profile = getStorageProfile(bundle);
     const chunkAudience = normalizeAudience(chunk?.audience || chunk?.visibility).toLowerCase();
-    const mapped = profile.stores.find((store) => {
-      const audiences = Array.isArray(store?.audiences) ? store.audiences : [];
-      if (!audiences.length) return false;
-      return audiences.map((item) => String(item).toLowerCase()).includes(chunkAudience);
+    const stores = (profile.stores || []).map((store) => ({
+      ...store,
+      _audiencesNormalized: (Array.isArray(store?.audiences) ? store.audiences : [])
+        .map((item) => String(item).toLowerCase()),
+    }));
+    const mapped = stores.find((store) => {
+      if (!store._audiencesNormalized?.length) return false;
+      return store._audiencesNormalized.includes(chunkAudience);
     });
-    return mapped || profile.stores[0] || { id: 'public', type: 'browser-local', audiences: ['customer'] };
+    return mapped || stores[0] || { id: 'public', type: 'browser-local', audiences: ['customer'] };
   }
 
   function simpleHash(value) {
@@ -457,7 +461,7 @@
     const bundle = await loadBundle();
     initializeAiIfNeeded(bundle);
     const intentResult = detectIntent(question);
-    const results = await search(question, { limit: 5 });
+    const results = await search(question, { limit: 1 });
     const best = results[0] || null;
 
     if (best && best.score >= minAnswerConfidence) {

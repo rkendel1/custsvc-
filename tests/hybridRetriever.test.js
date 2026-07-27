@@ -44,4 +44,5 @@ test('hybrid retriever merges parallel results and ranks by score', async () => 
   const employee = await retriever.search('refund', { role: 'Support' });
   assert.equal(employee.length, 1);
   assert.equal(employee[0].sourceStoreId, 'internal');
+  assert.equal(employee[0].score, 0.9);
 });

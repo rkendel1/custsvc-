@@ -12,6 +12,7 @@ class KnowledgeStore {
   async delete() { return false; }
 
   async embed(text = '') {
+    // Lightweight deterministic fallback for local development/testing.
     return String(text || '')
       .toLowerCase()
       .split(/\W+/)
