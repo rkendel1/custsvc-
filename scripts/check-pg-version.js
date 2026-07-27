@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { Client } = require('pg');
 const { buildPgConnectionConfig } = require('../src/lib/pgConfig');
 
