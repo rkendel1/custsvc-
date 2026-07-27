@@ -12,6 +12,7 @@ const { provisionTenant } = require('./lib/tenantProvisioner');
 const { createDeployment } = require('./lib/tenant/deployment');
 const { createConnectorVault } = require('./lib/connectorVault');
 const { testConnector } = require('./lib/connectors');
+const { createPgVectorStore, normalizeEmbedding } = require('./lib/pgVectorStore');
 
 function stripHtml(text) {
   const input = String(text || '');
@@ -399,6 +400,7 @@ function toDocumentFromInput(input = {}, tenantId) {
   const title = String(input.title || '').trim();
   const body = String(input.body || '').trim();
   if (!title || !body) return null;
+  const embeddings = normalizeEmbedding(input.embeddings) || [];
   return {
     id: `doc-${randomUUID()}`,
     tenant_id: tenantId,
@@ -418,6 +420,7 @@ function toDocumentFromInput(input = {}, tenantId) {
     last_reviewed: input.last_reviewed || null,
     review_frequency: input.review_frequency || null,
     confidence: Number(input.confidence || 0.7),
+    embeddings,
     source_url: input.source_url || null,
     createdAt: new Date().toISOString(),
   };
@@ -674,6 +677,25 @@ function createApp(options = {}) {
   const tenantResolverMiddleware = requireTenantOrSession(storage);
   const tenantSessionMiddleware = requireTenantSession(storage);
   const connectorVault = createConnectorVault({ storage });
+  const pgVectorStore = createPgVectorStore();
+
+  async function upsertVectorDocument(document) {
+    const embedding = normalizeEmbedding(document?.embeddings);
+    if (!embedding) return { ok: false, reason: 'embedding_missing_or_invalid' };
+    return pgVectorStore.upsertDocument({
+      tenantId: document.tenant_id,
+      docId: document.id,
+      body: document.body,
+      embedding,
+      metadata: {
+        title: document.title,
+        type: document.type,
+        visibility: document.visibility,
+        audience: document.audience,
+        source_url: document.source_url || null,
+      },
+    });
+  }
 
   async function getSourceFullConfig(source, tenantId) {
     const secretRecord = await connectorVault.getSecrets({ tenantId, sourceId: source.source_id });
@@ -728,6 +750,7 @@ function createApp(options = {}) {
       ok: true,
       database,
       connector_vault: connectorVault.getState(),
+      pgvector: pgVectorStore.getState(),
       browser_runtime: {
         bundle_url: '/bundles/knowledgeos.bundle.json',
         pglite_module_url: '/vendor/pglite/index.js',
@@ -742,7 +765,7 @@ function createApp(options = {}) {
     res.json({ documents: filtered });
   });
 
-  app.post('/api/documents', writeLimiter, (req, res) => {
+  app.post('/api/documents', writeLimiter, async (req, res) => {
     const {
       title,
       body,
@@ -791,11 +814,12 @@ function createApp(options = {}) {
     };
     docs.push(document);
     saveData(storage, 'saveDocuments', docs);
+    await upsertVectorDocument(document);
 
     return res.status(201).json({ document });
   });
 
-  app.post('/api/documents/bulk', writeLimiter, (req, res) => {
+  app.post('/api/documents/bulk', writeLimiter, async (req, res) => {
     const tenantId = resolveScopedTenantId(req);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (!items.length) {
@@ -813,6 +837,7 @@ function createApp(options = {}) {
         continue;
       }
       docs.push(candidate);
+      await upsertVectorDocument(candidate);
       inserted.push(candidate);
     }
 
@@ -825,7 +850,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/documents/url', writeLimiter, (req, res) => {
+  app.post('/api/documents/url', writeLimiter, async (req, res) => {
     const { url, title, content, visibility = 'PUBLIC', owner = null, department = null } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
     if (!content) {
@@ -856,6 +881,7 @@ function createApp(options = {}) {
       };
       docs.push(document);
       saveData(storage, 'saveDocuments', docs);
+      await upsertVectorDocument(document);
       return res.status(201).json({ document });
     } catch (error) {
       return res.status(500).json({ error: `unable to process URL content: ${error.message}` });
@@ -887,6 +913,7 @@ function createApp(options = {}) {
       };
       docs.push(document);
       saveData(storage, 'saveDocuments', docs);
+      await upsertVectorDocument(document);
       return res.status(201).json({ document });
     } catch (error) {
       return res.status(500).json({ error: `unable to parse pdf: ${error.message}` });
@@ -922,6 +949,17 @@ function createApp(options = {}) {
         confidence: bundle.confidence,
       },
     });
+  });
+
+  app.post('/api/documents/search', writeLimiter, async (req, res) => {
+    const tenantId = resolveScopedTenantId(req);
+    const embedding = normalizeEmbedding(req.body?.embedding);
+    if (!embedding) {
+      return res.status(400).json({ error: 'embedding is required and must be a numeric array' });
+    }
+    const limit = Number(req.body?.limit || 5);
+    const matches = await pgVectorStore.searchByEmbedding({ tenantId, embedding, limit });
+    return res.json({ tenant_id: tenantId, matches });
   });
 
   app.post('/api/telemetry', writeLimiter, (req, res) => {

@@ -106,6 +106,14 @@ Production secret management:
 - Connector secrets are stored in Postgres table `connector_secrets` (with `key_version`, `algorithm`, and `rotated_at`) rather than embedded in `sources.json` configs.
 - Connector audit events are stored in Postgres table `connector_audit_log`.
 
+Render Postgres + pgvector:
+
+- This app supports Render Postgres using `DATABASE_URL`.
+- On startup, API modules create pgvector schema if available.
+- Required extension: `vector`.
+- New table: `knowledge_embeddings` for tenant-scoped vector storage.
+- New endpoint: `POST /api/documents/search` for tenant-scoped cosine vector retrieval.
+
 Or via npm scripts:
 
 ```bash
@@ -144,6 +152,13 @@ Tenant isolation guarantees:
 - Document, source, compile, and analytics APIs execute in tenant scope.
 - Bundles compile per-tenant (`<tenant>.knowledgeos.bundle.json`) and do not aggregate cross-tenant knowledge.
 - Source listings are always tenant-filtered.
+- Vector search is always tenant-filtered in `knowledge_embeddings`.
+
+Browser-local embedding strategy:
+
+- Admin and onboarding ingestion now generate embeddings in-browser with `Transformers.js` using `Xenova/all-MiniLM-L6-v2`.
+- Embedding vectors are sent to the API and persisted in pgvector.
+- No external embedding API tokens are required.
 
 ## Browser Runtime Warmup
 
@@ -179,6 +194,7 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `POST /api/documents/bulk`
 - `POST /api/documents/url`
 - `POST /api/documents/pdf` (multipart file upload)
+- `POST /api/documents/search`
 - `GET /api/sources`
 - `GET /api/sources/templates`
 - `GET /api/sources/audit`

@@ -34,6 +34,39 @@ function parseMaybeJsonArray(value) {
 }
 
 let sourceTemplates = [];
+const EMBEDDING_MODEL_REPO = 'Xenova/all-MiniLM-L6-v2';
+const EMBEDDING_ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+let embeddingPipeline = null;
+
+async function ensureEmbeddingPipeline() {
+  if (embeddingPipeline) return embeddingPipeline;
+  const transformers = await import(EMBEDDING_ENGINE_URL);
+  embeddingPipeline = await transformers.pipeline('feature-extraction', EMBEDDING_MODEL_REPO);
+  return embeddingPipeline;
+}
+
+function flattenEmbedding(output) {
+  if (!output) return [];
+  if (Array.isArray(output?.data)) {
+    return output.data.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+  }
+  if (Array.isArray(output)) {
+    return output.flat(Infinity).map((item) => Number(item)).filter((item) => Number.isFinite(item));
+  }
+  return [];
+}
+
+async function createEmbedding(text) {
+  const input = String(text || '').trim();
+  if (!input) return [];
+  try {
+    const pipeline = await ensureEmbeddingPipeline();
+    const output = await pipeline(input, { pooling: 'mean', normalize: true });
+    return flattenEmbedding(output);
+  } catch (_error) {
+    return [];
+  }
+}
 
 function getSourceTemplate(type) {
   const normalizedType = String(type || 'GENERIC').toUpperCase();
@@ -119,6 +152,7 @@ function wireTextDocForm() {
     payload.relationships = parseMaybeJsonArray(payload.relationships);
     payload.review_frequency = Number(payload.review_frequency || 90);
     payload.confidence = Number(payload.confidence || 0.7);
+    payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.body || ''}`);
 
     try {
       await requestJson('/api/documents', {
@@ -140,6 +174,7 @@ function wireUrlDocForm() {
     event.preventDefault();
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
+    payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.content || ''}`);
 
     try {
       await requestJson('/api/documents/url', {
@@ -191,10 +226,18 @@ function wireBulkDocForm() {
     }
 
     try {
+      const embeddedItems = await Promise.all(items.map(async (item) => {
+        const text = `${item?.title || ''}\n${item?.body || ''}`;
+        return {
+          ...item,
+          embeddings: await createEmbedding(text),
+        };
+      }));
+
       const result = await requestJson('/api/documents/bulk', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items: embeddedItems }),
       });
       alert(`Imported ${result.inserted_count} documents (${result.rejected_count} rejected).`);
       await refreshDocuments();
@@ -259,7 +302,12 @@ function wireSourceSync() {
       try {
         const parsed = JSON.parse(rawDocs);
         if (!Array.isArray(parsed)) throw new Error('must be an array');
-        documents = parsed;
+        documents = await Promise.all(parsed.map(async (item) => ({
+          ...item,
+          embeddings: Array.isArray(item?.embeddings)
+            ? item.embeddings
+            : await createEmbedding(`${item?.title || ''}\n${item?.body || ''}`),
+        })));
       } catch (error) {
         alert(`Invalid sync JSON: ${error.message}`);
         return;

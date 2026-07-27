@@ -210,6 +210,35 @@ test('documents are strictly scoped per tenant and do not bleed across tenants',
   assert.equal(tenantB.documents[0].title, 'B1');
 });
 
+test('document vector search endpoint validates embedding payload and returns scoped shape', async (t) => {
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const badResponse = await fetch(`${baseUrl}/api/documents/search`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-a' },
+    body: JSON.stringify({ embedding: null }),
+  });
+  assert.equal(badResponse.status, 400);
+
+  const okResponse = await fetch(`${baseUrl}/api/documents/search`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-a' },
+    body: JSON.stringify({ embedding: [0.12, 0.77, -0.3], limit: 3 }),
+  });
+  const body = await okResponse.json();
+  assert.equal(okResponse.status, 200);
+  assert.equal(body.tenant_id, 'tenant-a');
+  assert.equal(Array.isArray(body.matches), true);
+});
+
 test('source monitoring endpoints register and sync website sources', async (t) => {
   const documents = [];
   const sources = [];
