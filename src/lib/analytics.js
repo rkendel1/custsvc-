@@ -30,12 +30,12 @@ function buildAnalytics(telemetryEvents) {
 
   for (const event of events) {
     const question = String(event.question || '').trim();
-    const intentFromEvent = String(event.intent || '').trim();
-    if (!question && !intentFromEvent) continue;
+    const intent = String(event.intent || '').trim();
+    if (!question && !intent) continue;
 
     if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;
-    const intent = intentFromEvent || classifyIntent(question);
-    intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+    const normalizedIntent = intent || classifyIntent(question);
+    intentCounts[normalizedIntent] = (intentCounts[normalizedIntent] || 0) + 1;
     const role = String(event.role || 'Customer');
     roleUsage[role] = (roleUsage[role] || 0) + 1;
     const department = String(event.department || 'Unknown');

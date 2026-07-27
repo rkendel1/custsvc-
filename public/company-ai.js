@@ -284,7 +284,7 @@
     return { intent: 'general_question', confidence: 0.72 };
   }
 
-  function ensureAiInitialized(bundle) {
+  function initializeAiIfNeeded(bundle) {
     if (state.ai.initialized) return;
     state.ai.model = (bundle?.models || []).find((item) => item.runtime === 'wasm' && item.type === 'llm') || null;
     state.ai.initialized = true;
@@ -292,7 +292,7 @@
 
   async function answerQuestion(question) {
     const bundle = await loadBundle();
-    ensureAiInitialized(bundle);
+    initializeAiIfNeeded(bundle);
     const queryTokens = tokenize(question);
     const queryTf = termFrequency(queryTokens);
     const queryMag = magnitude(queryTf);

@@ -17,7 +17,7 @@ function inferIntent(question) {
 
 function extractFields(text) {
   const input = String(text || '');
-  const email = input.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || null;
+  const email = input.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || null;
   const amount = input.match(/amount[\s:]*([\$]\d+(?:\.\d{2})?)/i)?.[1]
     || input.match(/([\$]\d+(?:\.\d{2})?)/)?.[1]
     || null;
