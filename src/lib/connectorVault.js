@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { buildPgConnectionConfig, hasPgConnectionConfig } = require('./pgConfig');
 
 let Pool = null;
 try {
@@ -12,8 +13,7 @@ function nowIso() {
 }
 
 function createConnectorVault({ storage }) {
-  const databaseUrl = String(process.env.DATABASE_URL || '').trim();
-  const usePostgres = Boolean(databaseUrl && Pool);
+  const usePostgres = Boolean(Pool && hasPgConnectionConfig());
   const keyVersion = Number(process.env.SOURCE_SECRET_KEY_VERSION || 1);
 
   let pool = null;
@@ -22,7 +22,11 @@ function createConnectorVault({ storage }) {
   async function ensureSchema() {
     if (!usePostgres) return;
     if (initialized) return;
-    if (!pool) pool = new Pool({ connectionString: databaseUrl });
+    if (!pool) {
+      const connectionConfig = buildPgConnectionConfig();
+      if (!connectionConfig) return;
+      pool = new Pool(connectionConfig);
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS connector_secrets (

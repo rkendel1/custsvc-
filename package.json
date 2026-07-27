@@ -7,7 +7,9 @@
     "test": "node --test",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "db:check": "node scripts/check-pg-version.js",
     "docker:up": "docker compose up -d --build",
+    "docker:up:localdb": "docker compose --profile localdb up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f"
   },

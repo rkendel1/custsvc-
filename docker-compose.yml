@@ -8,22 +8,25 @@ services:
     environment:
       PORT: 3000
       COMPANY_NAME: KnowledgeOS
-      DATABASE_URL: postgres://knowledgeos:knowledgeos@postgres:5432/knowledgeos
-      PGHOST: postgres
-      PGPORT: 5432
-      PGUSER: knowledgeos
-      PGPASSWORD: knowledgeos
-      PGDATABASE: knowledgeos
+      DATABASE_URL: ${DATABASE_URL}
+      PGHOST: ${PGHOST:-}
+      PGPORT: ${PGPORT:-5432}
+      PGUSER: ${PGUSER:-}
+      PGPASSWORD: ${PGPASSWORD:-}
+      PGDATABASE: ${PGDATABASE:-}
+      PGSSLMODE: ${PGSSLMODE:-require}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-/certs/aiven-ca.pem}
+      DATABASE_SSL_CA: ${DATABASE_SSL_CA:-}
+      DATABASE_SSL_CA_BASE64: ${DATABASE_SSL_CA_BASE64:-}
+      PGSSL_REJECT_UNAUTHORIZED: ${PGSSL_REJECT_UNAUTHORIZED:-true}
       SOURCE_SECRET_KEY: ${SOURCE_SECRET_KEY:-replace-me-with-a-strong-secret}
       SOURCE_SECRET_KEY_VERSION: ${SOURCE_SECRET_KEY_VERSION:-1}
     ports:
       - "${APP_PORT:-3000}:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
     volumes:
       - app_data:/app/data
       - app_bundles:/app/bundles
+      - ./certs:/certs:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 10s
@@ -31,6 +34,7 @@ services:
       retries: 10
 
   postgres:
+    profiles: ["localdb"]
     image: postgres:16-alpine
     container_name: knowledgeos-postgres
     restart: unless-stopped
@@ -50,6 +54,7 @@ services:
       retries: 10
 
   adminer:
+    profiles: ["localdb"]
     image: adminer:4
     container_name: knowledgeos-adminer
     restart: unless-stopped

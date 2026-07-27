@@ -5,6 +5,8 @@ try {
   Pool = null;
 }
 
+const { buildPgConnectionConfig, hasPgConnectionConfig } = require('./pgConfig');
+
 function normalizeEmbedding(value) {
   if (!Array.isArray(value)) return null;
   const vector = value
@@ -21,15 +23,18 @@ function toVectorLiteral(vector) {
 }
 
 function createPgVectorStore() {
-  const databaseUrl = String(process.env.DATABASE_URL || '').trim();
-  const enabled = Boolean(databaseUrl && Pool);
+  const enabled = Boolean(Pool && hasPgConnectionConfig());
   let pool = null;
   let schemaReady = false;
 
   async function ensureSchema() {
     if (!enabled) return;
     if (schemaReady) return;
-    if (!pool) pool = new Pool({ connectionString: databaseUrl });
+    if (!pool) {
+      const connectionConfig = buildPgConnectionConfig();
+      if (!connectionConfig) return;
+      pool = new Pool(connectionConfig);
+    }
 
     await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
     await pool.query(`

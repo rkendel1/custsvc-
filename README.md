@@ -88,13 +88,19 @@ Open:
 This repository now includes a contained Docker stack with:
 
 - `app` (Node/Express API + static runtime)
-- `postgres` (PostgreSQL 16)
+- `postgres` (PostgreSQL 16, optional local profile)
 - `adminer` (database UI)
 
-Run the stack:
+Run the app against an external database (recommended for Aiven/Render):
 
 ```bash
 docker compose up --build
+```
+
+Run with local postgres/adminer for development:
+
+```bash
+docker compose --profile localdb up --build
 ```
 
 Production secret management:
@@ -113,6 +119,24 @@ Render Postgres + pgvector:
 - Required extension: `vector`.
 - New table: `knowledge_embeddings` for tenant-scoped vector storage.
 - New endpoint: `POST /api/documents/search` for tenant-scoped cosine vector retrieval.
+
+Aiven PostgreSQL 17:
+
+- Set `DATABASE_URL` to your Aiven service URI.
+- Keep TLS enabled with `PGSSLMODE=require`.
+- Supply CA with one of:
+        - `PGSSLROOTCERT=/path/to/aiven-ca.pem`
+        - `DATABASE_SSL_CA` as inline PEM (supports escaped `\n`)
+        - `DATABASE_SSL_CA_BASE64` as base64-encoded PEM
+- Keep certificate validation on: `PGSSL_REJECT_UNAUTHORIZED=true`.
+
+Quick connectivity check:
+
+```bash
+npm run db:check
+```
+
+Expected output includes a PostgreSQL 17 version string and whether `pgvector` is installed.
 
 Or via npm scripts:
 
