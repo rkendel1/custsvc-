@@ -374,6 +374,11 @@
   }
 
   function isResultRelevantToQuestion(question, text, score = 0) {
+    const normalizedQuestion = String(question || '').toLowerCase();
+    const normalizedText = String(text || '').toLowerCase();
+    const asksExperience = normalizedQuestion.includes('experience') || normalizedQuestion.includes('exp');
+    if (asksExperience && /\b\d+\+?\s+years?\b/i.test(normalizedText)) return true;
+
     const stats = sentenceRelevance(question, text);
     if (stats.anchorCount > 0) {
       if (stats.anchorOverlap >= 1) return true;
@@ -489,6 +494,8 @@
     let score = overlap * 3;
     if (normalizedQuestion.includes('randy') && normalizedSentence.includes('randy')) score += 3;
     if (normalizedQuestion.includes('experience') && normalizedSentence.includes('year')) score += 3;
+    if (normalizedQuestion.includes('experience') && /\b\d+\+?\s+years?\b/i.test(sentence)) score += 5;
+    if (normalizedQuestion.includes('experience') && /\b(email|contact|linkedin|github)\b/i.test(normalizedSentence)) score -= 5;
     if (normalizedQuestion.includes('project management') && normalizedSentence.includes('project')) score += 3;
     if (normalizedQuestion.includes('project management') && normalizedSentence.includes('program management')) score += 2;
     if (/\b\d+\+?\s+years?\b/i.test(sentence)) score += 2;
@@ -561,6 +568,15 @@
   function buildExperienceAnswer(question, corpusText) {
     const normalizedQuestion = String(question || '').toLowerCase();
     if (!normalizedQuestion.includes('experience')) return null;
+
+    const fullCorpus = cleanRetrievedText(corpusText);
+    const directMatch = fullCorpus.match(/\b(\d+\+?)\s+years?\b[^.]{0,120}(experience|building|leading|scaling|engineering|software|product|delivery)?/i);
+    if (directMatch?.[1]) {
+      if (normalizedQuestion.includes('project management') || normalizedQuestion.includes('program management')) {
+        return `Randy has ${directMatch[1]} years of experience, including hands-on project and program management.`;
+      }
+      return `Randy has ${directMatch[1]} years of experience.`;
+    }
 
     const sentences = chooseBestSentences(question, corpusText, 6);
     for (const sentence of sentences) {

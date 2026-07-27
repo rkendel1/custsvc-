@@ -362,16 +362,26 @@
 
           <div class="wizard-step" data-step="2" data-advanced>
             <h3 style="font-size:1rem;">Advanced: direct knowledge editing (not source-attached)</h3>
-            <div class="card-grid" style="margin-top: 0.7rem;">
-              <div class="card">
-                <h3 style="font-size:0.98rem;">Knowledge Object</h3>
-                <form id="textDocForm">
-                  <label>Title <input name="title" required /></label>
-                  <label>Summary <input name="summary" /></label>
-                  <label>Owner <input name="owner" placeholder="owner@company.com" /></label>
-                  <label>Department <input name="department" placeholder="Support" /></label>
+            <div class="card" style="margin-top: 0.7rem;">
+              <h3 style="font-size:0.98rem;">Direct ingest wizard</h3>
+              <p style="color: var(--muted); margin: 0.35rem 0 0.55rem; font-size: 0.86rem;">Single tool for single-object, URL, PDF, and bulk JSON import.</p>
+              <form id="directIngestForm" enctype="multipart/form-data">
+                <label>Mode
+                  <select name="mode" id="directIngestMode">
+                    <option value="text" selected>Single object (text/markdown/faq/policy)</option>
+                    <option value="url">URL object</option>
+                    <option value="pdf">PDF object</option>
+                    <option value="bulk">Bulk JSON import</option>
+                  </select>
+                </label>
+
+                <div id="directIngestCommonFields">
+                  <label>Title <input name="title" id="directIngestTitle" /></label>
+                  <label>Summary <input name="summary" id="directIngestSummary" /></label>
+                  <label>Owner <input name="owner" id="directIngestOwner" placeholder="owner@company.com" /></label>
+                  <label>Department <input name="department" id="directIngestDepartment" placeholder="Support" /></label>
                   <label>Type
-                    <select name="type">
+                    <select name="type" id="directIngestType">
                       <option value="TEXT">TEXT</option>
                       <option value="MARKDOWN">MARKDOWN</option>
                       <option value="FAQ">FAQ</option>
@@ -379,7 +389,7 @@
                     </select>
                   </label>
                   <label>Visibility
-                    <select name="visibility">
+                    <select name="visibility" id="directIngestVisibility">
                       <option value="PUBLIC">PUBLIC</option>
                       <option value="INTERNAL" selected>INTERNAL</option>
                       <option value="CONFIDENTIAL">CONFIDENTIAL</option>
@@ -387,62 +397,38 @@
                     </select>
                   </label>
                   <label>Audience
-                    <select name="audience">
+                    <select name="audience" id="directIngestAudience">
                       <option value="PUBLIC">PUBLIC</option>
                       <option value="INTERNAL" selected>INTERNAL</option>
                       <option value="CONFIDENTIAL">CONFIDENTIAL</option>
                       <option value="EXECUTIVE">EXECUTIVE</option>
                     </select>
                   </label>
-                  <label>Tags (comma-separated) <input name="tags" placeholder="refunds, billing" /></label>
-                  <label>Relationships (JSON array) <textarea name="relationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
-                  <label>Review frequency (days) <input name="review_frequency" type="number" min="1" value="90" /></label>
-                  <label>Reviewer confidence (0-1) <input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
-                  <label>Body <textarea name="body" rows="6" required></textarea></label>
-                  <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Save knowledge object</button>
-                </form>
-              </div>
-              <div class="card">
-                <h3 style="font-size:0.98rem;">Bulk + URL + PDF direct import</h3>
-                <p style="color: var(--muted); margin: 0.35rem 0 0.55rem; font-size: 0.86rem;">This is the same object model as above, but not attached to a connected source.</p>
-                <form id="bulkDocForm">
-                  <label>Items JSON array
-                    <textarea name="items" rows="6" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]' required></textarea>
-                  </label>
-                  <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Bulk import</button>
-                </form>
-                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.9rem 0;" />
-                <form id="urlDocForm">
-                  <label>URL <input name="url" type="url" placeholder="https://example.com/help" required /></label>
-                  <label>Title override <input name="title" /></label>
-                  <label>URL content
-                    <textarea name="content" rows="4" required></textarea>
-                  </label>
-                  <label>Visibility
-                    <select name="visibility">
-                      <option value="PUBLIC">PUBLIC</option>
-                      <option value="INTERNAL">INTERNAL</option>
-                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-                      <option value="EXECUTIVE">EXECUTIVE</option>
-                    </select>
-                  </label>
-                  <button type="submit" class="btn-ghost" style="margin-top: 0.6rem;">Save URL object</button>
-                </form>
-                <hr style="border: none; border-top: 1px solid var(--line); margin: 0.9rem 0;" />
-                <form id="pdfDocForm" enctype="multipart/form-data">
-                  <label>Title override <input name="title" /></label>
-                  <label>Visibility
-                    <select name="visibility">
-                      <option value="PUBLIC">PUBLIC</option>
-                      <option value="INTERNAL">INTERNAL</option>
-                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-                      <option value="EXECUTIVE">EXECUTIVE</option>
-                    </select>
-                  </label>
-                  <label>PDF file <input name="file" type="file" accept="application/pdf" required /></label>
-                  <button type="submit" class="btn-ghost" style="margin-top: 0.6rem;">Save PDF object</button>
-                </form>
-              </div>
+                  <label>Tags (comma-separated) <input name="tags" id="directIngestTags" placeholder="refunds, billing" /></label>
+                  <label>Relationships (JSON array) <textarea name="relationships" id="directIngestRelationships" rows="3" placeholder='[{"type":"supports","target":"doc-123"}]'></textarea></label>
+                  <label>Review frequency (days) <input name="review_frequency" id="directIngestReviewFrequency" type="number" min="1" value="90" /></label>
+                  <label>Reviewer confidence (0-1) <input name="confidence" id="directIngestConfidence" type="number" min="0" max="1" step="0.01" value="0.7" /></label>
+                </div>
+
+                <label id="directIngestBodyWrap">Body <textarea name="body" id="directIngestBody" rows="6"></textarea></label>
+
+                <label id="directIngestUrlWrap" style="display:none;">URL
+                  <input name="url" id="directIngestUrl" type="url" placeholder="https://example.com/help" />
+                </label>
+                <label id="directIngestUrlContentWrap" style="display:none;">URL content
+                  <textarea name="content" id="directIngestContent" rows="4"></textarea>
+                </label>
+
+                <label id="directIngestPdfWrap" style="display:none;">PDF file
+                  <input name="file" id="directIngestFile" type="file" accept="application/pdf" />
+                </label>
+
+                <label id="directIngestBulkWrap" style="display:none;">Items JSON array
+                  <textarea name="items" id="directIngestItems" rows="6" placeholder='[{"title":"Refund policy","body":"Refunds within 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
+                </label>
+
+                <button type="submit" class="btn-primary" style="margin-top: 0.6rem;">Run direct ingest</button>
+              </form>
             </div>
           </div>
 

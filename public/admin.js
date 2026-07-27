@@ -286,6 +286,7 @@ async function refreshSourceAudit() {
 
 function wireTextDocForm() {
   const form = document.getElementById('textDocForm');
+  if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
@@ -316,6 +317,7 @@ function wireTextDocForm() {
 
 function wireUrlDocForm() {
   const form = document.getElementById('urlDocForm');
+  if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
@@ -339,6 +341,7 @@ function wireUrlDocForm() {
 
 function wirePdfDocForm() {
   const form = document.getElementById('pdfDocForm');
+  if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
@@ -359,6 +362,7 @@ function wirePdfDocForm() {
 
 function wireBulkDocForm() {
   const form = document.getElementById('bulkDocForm');
+  if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
@@ -393,6 +397,168 @@ function wireBulkDocForm() {
       setPanelText('compileOutput', `Could not run bulk import: ${error.message}`);
     }
   });
+}
+
+function wireDirectIngestForm() {
+  const form = document.getElementById('directIngestForm');
+  if (!form) return;
+
+  const modeInput = document.getElementById('directIngestMode');
+  const typeInput = document.getElementById('directIngestType');
+  const titleInput = document.getElementById('directIngestTitle');
+  const bodyInput = document.getElementById('directIngestBody');
+  const contentInput = document.getElementById('directIngestContent');
+  const urlInput = document.getElementById('directIngestUrl');
+  const fileInput = document.getElementById('directIngestFile');
+  const itemsInput = document.getElementById('directIngestItems');
+  const visibilityInput = document.getElementById('directIngestVisibility');
+
+  const commonWrap = document.getElementById('directIngestCommonFields');
+  const bodyWrap = document.getElementById('directIngestBodyWrap');
+  const urlWrap = document.getElementById('directIngestUrlWrap');
+  const urlContentWrap = document.getElementById('directIngestUrlContentWrap');
+  const pdfWrap = document.getElementById('directIngestPdfWrap');
+  const bulkWrap = document.getElementById('directIngestBulkWrap');
+
+  if (!modeInput || !typeInput || !titleInput || !bodyInput || !contentInput || !urlInput || !fileInput || !itemsInput || !visibilityInput) return;
+  if (!commonWrap || !bodyWrap || !urlWrap || !urlContentWrap || !pdfWrap || !bulkWrap) return;
+
+  function syncModeUi() {
+    const mode = String(modeInput.value || 'text').toLowerCase();
+    const isText = mode === 'text';
+    const isUrl = mode === 'url';
+    const isPdf = mode === 'pdf';
+    const isBulk = mode === 'bulk';
+
+    commonWrap.style.display = isBulk ? 'none' : 'block';
+    bodyWrap.style.display = isText ? 'block' : 'none';
+    urlWrap.style.display = isUrl ? 'block' : 'none';
+    urlContentWrap.style.display = isUrl ? 'block' : 'none';
+    pdfWrap.style.display = isPdf ? 'block' : 'none';
+    bulkWrap.style.display = isBulk ? 'block' : 'none';
+
+    bodyInput.required = isText;
+    urlInput.required = isUrl;
+    contentInput.required = isUrl;
+    fileInput.required = isPdf;
+    itemsInput.required = isBulk;
+
+    if (isUrl) typeInput.value = 'URL';
+    if (isPdf) typeInput.value = 'PDF';
+    typeInput.disabled = isUrl || isPdf;
+    if (isBulk) visibilityInput.value = 'INTERNAL';
+  }
+
+  modeInput.addEventListener('change', syncModeUi);
+  fileInput.addEventListener('change', () => {
+    if (!String(titleInput.value || '').trim() && fileInput.files?.[0]?.name) {
+      titleInput.value = String(fileInput.files[0].name).replace(/\.[a-z0-9]+$/i, '').trim();
+    }
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const mode = String(modeInput.value || 'text').toLowerCase();
+
+    try {
+      if (mode === 'bulk') {
+        const raw = String(itemsInput.value || '').trim();
+        let items = [];
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) throw new Error('items must be a JSON array');
+          items = parsed;
+        } catch (error) {
+          setPanelText('compileOutput', `Invalid bulk JSON: ${error.message}`);
+          return;
+        }
+
+        const embeddedItems = await Promise.all(items.map(async (item) => {
+          const text = `${item?.title || ''}\n${item?.body || ''}`;
+          return {
+            ...item,
+            embeddings: await createEmbedding(text),
+          };
+        }));
+
+        const result = await requestJson('/api/documents/bulk', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ items: embeddedItems }),
+        });
+        setPanelText('compileOutput', `Imported ${result.inserted_count} object(s), skipped ${result.rejected_count}.`);
+        form.reset();
+        syncModeUi();
+        await refreshDocuments();
+        return;
+      }
+
+      if (mode === 'pdf') {
+        if (!fileInput.files?.length) {
+          setPanelText('compileOutput', 'Select a PDF file first.');
+          return;
+        }
+
+        const data = new FormData();
+        data.set('file', fileInput.files[0]);
+        data.set('visibility', String(visibilityInput.value || 'INTERNAL'));
+        if (String(titleInput.value || '').trim()) data.set('title', String(titleInput.value).trim());
+
+        await requestJson('/api/documents/pdf', { method: 'POST', body: data });
+        setPanelText('compileOutput', 'PDF knowledge object saved.');
+        form.reset();
+        syncModeUi();
+        await refreshDocuments();
+        return;
+      }
+
+      if (mode === 'url') {
+        const payload = {
+          url: String(urlInput.value || '').trim(),
+          title: String(titleInput.value || '').trim(),
+          content: String(contentInput.value || '').trim(),
+          visibility: String(visibilityInput.value || 'INTERNAL'),
+        };
+        payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.content || ''}`);
+
+        await requestJson('/api/documents/url', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        setPanelText('compileOutput', 'URL knowledge object saved.');
+        form.reset();
+        syncModeUi();
+        await refreshDocuments();
+        return;
+      }
+
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      payload.tags = String(payload.tags || '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+      payload.relationships = parseMaybeJsonArray(payload.relationships);
+      payload.review_frequency = Number(payload.review_frequency || 90);
+      payload.confidence = Number(payload.confidence || 0.7);
+      payload.embeddings = await createEmbedding(`${payload.title || ''}\n${payload.body || ''}`);
+
+      await requestJson('/api/documents', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setPanelText('compileOutput', 'Knowledge object saved.');
+      form.reset();
+      syncModeUi();
+      await refreshDocuments();
+    } catch (error) {
+      setPanelText('compileOutput', `Could not run direct ingest: ${error.message}`);
+    }
+  });
+
+  syncModeUi();
 }
 
 function wireSourceForm() {
@@ -877,10 +1043,7 @@ async function bootstrapAdmin() {
 
   wireQuickStart();
   wireConsoleWizard();
-  wireTextDocForm();
-  wireUrlDocForm();
-  wirePdfDocForm();
-  wireBulkDocForm();
+  wireDirectIngestForm();
   wireSourceForm();
   wireSourceSync();
   wireSourceTest();
