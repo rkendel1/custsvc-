@@ -552,6 +552,74 @@ test('embed APIs respond to CORS preflight for third-party pages', async (t) => 
   assert.equal(preflight.headers.get('access-control-allow-methods'), 'GET,POST,OPTIONS');
 });
 
+test('embed bundle rebuilds automatically when local bundle file is missing', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+    else process.env.APP_AUTH_SECRET = previousAuthSecret;
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-rebuild-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const signupResponse = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'newest',
+      email: 'owner@newest.dev',
+      password: 'password123',
+    }),
+  });
+  assert.equal(signupResponse.status, 201);
+  const cookie = signupResponse.headers.get('set-cookie');
+  assert.equal(Boolean(cookie), true);
+
+  const createDocResponse = await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+    },
+    body: JSON.stringify({
+      title: 'Shipping timeline',
+      body: 'Orders ship within 2 business days.',
+      visibility: 'PUBLIC',
+      type: 'POLICY',
+    }),
+  });
+  assert.equal(createDocResponse.status, 201);
+
+  const sessionResponse = await fetch(`${baseUrl}/api/embed/session?tenant_id=newest`, {
+    headers: { cookie },
+  });
+  assert.equal(sessionResponse.status, 200);
+  const sessionBody = await sessionResponse.json();
+  assert.equal(typeof sessionBody.token, 'string');
+
+  const tenantBundlePath = path.join(rootDir, 'bundles', 'newest.knowledgeos.bundle.json');
+  if (fs.existsSync(tenantBundlePath)) fs.unlinkSync(tenantBundlePath);
+
+  const bundleResponse = await fetch(`${baseUrl}/api/embed/bundle?tenant_id=newest`, {
+    headers: {
+      'x-embed-token': sessionBody.token,
+    },
+  });
+  assert.equal(bundleResponse.status, 200);
+  const bundleBody = await bundleResponse.json();
+  assert.equal(bundleBody.company, 'newest');
+  assert.equal(Array.isArray(bundleBody.knowledge), true);
+  assert.equal(bundleBody.knowledge.length >= 1, true);
+  assert.equal(fs.existsSync(tenantBundlePath), true);
+});
+
 test('bulk documents endpoint ingests valid items and reports rejects', async (t) => {
   const documents = [];
   const storage = {

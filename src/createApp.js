@@ -2718,7 +2718,8 @@ function createApp(options = {}) {
     const bundleName = `${tenantId}.knowledgeos.bundle.json`;
     const bundlePath = path.join(rootDir, 'bundles', bundleName);
     if (!fs.existsSync(bundlePath)) {
-      if (canAutoProvisionEmbedRuntime(req, tenantId)) {
+      const rebuiltBundle = rebuildTenantBundle(tenantId);
+      if (!rebuiltBundle && canAutoProvisionEmbedRuntime(req, tenantId)) {
         const provisionResult = ensureTenantBundleAndDeploymentForEmbed(req, tenantId);
         if (!provisionResult.ok) {
           return res.status(provisionResult.status || 500).json({ error: provisionResult.error || 'could not provision tenant runtime' });
