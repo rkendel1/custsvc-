@@ -1,6 +1,17 @@
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (_error) {
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status})`);
+      }
+      throw new Error('Server returned malformed JSON');
+    }
+  }
   if (!response.ok) {
     throw new Error(data.error || `Request failed (${response.status})`);
   }

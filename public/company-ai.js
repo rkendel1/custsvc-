@@ -4,6 +4,7 @@
   const apiBase = script?.dataset?.apiBase || '';
   const widgetTitle = script?.dataset?.title || 'Company Intelligence';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
+  const minAnswerConfidence = Number(script?.dataset?.minAnswerConfidence || 0.1);
 
   const state = {
     bundle: null,
@@ -94,21 +95,23 @@
       if (!best || score > best.score) best = { chunk, score };
     }
 
-    if (best && best.score >= 0.1) {
+    if (best && best.score >= minAnswerConfidence) {
       return {
         answer: best.chunk.text,
         score: best.score,
         topChunkId: best.chunk.id,
+        answered: true,
       };
     }
 
     const fallback = await remoteFallback(question);
-    if (fallback) return fallback;
+    if (fallback) return { ...fallback, answered: true };
 
     return {
-      answer: "I don't know yet. I've sent this question to improve the knowledge base.",
+      answer: "I don't have an answer for that yet.",
       score: best ? best.score : 0,
       topChunkId: best?.chunk?.id || null,
+      answered: false,
     };
   }
 
@@ -127,7 +130,10 @@
   function appendMessage(container, who, text) {
     const node = document.createElement('div');
     node.style.margin = '0.5rem 0';
-    node.innerHTML = `<strong>${who}:</strong> ${text}`;
+    const label = document.createElement('strong');
+    label.textContent = `${who}: `;
+    node.appendChild(label);
+    node.appendChild(document.createTextNode(text));
     container.appendChild(node);
     container.scrollTop = container.scrollHeight;
   }
@@ -222,7 +228,7 @@
         const response = await answerQuestion(question);
         appendMessage(messages, 'AI', response.answer);
 
-        const answered = !response.answer.startsWith("I don't know yet");
+        const answered = Boolean(response.answered);
         state.history.push({ question, ...response, answered, at: new Date().toISOString() });
 
         sendTelemetry({

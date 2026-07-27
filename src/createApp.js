@@ -1,18 +1,69 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const net = require('net');
 const pdfParse = require('pdf-parse');
+const { randomUUID } = require('crypto');
 const { compileBundle, normalizeVisibility } = require('./lib/compiler');
 const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
 
 function stripHtml(text) {
   return String(text || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function createRateLimiter({ max = 120, windowMs = 60_000 } = {}) {
+  const buckets = new Map();
+  return (req, res, next) => {
+    const key = `${req.ip}:${req.path}`;
+    const now = Date.now();
+    const record = buckets.get(key) || { count: 0, resetAt: now + windowMs };
+    if (now > record.resetAt) {
+      record.count = 0;
+      record.resetAt = now + windowMs;
+    }
+    record.count += 1;
+    buckets.set(key, record);
+    if (record.count > max) {
+      return res.status(429).json({ error: 'Too many requests, please try again later.' });
+    }
+    return next();
+  };
+}
+
+function isPrivateHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.local')) return true;
+
+  const ipVersion = net.isIP(host);
+  if (!ipVersion) return false;
+  if (ipVersion === 4) {
+    return (
+      host.startsWith('10.') ||
+      host.startsWith('127.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+      host.startsWith('169.254.')
+    );
+  }
+
+  return host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80');
+}
+
+function validateExternalUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    return !isPrivateHost(parsed.hostname);
+  } catch (_e) {
+    return false;
+  }
 }
 
 function createApp(options = {}) {
@@ -22,6 +73,7 @@ function createApp(options = {}) {
 
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() });
+  const writeLimiter = createRateLimiter();
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -34,7 +86,7 @@ function createApp(options = {}) {
     res.json({ documents: storage.listDocuments() });
   });
 
-  app.post('/api/documents', (req, res) => {
+  app.post('/api/documents', writeLimiter, (req, res) => {
     const { title, content, type = 'TEXT', visibility = 'BOTH' } = req.body || {};
     if (!title || !content) {
       return res.status(400).json({ error: 'title and content are required' });
@@ -42,7 +94,7 @@ function createApp(options = {}) {
 
     const docs = storage.listDocuments();
     const document = {
-      id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `doc-${randomUUID()}`,
       title: String(title),
       content: String(content),
       type: String(type).toUpperCase(),
@@ -55,9 +107,12 @@ function createApp(options = {}) {
     return res.status(201).json({ document });
   });
 
-  app.post('/api/documents/url', async (req, res) => {
+  app.post('/api/documents/url', writeLimiter, async (req, res) => {
     const { url, title, visibility = 'BOTH' } = req.body || {};
     if (!url) return res.status(400).json({ error: 'url is required' });
+    if (!validateExternalUrl(url)) {
+      return res.status(400).json({ error: 'url must be public http(s) and not private/internal' });
+    }
 
     try {
       const response = await fetch(url);
@@ -70,7 +125,7 @@ function createApp(options = {}) {
 
       const docs = storage.listDocuments();
       const document = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `doc-${randomUUID()}`,
         title: title || `URL: ${url}`,
         content: text,
         type: 'URL',
@@ -86,7 +141,7 @@ function createApp(options = {}) {
     }
   });
 
-  app.post('/api/documents/pdf', upload.single('file'), async (req, res) => {
+  app.post('/api/documents/pdf', writeLimiter, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'file is required' });
     const visibility = normalizeVisibility(req.body.visibility);
     const title = req.body.title || req.file.originalname;
@@ -99,7 +154,7 @@ function createApp(options = {}) {
 
       const docs = storage.listDocuments();
       const document = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `doc-${randomUUID()}`,
         title,
         content: parsed.text.trim(),
         type: 'PDF',
@@ -114,15 +169,15 @@ function createApp(options = {}) {
     }
   });
 
-  app.post('/api/compile', (req, res) => {
+  app.post('/api/compile', writeLimiter, (req, res) => {
     const docs = storage.listDocuments();
     const bundle = compileBundle(docs, { company: companyName });
     const name = req.body?.name || 'company.intelligence.bundle.json';
-    storage.writeBundle(name, bundle);
+    const { safeName } = storage.writeBundle(name, bundle);
 
     res.json({
       message: 'bundle compiled',
-      name,
+      name: safeName,
       bundleSummary: {
         version: bundle.version,
         company: bundle.company,
@@ -133,7 +188,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/telemetry', (req, res) => {
+  app.post('/api/telemetry', writeLimiter, (req, res) => {
     const { question, answered, score, topChunkId } = req.body || {};
     if (!question) return res.status(400).json({ error: 'question is required' });
 

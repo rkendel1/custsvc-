@@ -16,7 +16,8 @@ function readJson(filePath, defaultValue) {
   const raw = fs.readFileSync(filePath, 'utf8');
   try {
     return JSON.parse(raw);
-  } catch (_e) {
+  } catch (error) {
+    console.error(`Failed to parse JSON file ${filePath}: ${error.message}`);
     return defaultValue;
   }
 }
@@ -37,6 +38,12 @@ function createStorage(baseDir) {
   ensureJsonFile(docsPath, []);
   ensureJsonFile(telemetryPath, []);
 
+  function sanitizeBundleName(name) {
+    const fileName = path.basename(String(name || 'company.intelligence.bundle.json'));
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
+    return safeName || 'company.intelligence.bundle.json';
+  }
+
   return {
     dataDir,
     bundlesDir,
@@ -53,9 +60,10 @@ function createStorage(baseDir) {
       writeJson(telemetryPath, events);
     },
     writeBundle(name, bundle) {
-      const bundlePath = path.join(bundlesDir, name);
+      const safeName = sanitizeBundleName(name);
+      const bundlePath = path.join(bundlesDir, safeName);
       writeJson(bundlePath, bundle);
-      return bundlePath;
+      return { bundlePath, safeName };
     },
   };
 }

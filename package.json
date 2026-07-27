@@ -1,5 +1,5 @@
 {
-  "name": "custsvc-",
+  "name": "company-intelligence-runtime",
   "version": "1.0.0",
   "description": "This repository defines a **browser-native organizational intelligence platform**, not just a customer service chatbot.",
   "main": "src/server.js",

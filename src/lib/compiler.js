@@ -42,7 +42,7 @@ function chunkText(text, maxLength = 450) {
       continue;
     }
 
-    const sentences = paragraph.split(/(?<=[.!?])\s+/);
+    const sentences = paragraph.match(/[^.!?]+[.!?]?/g) || [paragraph];
     let current = '';
     for (const sentence of sentences) {
       if (!current) {
