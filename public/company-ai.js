@@ -15,6 +15,7 @@
   const state = {
     bundle: null,
     history: [],
+    executions: {},
     context: {
       role,
       department,
@@ -34,6 +35,10 @@
     const item = String(value || '').toUpperCase();
     if (item in audiencePriority) return item;
     return 'INTERNAL';
+  }
+
+  function normalizeStepType(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '_');
   }
 
   function roleAudiences(ctxRole, ctxPermissions = []) {
@@ -207,6 +212,103 @@
       };
     }
 
+    function getProcess(bundle, processId) {
+      return (bundle?.processes || []).find((item) => item.id === processId) || null;
+    }
+
+    async function startProcess(processId, context = {}) {
+      const bundle = await loadBundle();
+      const process = getProcess(bundle, processId);
+      if (!process) throw new Error('process not found');
+      if (!process.steps?.length) throw new Error('process has no steps');
+      const executionId = `${processId}:${Date.now()}`;
+      const execution = {
+        id: executionId,
+        processId,
+        status: 'ACTIVE',
+        context,
+        currentStepId: process.steps[0].id,
+        history: [],
+        startedAt: new Date().toISOString(),
+      };
+      state.executions[executionId] = execution;
+      return execution;
+    }
+
+    function resumeProcess(executionId) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      if (execution.status === 'CANCELLED') throw new Error('process is cancelled');
+      if (execution.status === 'COMPLETED') throw new Error('process is completed');
+      execution.status = 'ACTIVE';
+      return execution;
+    }
+
+    async function validateStep(executionId, payload = {}) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const bundle = await loadBundle();
+      const process = getProcess(bundle, execution.processId);
+      const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
+      if (!current) return { ok: false, reason: 'step not found' };
+      if (current.required_capability && !(payload.capabilities || []).includes(current.required_capability)) {
+        return { ok: false, reason: `missing capability: ${current.required_capability}` };
+      }
+      return { ok: true };
+    }
+
+    async function completeStep(executionId, payload = {}) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const validation = await validateStep(executionId, payload);
+      if (!validation.ok) throw new Error(validation.reason);
+      const bundle = await loadBundle();
+      const process = getProcess(bundle, execution.processId);
+      const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
+      const nextStepId = current?.next?.[0] || null;
+      execution.history.push({ stepId: execution.currentStepId, action: 'COMPLETE', at: new Date().toISOString() });
+      if (!nextStepId || normalizeStepType(current?.type) === 'FINISH') {
+        execution.status = 'COMPLETED';
+        execution.completedAt = new Date().toISOString();
+        return execution;
+      }
+      execution.currentStepId = nextStepId;
+      return execution;
+    }
+
+    async function branch(executionId, nextStepId) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const bundle = await loadBundle();
+      const process = getProcess(bundle, execution.processId);
+      const current = (process?.steps || []).find((step) => step.id === execution.currentStepId);
+      if (!current?.next?.includes(nextStepId)) throw new Error('invalid branch target');
+      execution.history.push({ stepId: execution.currentStepId, action: 'BRANCH', at: new Date().toISOString() });
+      execution.currentStepId = nextStepId;
+      return execution;
+    }
+
+    function rollback(executionId) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      const history = [...execution.history];
+      const previous = history.pop();
+      if (!previous) return execution;
+      execution.history = history;
+      execution.status = 'ACTIVE';
+      execution.currentStepId = previous.stepId;
+      execution.completedAt = null;
+      return execution;
+    }
+
+    function cancel(executionId) {
+      const execution = state.executions[executionId];
+      if (!execution) throw new Error('execution not found');
+      execution.status = 'CANCELLED';
+      execution.cancelledAt = new Date().toISOString();
+      return execution;
+    }
+
     const fallback = await remoteFallback(question);
     if (fallback) return { ...fallback, answered: true };
 
@@ -378,4 +480,15 @@
   } else {
     createWidget();
   }
+
+  window.CompanyIntelligenceRuntime = {
+    askQuestion: answerQuestion,
+    startProcess,
+    resumeProcess,
+    completeStep,
+    validateStep,
+    branch,
+    rollback,
+    cancel,
+  };
 })();

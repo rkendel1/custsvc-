@@ -6,10 +6,11 @@ const {
   detectContradictions,
   detectDuplicates,
   calculateReviewSchedule,
+  validateProcesses,
 } = require('../src/lib/compiler');
 const { buildAnalytics } = require('../src/lib/analytics');
 
-test('compileBundle v2 creates knowledge, chunks, and metadata', () => {
+test('compileBundle v3 creates knowledge, chunks, and metadata', () => {
   const bundle = compileBundle([
     {
       id: 'doc-1',
@@ -21,8 +22,9 @@ test('compileBundle v2 creates knowledge, chunks, and metadata', () => {
     },
   ], { company: 'TestCo' });
 
-  assert.equal(bundle.version, 2);
-  assert.equal(bundle.format, 'company.intelligence.bundle');
+  assert.equal(bundle.version, 3);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
   assert.equal(bundle.company, 'TestCo');
   assert.equal(bundle.documentCount, 1);
   assert.equal(bundle.knowledgeCount, 1);
@@ -31,6 +33,9 @@ test('compileBundle v2 creates knowledge, chunks, and metadata', () => {
   assert.equal(bundle.chunks[0].audience, 'PUBLIC');
   assert.ok(bundle.chunks[0].tf.within > 0);
   assert.equal(bundle.metadata.company, 'TestCo');
+  assert.equal(bundle.processCount, 0);
+  assert.ok(bundle.process_graph && Array.isArray(bundle.process_graph.nodes));
+  assert.ok(bundle.role_views && bundle.role_views.Customer);
 });
 
 test('compileBundle parses FAQ JSON arrays into chunks', () => {
@@ -150,4 +155,99 @@ test('buildAnalytics surfaces unanswered questions and recommendations', () => {
   assert.equal(analytics.unansweredQuestions, 2);
   assert.equal(analytics.topUnansweredQuestions[0].value, 'How do I change my billing address?');
   assert.ok(analytics.recommendations.length >= 1);
+});
+
+test('process graph and process validations are compiled into bundle', () => {
+  const bundle = compileBundle(
+    [{ id: 'refund-policy', title: 'Refund Policy', body: 'Policy body' }],
+    {
+      processes: [
+        {
+          id: 'refund',
+          name: 'Refund',
+          roles: ['Support', 'Manager'],
+          required_capabilities: ['Upload', 'Email'],
+          required_documents: ['refund-policy'],
+          policies: ['refund-policy'],
+          steps: [
+            { id: 'start', title: 'Start', type: 'Collect Data', required_role: 'Support', next: ['decision'] },
+            { id: 'decision', title: 'Within policy', type: 'Decision', next: ['approve', 'escalate'] },
+            { id: 'approve', title: 'Approve', type: 'Approval', required_role: 'Manager', next: 'finish' },
+            { id: 'escalate', title: 'Escalate', type: 'Notify', required_capability: 'Email', next: 'finish' },
+            { id: 'finish', title: 'Finish', type: 'Finish' },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(bundle.processCount, 1);
+  assert.ok(bundle.process_graph.nodes.length >= 5);
+  assert.ok(bundle.process_graph.edges.length >= 4);
+  assert.equal(bundle.review.processes.dead_ends.length, 0);
+  assert.equal(bundle.review.processes.unreachable_steps.length, 0);
+  assert.equal(bundle.review.processes.invalid_links.length, 0);
+});
+
+test('process validation catches dead ends, unreachable steps, branches, roles, capabilities, and links', () => {
+  const knowledge = [{ id: 'k1' }];
+  const issues = validateProcesses(
+    [
+      {
+        id: 'p1',
+        roles: ['Support'],
+        required_capabilities: ['Upload'],
+        required_documents: ['missing-doc'],
+        policies: ['missing-policy'],
+        steps: [
+          { id: 's1', type: 'Decision', next: ['s2'] },
+          { id: 's2', type: 'Approval', required_role: null, next: [] },
+          { id: 's3', type: 'Collect Data', required_role: 'Manager', required_capability: 'OCR', next: [] },
+        ],
+      },
+      { id: 'empty', steps: [] },
+    ],
+    knowledge,
+  );
+
+  assert.ok(issues.branch_errors.length >= 1);
+  assert.ok(issues.missing_approvals.length >= 1);
+  assert.ok(issues.unreachable_steps.find((item) => item.stepId === 's3'));
+  assert.ok(issues.invalid_role_transitions.find((item) => item.role === 'Manager'));
+  assert.ok(issues.missing_capabilities.find((item) => item.capability === 'OCR'));
+  assert.ok(issues.invalid_links.length >= 2);
+  assert.ok(issues.orphaned_processes.find((item) => item.processId === 'empty'));
+});
+
+test('process validation allows intentional cycles', () => {
+  const issues = validateProcesses([
+    {
+      id: 'loop',
+      steps: [
+        { id: 'a', type: 'Wait', next: ['b'], intentional_cycle: true },
+        { id: 'b', type: 'Branch', next: ['a', 'c'] },
+        { id: 'c', type: 'Finish', next: [] },
+      ],
+    },
+  ]);
+
+  assert.equal(issues.cycles.length, 0);
+});
+
+test('bundle keeps v2-compatible knowledge and chunk fields', () => {
+  const bundle = compileBundle([{ id: 'd1', title: 'Legacy', body: 'Legacy body' }]);
+  assert.ok(Array.isArray(bundle.knowledge));
+  assert.ok(Array.isArray(bundle.chunks));
+  assert.ok(Array.isArray(bundle.relationships));
+  assert.ok(bundle.graph && bundle.indexes && bundle.review_schedule);
+});
+
+test('bundle exposes v3 format with explicit v2 compatibility markers', () => {
+  const bundle = compileBundle([{ id: 'd2', title: 'Doc', body: 'Body' }], { processes: [] });
+  assert.equal(bundle.version, 3);
+  assert.equal(bundle.format, 'company.intelligence.bundle.v3');
+  assert.equal(bundle.format_legacy, 'company.intelligence.bundle');
+  assert.ok(bundle.metadata && typeof bundle.metadata.knowledgeCount === 'number');
+  assert.ok(Array.isArray(bundle.knowledge));
+  assert.ok(Array.isArray(bundle.chunks));
 });
