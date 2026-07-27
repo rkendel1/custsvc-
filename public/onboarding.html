@@ -478,8 +478,8 @@
             const tenantFromAuth = String(data?.authenticated_tenant_id || '').trim();
             const emailFromAuth = String(data?.authenticated_email || '').trim();
             if (tenantFromAuth) {
-              tenantId = tenantId || tenantFromAuth;
-              if (onboardingTenantInput && !onboardingTenantInput.value) onboardingTenantInput.value = tenantFromAuth;
+              tenantId = tenantFromAuth;
+              if (onboardingTenantInput) onboardingTenantInput.value = tenantFromAuth;
             }
             if (emailFromAuth && onboardingEmailInput && !onboardingEmailInput.value) {
               onboardingEmailInput.value = emailFromAuth;
@@ -1165,7 +1165,6 @@
           });
 
           const payload = {
-            tenant_id: tenantId,
             name: document.getElementById('sourceName').value,
             type: document.getElementById('sourceType').value,
             site_url: document.getElementById('sourceUrl').value,
@@ -1188,7 +1187,7 @@
           if (!(await requireSessionTokenFor('Source test'))) return;
           const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || '').trim();
           if (!sourceId) throw new Error('Connect a source first to run a live test');
-          const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, { tenant_id: tenantId });
+          const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, {});
           setStatus(data?.ok ? 'Connection healthy' : 'Connection needs attention', [
             `Status: ${data?.status || 'unknown'}`,
             data?.connectivity?.error ? `Details: ${data.connectivity.error}` : 'You can continue onboarding.',
@@ -1240,11 +1239,16 @@
           });
 
           updateEmbedScript(String(data?.outputs?.embed_code || ''));
+          const dashboardNext = `/admin.html?tenant_id=${encodeURIComponent(tenantId)}`;
+          const dashboardUrl = `/access.html?next=${encodeURIComponent(dashboardNext)}`;
           setStatus('Your assistant is live-ready', [
             `Tenant: ${tenantId}`,
             `Runtime URL: ${data?.outputs?.runtime_url || 'ready'}`,
-            'Next: Copy the embed script and paste it into your site.',
+            'Redirecting to your dashboard...',
           ]);
+          window.setTimeout(() => {
+            window.location.href = dashboardUrl;
+          }, 900);
         } catch (error) {
           setStatus('Could not finish setup', error.message);
         } finally {
