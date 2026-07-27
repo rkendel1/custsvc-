@@ -106,6 +106,45 @@ test('quickstart signup provisions tenant when identity fields are omitted', asy
   assert.equal(data.embed_script.includes('data-tenant-id'), true);
 });
 
+test('quickstart signup redirects to created tenant subdomain origin', async (t) => {
+  const previousTenantBaseDomain = process.env.TENANT_BASE_DOMAIN;
+  process.env.TENANT_BASE_DOMAIN = 'tryghostpost.com';
+
+  const rootDir = createTempRoot();
+  const app = createApp({ rootDir, storage: createStorage(rootDir) });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => {
+    server.close();
+    if (previousTenantBaseDomain === undefined) delete process.env.TENANT_BASE_DOMAIN;
+    else process.env.TENANT_BASE_DOMAIN = previousTenantBaseDomain;
+  });
+
+  const response = await fetch(`${baseUrl}/api/signup/quickstart`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-forwarded-host': 'test.tryghostpost.com',
+      'x-forwarded-proto': 'https',
+    },
+    body: JSON.stringify({
+      company: 'shit',
+      email: 'owner@shit.dev',
+      name: 'Owner',
+    }),
+  });
+  assert.equal(response.status, 201);
+
+  const data = await response.json();
+  const tenantId = String(data?.tenant?.tenant_id || '').trim();
+  assert.equal(Boolean(tenantId), true);
+  const expectedOrigin = `https://${tenantId}.tryghostpost.com`;
+
+  assert.equal(String(data?.tenant_origin || '').startsWith(expectedOrigin), true);
+  assert.equal(String(data?.next_url || '').startsWith(`${expectedOrigin}/onboarding.html?tenant_id=${tenantId}`), true);
+  assert.equal(String(data?.admin_url || '').startsWith(`${expectedOrigin}/admin.html?tenant_id=${tenantId}`), true);
+  assert.equal(String(data?.embed_script || '').includes(`src="${expectedOrigin}/embed.js"`), true);
+});
+
 test('documents are tenant-scoped when tenant id is provided', async (t) => {
   const rootDir = createTempRoot();
   const app = createApp({ rootDir, storage: createStorage(rootDir) });

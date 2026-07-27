@@ -297,6 +297,22 @@
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
+      function resolveTenantRedirect(nextUrl, tenantOrigin, fallbackPath) {
+        const candidate = String(nextUrl || '').trim();
+        if (/^https?:\/\//i.test(candidate)) return candidate;
+
+        const safeFallback = String(fallbackPath || '/onboarding.html');
+        const safePath = candidate.startsWith('/') ? candidate : safeFallback;
+        const origin = String(tenantOrigin || '').trim();
+        if (!origin) return safePath;
+
+        try {
+          return new URL(safePath, origin).toString();
+        } catch (_error) {
+          return safePath;
+        }
+      }
+
       function renderOptions(selectNode, options, fallbackValue = '') {
         if (!selectNode || !Array.isArray(options) || !options.length) return;
         const previous = String(selectNode.value || '').trim();
@@ -368,7 +384,7 @@
           ]);
 
           setTimeout(() => {
-            window.location.href = data.next_url || '/onboarding.html';
+            window.location.href = resolveTenantRedirect(data.next_url, data.tenant_origin, '/onboarding.html');
           }, 1100);
         } catch (error) {
           setStatus('Could not create workspace', error.message || 'Unexpected error');

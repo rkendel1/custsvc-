@@ -59,7 +59,15 @@
     }
   })();
   const tenantFromHost = resolveTenantFromHost(window.location.hostname, runtimeHost);
-  const effectiveTenantId = tenantFromHost || tenantId;
+  if (tenantId && tenantFromHost && tenantFromHost !== tenantId) {
+    // Never auto-correct across tenants. A mismatch indicates unsafe embed configuration.
+    console.error(
+      `[KnowledgeOS] Embed blocked: tenant mismatch (host=${tenantFromHost}, data-tenant-id=${tenantId}).`,
+    );
+    return;
+  }
+
+  const effectiveTenantId = tenantId || tenantFromHost;
 
   const apiBase = explicitApiBase || runtimeOrigin;
   const bundleUrl = explicitBundleUrl || (effectiveTenantId

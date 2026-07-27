@@ -1018,6 +1018,20 @@ function resolvePostAuthNextUrl(storage, tenantId, { forceOnboarding = false } =
   return isTenantOnboarded(storage, normalizedTenantId) ? dashboardUrl : onboardingUrl;
 }
 
+function resolveTenantRedirectUrl(req, tenantId, nextPath) {
+  const pathValue = String(nextPath || '').trim();
+  if (!pathValue) return '';
+  if (/^https?:\/\//i.test(pathValue)) return pathValue;
+  if (!pathValue.startsWith('/')) return pathValue;
+
+  const origin = resolveTenantOrigin(req, tenantId, Number(process.env.APP_PORT || 3000));
+  try {
+    return new URL(pathValue, origin).toString();
+  } catch (_error) {
+    return pathValue;
+  }
+}
+
 function base64urlEncode(input) {
   return Buffer.from(String(input || ''), 'utf8').toString('base64url');
 }
@@ -2526,6 +2540,7 @@ function createApp(options = {}) {
     const tenantOrigin = identity?.tenant_id
       ? resolveTenantOrigin(_req, identity.tenant_id, Number(process.env.APP_PORT || 3000))
       : null;
+    const nextPath = nextUrl;
     res.json({
       password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
@@ -2535,7 +2550,7 @@ function createApp(options = {}) {
       authenticated_tenant_id: identity?.tenant_id || null,
       authenticated_email: identity?.email || null,
       tenant_origin: tenantOrigin,
-      next_url: nextUrl,
+      next_url: identity?.tenant_id ? resolveTenantRedirectUrl(_req, identity.tenant_id, nextPath) : nextPath,
     });
   });
 
@@ -2563,11 +2578,13 @@ function createApp(options = {}) {
         return res.status(500).json({ error: 'console auth secret is not configured' });
       }
       setConsoleAuthCookie(req, res, token);
+      const nextPath = resolvePostAuthNextUrl(storage, verified.tenant_id);
       return res.json({
         ok: true,
         expires_at: new Date(expiresAt).toISOString(),
         auth_mode: 'credentials',
-        next_url: resolvePostAuthNextUrl(storage, verified.tenant_id),
+        tenant_origin: resolveTenantOrigin(req, verified.tenant_id, Number(process.env.APP_PORT || 3000)),
+        next_url: resolveTenantRedirectUrl(req, verified.tenant_id, nextPath),
       });
     }
 
@@ -2669,6 +2686,7 @@ function createApp(options = {}) {
       return res.status(500).json({ error: 'console auth secret is not configured' });
     }
     setConsoleAuthCookie(req, res, token);
+    const nextPath = resolvePostAuthNextUrl(storage, upserted.tenant_id, { forceOnboarding: true });
     return res.status(201).json({
       ok: true,
       tenant_id: upserted.tenant_id,
@@ -2676,7 +2694,8 @@ function createApp(options = {}) {
       created_workspace: createdTenant,
       expires_at: new Date(expiresAt).toISOString(),
       auth_mode: 'credentials',
-      next_url: resolvePostAuthNextUrl(storage, upserted.tenant_id, { forceOnboarding: true }),
+      tenant_origin: resolveTenantOrigin(req, upserted.tenant_id, Number(process.env.APP_PORT || 3000)),
+      next_url: resolveTenantRedirectUrl(req, upserted.tenant_id, nextPath),
     });
   });
 
@@ -3849,13 +3868,14 @@ function createApp(options = {}) {
     saveData(storage, 'saveOnboarding', onboarding);
 
     const publicOrigin = resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000));
+    const tenantOrigin = resolveTenantOrigin(req, tenant.tenant_id, Number(process.env.APP_PORT || 3000));
     const deployment = createDeployment({
       tenantId: tenant.tenant_id,
       companyName: tenant.company_name,
       deploymentProfile: selectedDeploymentProfile,
       audiences: onboardingState.audiences,
       runtimeOrigin: publicOrigin,
-      tenantOrigin: resolveTenantOrigin(req, tenant.tenant_id, Number(process.env.APP_PORT || 3000)),
+      tenantOrigin,
     });
     const deployments = listData(storage, 'listDeployments');
     deployments.push(deployment);
@@ -3872,7 +3892,9 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveRuntimeInstances', runtimeInstances);
 
-    const embedScript = `<script src="${publicOrigin}/embed.js" data-tenant-id="${tenant.tenant_id}"></script>`;
+    const embedScript = `<script src="${tenantOrigin}/embed.js" data-tenant-id="${tenant.tenant_id}"></script>`;
+    const nextPath = `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`;
+    const adminPath = `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`;
 
     return res.status(201).json({
       tenant,
@@ -3886,10 +3908,11 @@ function createApp(options = {}) {
         status: deployment.status,
         runtime_url: deployment.runtime_url,
       },
+      tenant_origin: tenantOrigin,
       embed_script: embedScript,
-      next_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`,
-      admin_url: `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
-      tenant_url: `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      next_url: resolveTenantRedirectUrl(req, tenant.tenant_id, nextPath),
+      admin_url: resolveTenantRedirectUrl(req, tenant.tenant_id, adminPath),
+      tenant_url: resolveTenantRedirectUrl(req, tenant.tenant_id, adminPath),
     });
   });
 

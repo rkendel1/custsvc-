@@ -245,9 +245,52 @@
         return candidate;
       }
 
-      function resolveRedirectUrl(serverNextUrl, fallback) {
+      function normalizeOrigin(value) {
+        const input = String(value || '').trim();
+        if (!input) return '';
+        try {
+          return new URL(input).origin;
+        } catch (_error) {
+          return '';
+        }
+      }
+
+      function getLikelyBaseDomainFromHost(hostname) {
+        const host = String(hostname || '').trim().toLowerCase();
+        if (!host) return '';
+        const labels = host.split('.').filter(Boolean);
+        if (labels.length < 2) return '';
+        return labels.slice(-2).join('.');
+      }
+
+      function isAllowedAbsoluteRedirect(urlValue) {
+        const candidate = String(urlValue || '').trim();
+        if (!candidate) return false;
+        try {
+          const parsed = new URL(candidate);
+          if (!/^https?:$/.test(parsed.protocol)) return false;
+          const currentBaseDomain = getLikelyBaseDomainFromHost(window.location.hostname || '');
+          const targetBaseDomain = getLikelyBaseDomainFromHost(parsed.hostname || '');
+          return Boolean(currentBaseDomain && targetBaseDomain && currentBaseDomain === targetBaseDomain);
+        } catch (_error) {
+          return false;
+        }
+      }
+
+      function resolveRedirectUrl(serverNextUrl, fallback, tenantOrigin = '') {
         const serverNext = String(serverNextUrl || '').trim();
+        if (isAllowedAbsoluteRedirect(serverNext)) return serverNext;
         if (serverNext.startsWith('/') && !serverNext.startsWith('//')) return serverNext;
+
+        const safeTenantOrigin = normalizeOrigin(tenantOrigin);
+        if (safeTenantOrigin && serverNext.startsWith('/') && !serverNext.startsWith('//')) {
+          try {
+            return new URL(serverNext, safeTenantOrigin).toString();
+          } catch (_error) {
+            // Keep evaluating fallback flow.
+          }
+        }
+
         const requested = sanitizeRequestedNext(requestedNext);
         if (requested) return requested;
         return fallback;
@@ -276,7 +319,7 @@
 
           if (state.authenticated) {
             setStatus('You are already logged in. Redirecting...');
-            window.location.href = resolveRedirectUrl(state?.next_url, '/admin.html');
+            window.location.href = resolveRedirectUrl(state?.next_url, '/admin.html', state?.tenant_origin);
             return;
           }
 
@@ -334,7 +377,7 @@
 
         setStatus('Access granted.');
         await refreshStatus();
-        window.location.href = resolveRedirectUrl(body?.next_url, '/admin.html');
+        window.location.href = resolveRedirectUrl(body?.next_url, '/admin.html', body?.tenant_origin);
       });
 
       passwordForm.addEventListener('submit', async (event) => {
@@ -390,7 +433,11 @@
         localStorage.setItem('knowledgeos_active_tenant_id', signupWorkspaceId.toLowerCase());
         setStatus('Account created. You are signed in.');
         await refreshStatus();
-        window.location.href = String(body?.next_url || `/onboarding.html?tenant_id=${encodeURIComponent(signupWorkspaceId.toLowerCase())}`);
+        window.location.href = resolveRedirectUrl(
+          body?.next_url,
+          `/onboarding.html?tenant_id=${encodeURIComponent(signupWorkspaceId.toLowerCase())}`,
+          body?.tenant_origin,
+        );
       });
 
       {
