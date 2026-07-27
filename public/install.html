@@ -225,7 +225,7 @@
         const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
         if (!normalized) return '';
         const origin = window.location.origin;
-        return `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${normalized}.knowledgeos.bundle.json" data-title="Ask ${normalized}"><\\/script>`;
+        return `<script src="${origin}/embed.js" data-tenant-id="${normalized}" data-api-base="${origin}" data-title="Ask ${normalized}"><\\/script>`;
       }
 
       function renderScript() {

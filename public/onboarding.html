@@ -397,7 +397,7 @@
           return;
         }
         const origin = window.location.origin;
-        embedScript.value = `<script src="${origin}/company-ai.js" data-bundle-url="${origin}/bundles/${tenantId}.knowledgeos.bundle.json" data-title="Ask ${tenantId}"><\\/script>`;
+        embedScript.value = `<script src="${origin}/embed.js" data-tenant-id="${tenantId}" data-api-base="${origin}" data-title="Ask ${tenantId}"><\\/script>`;
       }
 
       function requireSessionTokenFor(actionLabel) {

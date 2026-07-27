@@ -5,6 +5,7 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
 
   const deploymentId = `deploy-${randomUUID()}`;
   const runtimeUrl = `https://${tenantId}.knowledgeos.com/runtime/${deploymentId}`;
+  const runtimeOrigin = new URL(runtimeUrl).origin;
   const apiKey = `kos_${randomUUID().replace(/-/g, '')}`;
 
   return {
@@ -25,7 +26,7 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
       product: 'KnowledgeOS',
       tagline: "Your company's intelligence, deployed everywhere.",
     },
-    embed_code: `<script src="https://cdn.knowledgeos.com/embed.js" data-tenant-id="${tenantId}" data-runtime-url="${runtimeUrl}"></script>`,
+    embed_code: `<script src="${runtimeOrigin}/embed.js" data-tenant-id="${tenantId}" data-runtime-url="${runtimeUrl}" data-title="Ask ${tenantId}"></script>`,
     api_key: apiKey,
   };
 }
