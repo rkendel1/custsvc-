@@ -77,6 +77,23 @@
         flex-wrap: wrap;
       }
 
+      .session-chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.28rem 0.62rem;
+        background: #f9fbff;
+        color: #32436f;
+        font-weight: 700;
+        font-size: 0.82rem;
+      }
+
+      .session-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+      }
+
       .layout {
         margin-top: 1rem;
         display: grid;
@@ -221,6 +238,10 @@
           <a href="/admin">Console</a>
           <a href="/onboarding">Onboarding</a>
         </nav>
+        <div class="session-actions">
+          <span class="session-chip" data-auth-state>Checking access...</span>
+          <button type="button" class="btn-ghost" data-signout data-next="/signup" style="padding:0.42rem 0.8rem;">Sign out</button>
+        </div>
       </header>
 
       <div class="layout">
@@ -392,5 +413,6 @@
         window.location.href = data.onboarding_url;
       });
     </script>
+    <script src="/auth-ui.js"></script>
   </body>
 </html>

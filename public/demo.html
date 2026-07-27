@@ -87,6 +87,23 @@
         font-size: 0.92rem;
       }
 
+      .session-chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.28rem 0.62rem;
+        background: #f9fbff;
+        color: #32436f;
+        font-weight: 700;
+        font-size: 0.82rem;
+      }
+
+      .session-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+      }
+
       .hero {
         margin-top: 0.95rem;
         border: 1px solid var(--line);
@@ -453,6 +470,10 @@
           <a href="/onboarding">Onboarding</a>
           <a href="/signup">Get started</a>
         </nav>
+        <div class="session-actions">
+          <span class="session-chip" data-auth-state>Checking access...</span>
+          <button type="button" class="btn ghost" data-signout data-next="/demo" style="padding:0.42rem 0.8rem;">Sign out</button>
+        </div>
       </header>
 
       <section class="hero">
@@ -835,5 +856,6 @@
       updateRoi();
       renderInstallScript();
     </script>
+    <script src="/auth-ui.js"></script>
   </body>
 </html>
