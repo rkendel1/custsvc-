@@ -371,6 +371,29 @@
         return true;
       }
 
+      function getLikelyBaseDomainFromHost(hostname) {
+        const host = String(hostname || '').trim().toLowerCase();
+        if (!host) return '';
+        const labels = host.split('.').filter(Boolean);
+        if (labels.length < 2) return '';
+        return labels.slice(-2).join('.');
+      }
+
+      function maybeRedirectUsingTenantIdOnly(tenantId) {
+        const safeTenant = normalizeTenant(tenantId);
+        if (!safeTenant) return false;
+
+        const currentHost = String(window.location.hostname || '').toLowerCase();
+        const baseDomain = getLikelyBaseDomainFromHost(currentHost);
+        if (!baseDomain) return false;
+
+        const isApexHost = currentHost === baseDomain || currentHost === `www.${baseDomain}`;
+        if (!isApexHost) return false;
+
+        const targetOrigin = `${window.location.protocol}//${safeTenant}.${baseDomain}`;
+        return maybeRedirectToTenantHost(safeTenant, targetOrigin);
+      }
+
       async function hydrateTenantFromAuth() {
         try {
           const response = await fetch('/api/access/status', { credentials: 'include' });
@@ -406,7 +429,9 @@
       function loadState() {
         const tenantFromQuery = String(params.get('tenant_id') || '').trim();
         const savedTenant = String(localStorage.getItem('knowledgeos_active_tenant_id') || localStorage.getItem('knowledgeos_last_workspace') || '').trim();
-        setActiveTenant(tenantFromQuery || savedTenant);
+        const initialTenant = tenantFromQuery || savedTenant;
+        if (maybeRedirectUsingTenantIdOnly(initialTenant)) return;
+        setActiveTenant(initialTenant);
 
         const savedScript = String(localStorage.getItem('knowledgeos_embed_test_script') || '').trim();
         embedScriptInput.value = savedScript;

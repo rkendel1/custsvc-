@@ -2,9 +2,57 @@ const adminParams = new URLSearchParams(window.location.search);
 const adminSessionToken = adminParams.get('session_token') || localStorage.getItem('knowledgeos_admin_session_token') || '';
 let adminTenantId = adminParams.get('tenant_id') || localStorage.getItem('knowledgeos_active_tenant_id') || '';
 
+function normalizeTenant(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+}
+
+function normalizeOrigin(value) {
+  const input = String(value || '').trim();
+  if (!input) return '';
+  try {
+    return new URL(input).origin;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getLikelyBaseDomainFromHost(hostname) {
+  const host = String(hostname || '').trim().toLowerCase();
+  if (!host) return '';
+  const labels = host.split('.').filter(Boolean);
+  if (labels.length < 2) return '';
+  return labels.slice(-2).join('.');
+}
+
+function maybeRedirectToTenantHost(tenantId, tenantOrigin = '') {
+  const safeTenant = normalizeTenant(tenantId);
+  if (!safeTenant) return false;
+
+  const originFromApi = normalizeOrigin(tenantOrigin);
+  let targetOrigin = originFromApi;
+  if (!targetOrigin) {
+    const baseDomain = getLikelyBaseDomainFromHost(window.location.hostname || '');
+    if (!baseDomain) return false;
+    const isApex = window.location.hostname === baseDomain || window.location.hostname === `www.${baseDomain}`;
+    if (!isApex) return false;
+    targetOrigin = `${window.location.protocol}//${safeTenant}.${baseDomain}`;
+  }
+
+  if (targetOrigin === window.location.origin) return false;
+
+  const nextUrl = new URL(window.location.href);
+  const target = new URL(targetOrigin);
+  nextUrl.protocol = target.protocol;
+  nextUrl.host = target.host;
+  nextUrl.searchParams.set('tenant_id', safeTenant);
+  window.location.replace(nextUrl.toString());
+  return true;
+}
+
 if (adminTenantId) {
-  adminTenantId = String(adminTenantId).trim().toLowerCase();
+  adminTenantId = normalizeTenant(adminTenantId);
   localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
+  maybeRedirectToTenantHost(adminTenantId);
 }
 
 if (adminSessionToken) {
@@ -66,12 +114,13 @@ function setAuthState(text, isAuthenticated) {
 async function refreshAccessStatus() {
   try {
     const status = await requestJson('/api/access/status');
-    const tenantFromAuth = String(status?.authenticated_tenant_id || '').trim().toLowerCase();
+    const tenantFromAuth = normalizeTenant(status?.authenticated_tenant_id || '');
     if (tenantFromAuth && tenantFromAuth !== adminTenantId) {
       adminTenantId = tenantFromAuth;
       localStorage.setItem('knowledgeos_active_tenant_id', adminTenantId);
     }
     if (tenantFromAuth) {
+      if (maybeRedirectToTenantHost(tenantFromAuth, status?.tenant_origin || '')) return;
       setAuthState(`Workspace: ${tenantFromAuth}`, true);
       return;
     }
