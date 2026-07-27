@@ -15,6 +15,40 @@ function startServer(app) {
   });
 }
 
+function requestJson({ port, requestPath, method = 'GET', headers = {}, body = null }) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? Buffer.from(JSON.stringify(body), 'utf8') : null;
+    const request = http.request({
+      host: '127.0.0.1',
+      port,
+      path: requestPath,
+      method,
+      headers: {
+        ...(payload ? { 'content-type': 'application/json', 'content-length': String(payload.length) } : {}),
+        ...headers,
+      },
+    }, (response) => {
+      let raw = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        raw += chunk;
+      });
+      response.on('end', () => {
+        let parsed = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+          parsed = raw;
+        }
+        resolve({ statusCode: Number(response.statusCode || 0), body: parsed });
+      });
+    });
+    request.on('error', reject);
+    if (payload) request.write(payload);
+    request.end();
+  });
+}
+
 test('createApp requires SOURCE_SECRET_KEY in production', () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousSecret = process.env.SOURCE_SECRET_KEY;
@@ -239,6 +273,50 @@ test('signup is not blocked by tenant scope middleware', async (t) => {
 
   assert.equal(secondSignup.status, 201);
   assert.equal(secondBody.tenant_id, 'gofo');
+});
+
+test('tenant subdomain host resolves tenant scope without explicit tenant_id', async (t) => {
+  const previousTenantBaseDomain = process.env.TENANT_BASE_DOMAIN;
+  process.env.TENANT_BASE_DOMAIN = 'tryghostpost.com';
+  t.after(() => {
+    if (previousTenantBaseDomain === undefined) delete process.env.TENANT_BASE_DOMAIN;
+    else process.env.TENANT_BASE_DOMAIN = previousTenantBaseDomain;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-subdomain-scope-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const signup = await fetch(`${baseUrl}/api/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Host Scoped Owner',
+      email: 'owner@hostscope.com',
+      company: 'Host Scope Co',
+    }),
+  });
+  assert.equal(signup.status, 201);
+  const signupBody = await signup.json();
+  const tenantId = String(signupBody?.tenant?.tenant_id || '');
+  const sessionToken = String(signupBody?.session?.token || '');
+  assert.equal(Boolean(tenantId), true);
+  assert.equal(Boolean(sessionToken), true);
+
+  const { port } = server.address();
+  const tenantResponse = await requestJson({
+    port,
+    requestPath: '/api/tenant',
+    method: 'GET',
+    headers: {
+      host: `${tenantId}.tryghostpost.com`,
+      'x-session-token': sessionToken,
+    },
+  });
+
+  assert.equal(tenantResponse.statusCode, 200);
+  assert.equal(tenantResponse.body?.tenant?.tenant_id, tenantId);
 });
 
 test('onboarding standards endpoint returns canonical option sets', async (t) => {
