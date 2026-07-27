@@ -15,6 +15,7 @@ class KnowledgeStore {
    * Returns a deterministic numeric vector fallback where each dimension is (token length / 20).
    * This is only for local development/testing to satisfy the embedding contract shape.
    * Production providers should override this with a true semantic embedding model.
+   * @returns {Promise<number[]>}
    */
   async embed(text = '') {
     return String(text || '')

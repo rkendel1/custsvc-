@@ -64,7 +64,7 @@ function createHybridRetriever(options = {}) {
   }
 
   async function search(query, context = {}) {
-    // Alias maintained so runtimes can expose a standard `search()` API while reusing retrieve() internals.
+    // Alias maintained for compatibility with runtime APIs that expose `search()` while retrieve() remains core logic.
     return retrieve(query, context);
   }
 

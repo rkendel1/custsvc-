@@ -14,8 +14,8 @@ test('selectStores routes by audience and enforces permissions', () => {
   assert.equal(customerStores.length, 1);
   assert.equal(customerStores[0].id, 'public');
 
-  const blockedEmployee = selectStores(profile, { role: 'Support', permissions: [] });
-  assert.equal(blockedEmployee.length, 0);
+  const blockedSupport = selectStores(profile, { role: 'Support', permissions: [] });
+  assert.equal(blockedSupport.length, 0);
 
   const allowedEmployee = selectStores(profile, { role: 'Support', permissions: ['store:internal'] });
   assert.equal(allowedEmployee.length, 1);

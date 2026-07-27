@@ -430,10 +430,10 @@
     };
   }
 
-  async function search(question, options = {}) {
+  async function search(query, options = {}) {
     const bundle = await loadBundle();
     const context = options.context || state.context;
-    const queryTokens = tokenize(question);
+    const queryTokens = tokenize(query);
     const queryTf = termFrequency(queryTokens);
     const queryMag = magnitude(queryTf);
     const profile = getStorageProfile(bundle);

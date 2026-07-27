@@ -17,7 +17,7 @@ test('browser local knowledge store supports CRUD and search contract', async ()
   assert.equal(results[0].id, 'k1');
 
   const loaded = await store.get('k1');
-  assert.equal(loaded.text.includes('Refund policy'), true);
+  assert.ok(loaded.text.includes('Refund policy'));
 
   const updated = await store.update('k1', { text: 'Updated refund policy' });
   assert.equal(updated.text, 'Updated refund policy');
