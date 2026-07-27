@@ -164,6 +164,31 @@
         overflow: auto;
       }
 
+      .token-banner {
+        border: 1px solid #ffd8bf;
+        background: #fff6ef;
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .token-banner p {
+        margin: 0;
+        color: #7a4b2e;
+        font-size: 0.9rem;
+      }
+
+      .token-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin-top: 0.5rem;
+      }
+
+      .token-row input {
+        margin: 0;
+      }
+
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
         .target-grid { grid-template-columns: 1fr; }
@@ -197,6 +222,16 @@
 
         <section class="panel">
           <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">KnowledgeOS Onboarding Wizard</h1>
+          <div id="tokenBanner" class="token-banner" style="display:none;">
+            <p>
+              A session token is required for protected steps like connector setup, compile checkpoint, and deploy.
+              Complete signup first, or paste your `session_token` below.
+            </p>
+            <div class="token-row">
+              <input id="sessionTokenInput" placeholder="Paste session token (kos_...)" />
+              <button id="saveSessionTokenBtn" type="button" class="btn-primary">Save token</button>
+            </div>
+          </div>
 
           <div class="wizard-pane active" data-step="1">
             <h3 style="font-size:1rem;">Deployment and audiences</h3>
@@ -285,12 +320,19 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const tenantId = params.get('tenant_id') || '';
-      const sessionToken = params.get('session_token') || '';
+      let sessionToken =
+        params.get('session_token') ||
+        localStorage.getItem('knowledgeos_onboarding_session_token') ||
+        localStorage.getItem('knowledgeos_admin_session_token') ||
+        '';
       const requestedTargets = String(params.get('targets') || '')
         .split(',')
         .map((value) => value.trim().toUpperCase())
         .filter(Boolean);
       const output = document.getElementById('output');
+      const tokenBanner = document.getElementById('tokenBanner');
+      const sessionTokenInput = document.getElementById('sessionTokenInput');
+      const saveSessionTokenBtn = document.getElementById('saveSessionTokenBtn');
       const panes = [...document.querySelectorAll('.wizard-pane')];
       const prevStep = document.getElementById('prevStep');
       const nextStep = document.getElementById('nextStep');
@@ -298,6 +340,44 @@
       let sourceTemplates = [];
       let step = 1;
       document.getElementById('tenantLine').textContent = tenantId ? `Tenant: ${tenantId}` : 'Missing tenant_id query parameter';
+
+      if (sessionToken) {
+        localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+      }
+
+      if (sessionTokenInput) {
+        sessionTokenInput.value = sessionToken;
+      }
+
+      function hasSessionToken() {
+        return Boolean(String(sessionToken || '').trim());
+      }
+
+      function updateTokenBanner() {
+        if (!tokenBanner) return;
+        tokenBanner.style.display = hasSessionToken() ? 'none' : 'block';
+      }
+
+      function requireSessionTokenFor(actionLabel) {
+        if (hasSessionToken()) return true;
+        output.textContent = `${actionLabel} requires a session token. Complete signup or paste your session_token above.`;
+        updateTokenBanner();
+        return false;
+      }
+
+      saveSessionTokenBtn?.addEventListener('click', () => {
+        const nextToken = String(sessionTokenInput?.value || '').trim();
+        if (!nextToken) {
+          output.textContent = 'Enter a session token first.';
+          return;
+        }
+        sessionToken = nextToken;
+        localStorage.setItem('knowledgeos_onboarding_session_token', sessionToken);
+        output.textContent = 'Session token saved. Protected onboarding actions are now enabled.';
+        updateTokenBanner();
+      });
+
+      updateTokenBanner();
 
       function parseAudiences() {
         return String(document.getElementById('audienceInput').value || '')
@@ -484,6 +564,7 @@
 
       document.getElementById('connectSourceBtn').addEventListener('click', async () => {
         try {
+          if (!requireSessionTokenFor('Connector setup')) return;
           const credentials = {};
           document.querySelectorAll('#sourceCredentialFields input[name^="cred__"]').forEach((input) => {
             credentials[input.name.slice(6)] = input.value || '';
@@ -507,6 +588,7 @@
 
       document.getElementById('testSourceBtn').addEventListener('click', async () => {
         try {
+          if (!requireSessionTokenFor('Source test')) return;
           const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || '').trim();
           if (!sourceId) throw new Error('Connect a source first to run a live test');
           const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, { tenant_id: tenantId });
@@ -527,6 +609,7 @@
 
       document.getElementById('compileBtn').addEventListener('click', async () => {
         try {
+          if (!requireSessionTokenFor('Compile checkpoint')) return;
           const data = await postJson('/api/onboarding', {
             tenant_id: tenantId,
             step: 'compile-intelligence',
@@ -542,6 +625,7 @@
 
       document.getElementById('deployBtn').addEventListener('click', async () => {
         try {
+          if (!requireSessionTokenFor('Runtime deploy')) return;
           const tenant = await fetch(`/api/tenant?tenant_id=${encodeURIComponent(tenantId)}`, {
             headers: authHeader(),
           }).then((r) => r.json());
