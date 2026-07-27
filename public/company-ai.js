@@ -5,7 +5,7 @@
   const tenantId = String(script?.dataset?.tenantId || '').trim().toLowerCase();
   const widgetTitle = script?.dataset?.title || 'KnowledgeOS Assistant';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
-  const aiModeSetting = String(script?.dataset?.aiMode || 'LOCAL').toUpperCase();
+  const aiModeSetting = String(script?.dataset?.aiMode || 'RETRIEVAL_ONLY').toUpperCase();
   const telemetryIncludeContent = String(script?.dataset?.telemetryIncludeContent || '').toLowerCase() === 'true';
   const minAnswerConfidence = Number(script?.dataset?.minAnswerConfidence || 0.1);
   const role = script?.dataset?.role || 'Customer';
@@ -204,6 +204,11 @@
   function cleanRetrievedText(text) {
     const decoded = decodeHtmlEntities(text);
     return decoded
+      .replace(/\bContext:\s*/gi, ' ')
+      .replace(/\bQuestion:\s*/gi, ' ')
+      .replace(/\bAnswer:\s*/gi, ' ')
+      .replace(/\bYou are a concise company assistant\.?/gi, ' ')
+      .replace(/\bAnswer only from the provided context\.?/gi, ' ')
       .replace(/\s+/g, ' ')
       .replace(/\s+([,.;:!?])/g, '$1')
       .trim();
@@ -221,13 +226,15 @@
   function isLikelyBoilerplateLine(line) {
     const normalized = String(line || '').toLowerCase();
     if (!normalized) return true;
-    if (normalized.length < 30) return true;
+    if (normalized.length < 18) return true;
     return (
       normalized.includes('/ work / about / accomplishments / contact')
       || normalized.includes('you are a concise company assistant')
       || normalized.includes('answer only from the provided context')
       || normalized.includes('available for new work')
       || normalized.includes('view work get in touch')
+      || normalized.includes('knowledgeos is live on this page')
+      || normalized.includes('use the ask button to ask questions')
     );
   }
 
@@ -249,7 +256,29 @@
     return false;
   }
 
+  function extractYearsExperience(question, chunkText) {
+    const q = String(question || '').toLowerCase();
+    const asksYears = q.includes('year') && (q.includes('experience') || q.includes('exp'));
+    if (!asksYears) return null;
+
+    const cleaned = cleanRetrievedText(chunkText);
+    const patterns = [
+      /(\d+\+?)\s+years?\b[^.]{0,90}(building|experience|leading|scaling)/i,
+      /(\d+\+?)\s+years?\b/i,
+    ];
+    for (const pattern of patterns) {
+      const match = cleaned.match(pattern);
+      if (match?.[1]) {
+        return `Randy has ${match[1]} years of experience.`;
+      }
+    }
+    return null;
+  }
+
   function formatDeterministicAnswer(question, chunkText) {
+    const yearsAnswer = extractYearsExperience(question, chunkText);
+    if (yearsAnswer) return yearsAnswer;
+
     const questionTokens = new Set(tokenize(question));
     const candidates = splitIntoSentences(chunkText)
       .filter((line) => !isLikelyBoilerplateLine(line))
@@ -280,7 +309,8 @@
       return fallback;
     }
 
-    return `Here is what I found:\n- ${picked.join('\n- ')}`;
+    const compact = picked.map((line) => String(line).slice(0, 220).trim());
+    return `Here is what I found:\n- ${compact.join('\n- ')}`;
   }
 
   function termFrequency(tokens) {
