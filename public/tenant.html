@@ -78,6 +78,23 @@
         font-size: 0.92rem;
       }
 
+      .session-chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.28rem 0.62rem;
+        background: #f9fbff;
+        color: #32436f;
+        font-weight: 700;
+        font-size: 0.82rem;
+      }
+
+      .session-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+      }
+
       .hero {
         margin-top: 0.9rem;
         border: 1px solid var(--line);
@@ -231,6 +248,10 @@
           <a href="/onboarding">Onboarding</a>
           <a href="/signup">Get started</a>
         </nav>
+        <div class="session-actions">
+          <span id="authState" class="session-chip">Checking access...</span>
+          <button id="signOutBtn" type="button" class="btn-ghost" style="padding:0.42rem 0.8rem;">Sign out</button>
+        </div>
       </header>
 
       <section class="hero">
@@ -279,6 +300,33 @@
       const sessionTokenInput = document.getElementById('sessionToken');
       const loadBtn = document.getElementById('loadBtn');
       const resetBtn = document.getElementById('resetBtn');
+      const authState = document.getElementById('authState');
+      const signOutBtn = document.getElementById('signOutBtn');
+
+      function setAuthState(text, isAuthenticated) {
+        authState.textContent = String(text || '');
+        authState.style.background = isAuthenticated ? '#e9f7ef' : '#fff3f3';
+        authState.style.color = isAuthenticated ? '#1f6b3a' : '#8f2e2e';
+        authState.style.borderColor = isAuthenticated ? '#b8e4c8' : '#f0d0d0';
+      }
+
+      async function refreshAccessStatus() {
+        try {
+          const response = await fetch('/api/access/status');
+          const data = await response.json();
+          if (!data.password_required) {
+            setAuthState('Access: open', true);
+            return;
+          }
+          if (data.authenticated) {
+            setAuthState('Access: signed in', true);
+          } else {
+            setAuthState('Access: signed out', false);
+          }
+        } catch (_error) {
+          setAuthState('Access status unavailable', false);
+        }
+      }
 
       function setStatus(title, lines = []) {
         const items = Array.isArray(lines) ? lines : [String(lines || '')];
@@ -331,6 +379,18 @@
       resetBtn.addEventListener('click', () => {
         setStatus('Status', 'Load a tenant dashboard.');
       });
+
+      signOutBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/access/logout', { method: 'POST' });
+          setAuthState('Access: signed out', false);
+          window.location.href = '/access.html?next=/tenant.html';
+        } catch (_error) {
+          setStatus('Could not sign out', 'Please try again.');
+        }
+      });
+
+      refreshAccessStatus();
     </script>
   </body>
 </html>

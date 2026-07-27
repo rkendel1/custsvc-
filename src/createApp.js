@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const net = require('net');
 const pdfParse = require('pdf-parse');
-const { randomUUID, createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } = require('crypto');
+const { randomUUID, createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } = require('crypto');
 const { compileBundle, normalizeVisibility } = require('./lib/compiler');
 const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
@@ -498,6 +498,103 @@ function getConsolePassword() {
   return String(process.env.APP_PASSWORD || process.env.KNOWLEDGEOS_PASSWORD || '').trim();
 }
 
+function getConsolePasswordState(req) {
+  return req?.app?.locals?.consolePasswordState || null;
+}
+
+function getConsolePasswordRecordPath(rootDir) {
+  return path.join(rootDir, 'data', 'console_access.json');
+}
+
+function loadConsolePasswordRecord(rootDir) {
+  const filePath = getConsolePasswordRecordPath(rootDir);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) return null;
+    const parsed = JSON.parse(raw);
+    const salt = String(parsed?.salt || '').trim();
+    const hash = String(parsed?.password_hash || '').trim();
+    if (!salt || !hash) return null;
+    return {
+      salt,
+      password_hash: hash,
+      updated_at: parsed?.updated_at ? String(parsed.updated_at) : null,
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeConsolePasswordRecord(rootDir, record) {
+  const filePath = getConsolePasswordRecordPath(rootDir);
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+}
+
+function hashConsolePassword(password, salt) {
+  return scryptSync(String(password || ''), String(salt || ''), 64).toString('hex');
+}
+
+function createConsolePasswordState(rootDir) {
+  const seededRecord = loadConsolePasswordRecord(rootDir);
+  let record = seededRecord
+    ? {
+      salt: seededRecord.salt,
+      password_hash: seededRecord.password_hash,
+      updated_at: seededRecord.updated_at,
+    }
+    : null;
+
+  return {
+    hasStoredPassword() {
+      return Boolean(record?.salt && record?.password_hash);
+    },
+    verify(value) {
+      if (!this.hasStoredPassword()) return false;
+      const candidate = String(value || '').trim();
+      if (!candidate) return false;
+      const candidateHash = hashConsolePassword(candidate, record.salt);
+      const expected = Buffer.from(String(record.password_hash), 'hex');
+      const provided = Buffer.from(String(candidateHash), 'hex');
+      if (expected.length !== provided.length) return false;
+      return timingSafeEqual(expected, provided);
+    },
+    update(password) {
+      const nextPassword = String(password || '').trim();
+      if (!nextPassword) return false;
+      const salt = randomBytes(16).toString('hex');
+      const passwordHash = hashConsolePassword(nextPassword, salt);
+      const updated_at = new Date().toISOString();
+      record = {
+        salt,
+        password_hash: passwordHash,
+        updated_at,
+      };
+      writeConsolePasswordRecord(rootDir, record);
+      return true;
+    },
+    source() {
+      if (getConsolePassword()) return 'env';
+      if (this.hasStoredPassword()) return 'stored';
+      return 'none';
+    },
+  };
+}
+
+function isConsolePasswordMatch(req, value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return false;
+
+  const envPassword = getConsolePassword();
+  if (envPassword && candidate === envPassword) return true;
+
+  const state = getConsolePasswordState(req);
+  if (state?.verify(candidate)) return true;
+  return false;
+}
+
 function getConsoleAuthSecret() {
   return String(process.env.APP_AUTH_SECRET || process.env.SOURCE_SECRET_KEY || '').trim();
 }
@@ -540,20 +637,22 @@ function verifyConsoleAccessToken(token) {
   return { ok: true, payload };
 }
 
-function shouldRequireConsolePassword() {
-  return Boolean(getConsolePassword());
+function shouldRequireConsolePassword(req) {
+  if (getConsolePassword()) return true;
+  const state = getConsolePasswordState(req);
+  return Boolean(state?.hasStoredPassword && state.hasStoredPassword());
 }
 
 function isConsoleAuthorized(req) {
-  if (!shouldRequireConsolePassword()) return true;
+  if (!shouldRequireConsolePassword(req)) return true;
 
   const headerPassword = String(req.header('x-console-password') || '').trim();
-  if (headerPassword && headerPassword === getConsolePassword()) return true;
+  if (isConsolePasswordMatch(req, headerPassword)) return true;
 
   const authHeader = String(req.header('authorization') || '').trim();
   if (authHeader.toLowerCase().startsWith('bearer ')) {
     const bearer = authHeader.slice(7).trim();
-    if (bearer && bearer === getConsolePassword()) return true;
+    if (isConsolePasswordMatch(req, bearer)) return true;
     if (verifyConsoleAccessToken(bearer).ok) return true;
   }
 
@@ -889,6 +988,7 @@ function createApp(options = {}) {
   const sourceAdminRoleMiddleware = requireTenantRole(storage, ['Owner', 'Admin', 'Administrator']);
   const connectorVault = createConnectorVault({ storage });
   const pgVectorStore = createPgVectorStore();
+  const consolePasswordState = createConsolePasswordState(rootDir);
 
   async function upsertVectorDocument(document) {
     const embedding = normalizeEmbedding(document?.embeddings);
@@ -932,6 +1032,7 @@ function createApp(options = {}) {
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.locals.consolePasswordState = consolePasswordState;
 
   function requireConsoleAccess(req, res, next) {
     if (isConsoleAuthorized(req)) return next();
@@ -978,7 +1079,8 @@ function createApp(options = {}) {
         strategy: 'scoped-session-token',
       },
       console_access: {
-        enabled: shouldRequireConsolePassword(),
+        enabled: shouldRequireConsolePassword(_req),
+        source: consolePasswordState.source(),
       },
       browser_runtime: {
         bundle_url: '/bundles/knowledgeos.bundle.json',
@@ -989,18 +1091,19 @@ function createApp(options = {}) {
 
   app.get('/api/access/status', (_req, res) => {
     res.json({
-      password_required: shouldRequireConsolePassword(),
+      password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
+      password_source: consolePasswordState.source(),
     });
   });
 
   app.post('/api/access/login', (req, res) => {
-    if (!shouldRequireConsolePassword()) {
+    if (!shouldRequireConsolePassword(req)) {
       return res.json({ ok: true, password_required: false });
     }
 
     const password = String(req.body?.password || '').trim();
-    if (!password || password !== getConsolePassword()) {
+    if (!isConsolePasswordMatch(req, password)) {
       return res.status(401).json({ error: 'invalid password' });
     }
 
@@ -1016,6 +1119,35 @@ function createApp(options = {}) {
   app.post('/api/access/logout', (_req, res) => {
     clearConsoleAuthCookie(res);
     return res.json({ ok: true });
+  });
+
+  app.post('/api/access/password', (req, res) => {
+    const newPassword = String(req.body?.new_password || '').trim();
+    const currentPassword = String(req.body?.current_password || '').trim();
+    if (!getConsoleAuthSecret()) {
+      return res.status(500).json({ error: 'console auth secret is not configured' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'new password must be at least 8 characters' });
+    }
+
+    if (shouldRequireConsolePassword(req) && !isConsoleAuthorized(req)) {
+      if (!currentPassword || !isConsolePasswordMatch(req, currentPassword)) {
+        return res.status(401).json({ error: 'current password is required' });
+      }
+    }
+
+    const updated = consolePasswordState.update(newPassword);
+    if (!updated) {
+      return res.status(500).json({ error: 'could not update password' });
+    }
+
+    const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    const token = signConsoleAccessToken({ exp: expiresAt });
+    if (token) setConsoleAuthCookie(res, token);
+
+    return res.json({ ok: true, password_required: true, updated_at: new Date().toISOString() });
   });
 
   app.get('/api/embed/session', readLimiter, (req, res) => {
@@ -1073,7 +1205,7 @@ function createApp(options = {}) {
   });
 
   app.use((req, res, next) => {
-    if (!shouldRequireConsolePassword()) return next();
+    if (!shouldRequireConsolePassword(req)) return next();
     if (!String(req.path || '').startsWith('/api/')) return next();
     if (String(req.path || '').startsWith('/api/access/')) return next();
     if (String(req.path || '').startsWith('/api/embed/')) return next();

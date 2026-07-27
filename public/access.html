@@ -112,6 +112,30 @@
         color: #33436b;
         font-size: 0.9rem;
       }
+
+      .section {
+        margin-top: 0.9rem;
+        border-top: 1px solid var(--line);
+        padding-top: 0.8rem;
+      }
+
+      .section h2 {
+        margin: 0 0 0.3rem;
+        font-family: 'Sora', sans-serif;
+        font-size: 1rem;
+      }
+
+      .actions {
+        margin-top: 0.55rem;
+        display: flex;
+        gap: 0.45rem;
+      }
+
+      .btn-ghost {
+        background: #fff;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
     </style>
   </head>
   <body>
@@ -129,19 +153,77 @@
         </label>
         <button type="submit">Unlock</button>
       </form>
+      <div class="actions">
+        <button id="continueBtn" type="button" class="btn-ghost">Continue</button>
+        <button id="logoutBtn" type="button" class="btn-ghost">Sign out</button>
+      </div>
+
+      <section class="section">
+        <h2>Set or change password</h2>
+        <p id="passwordHelp">Create your own workspace password for protected pages.</p>
+        <form id="passwordForm">
+          <label>Current password (required when changing)
+            <input id="currentPassword" type="password" autocomplete="current-password" />
+          </label>
+          <label>New password
+            <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <label>Confirm new password
+            <input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <button type="submit">Save password</button>
+        </form>
+      </section>
       <div id="status" class="status">Waiting for password.</div>
     </section>
 
     <script>
       const form = document.getElementById('accessForm');
       const passwordInput = document.getElementById('password');
+      const passwordForm = document.getElementById('passwordForm');
+      const currentPasswordInput = document.getElementById('currentPassword');
+      const newPasswordInput = document.getElementById('newPassword');
+      const confirmPasswordInput = document.getElementById('confirmPassword');
+      const passwordHelp = document.getElementById('passwordHelp');
+      const continueBtn = document.getElementById('continueBtn');
+      const logoutBtn = document.getElementById('logoutBtn');
       const status = document.getElementById('status');
       const params = new URLSearchParams(window.location.search);
       const next = params.get('next') || '/admin';
 
+      function setStatus(message) {
+        status.textContent = String(message || '');
+      }
+
+      async function getAccessStatus() {
+        const response = await fetch('/api/access/status');
+        const text = await response.text();
+        return text ? JSON.parse(text) : {};
+      }
+
+      async function refreshStatus() {
+        try {
+          const state = await getAccessStatus();
+          if (!state.password_required) {
+            passwordHelp.textContent = 'No password is set yet. Create one to protect company pages.';
+            setStatus('You are currently logged in because password protection is not enabled yet.');
+            return;
+          }
+          if (state.authenticated) {
+            passwordHelp.textContent = 'You are signed in. You can change your password below.';
+            setStatus('You are logged in.');
+          } else {
+            passwordHelp.textContent = 'Sign in to continue. If you know the current password, you can also change it below.';
+            setStatus('You are logged out.');
+          }
+        } catch (_error) {
+          setStatus('Could not check access state.');
+        }
+      }
+
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        status.textContent = 'Checking password...';
+        setStatus('Checking password...');
 
         const response = await fetch('/api/access/login', {
           method: 'POST',
@@ -154,13 +236,67 @@
         try { body = text ? JSON.parse(text) : {}; } catch (_error) { body = {}; }
 
         if (!response.ok) {
-          status.textContent = body.error || 'Access denied.';
+          setStatus(body.error || 'Access denied.');
           return;
         }
 
-        status.textContent = 'Access granted. Redirecting...';
+        setStatus('Access granted.');
+        await refreshStatus();
+      });
+
+      passwordForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const currentPassword = currentPasswordInput.value;
+        const newPassword = newPasswordInput.value;
+        const confirmPassword = confirmPasswordInput.value;
+
+        if (!newPassword || newPassword.length < 8) {
+          setStatus('New password must be at least 8 characters.');
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setStatus('New password and confirmation do not match.');
+          return;
+        }
+
+        setStatus('Saving password...');
+
+        const response = await fetch('/api/access/password', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword,
+          }),
+        });
+
+        const text = await response.text();
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (_error) { body = {}; }
+
+        if (!response.ok) {
+          setStatus(body.error || 'Could not update password.');
+          return;
+        }
+
+        currentPasswordInput.value = '';
+        newPasswordInput.value = '';
+        confirmPasswordInput.value = '';
+        setStatus('Password updated. You are logged in.');
+        await refreshStatus();
+      });
+
+      continueBtn.addEventListener('click', () => {
         window.location.href = next;
       });
+
+      logoutBtn.addEventListener('click', async () => {
+        await fetch('/api/access/logout', { method: 'POST' });
+        setStatus('Signed out.');
+        await refreshStatus();
+      });
+
+      refreshStatus();
     </script>
   </body>
 </html>

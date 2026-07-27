@@ -45,6 +45,47 @@ function setPanelText(elementId, message) {
   el.textContent = String(message || '');
 }
 
+function setAuthState(text, isAuthenticated) {
+  const chip = document.getElementById('authState');
+  if (!chip) return;
+  chip.textContent = String(text || '');
+  chip.style.background = isAuthenticated ? '#e9f7ef' : '#fff3f3';
+  chip.style.color = isAuthenticated ? '#1f6b3a' : '#8f2e2e';
+  chip.style.borderColor = isAuthenticated ? '#b8e4c8' : '#f0d0d0';
+}
+
+async function refreshAccessStatus() {
+  try {
+    const status = await requestJson('/api/access/status');
+    if (!status.password_required) {
+      setAuthState('Access: open', true);
+      return;
+    }
+    if (status.authenticated) {
+      setAuthState('Access: signed in', true);
+    } else {
+      setAuthState('Access: signed out', false);
+    }
+  } catch (_error) {
+    setAuthState('Access status unavailable', false);
+  }
+}
+
+function wireSignOut() {
+  const button = document.getElementById('signOutBtn');
+  if (!button) return;
+
+  button.addEventListener('click', async () => {
+    try {
+      await requestJson('/api/access/logout', { method: 'POST' });
+      setAuthState('Access: signed out', false);
+      window.location.href = '/access.html?next=/admin.html';
+    } catch (error) {
+      setPanelText('compileOutput', `Could not sign out: ${error.message}`);
+    }
+  });
+}
+
 function parseMaybeJsonArray(value) {
   const text = String(value || '').trim();
   if (!text) return [];
@@ -497,17 +538,20 @@ async function bootstrapAdmin() {
   wireSourceTest();
   wireSourceUpdate();
   wireCompile();
+  wireSignOut();
 
   document.getElementById('refreshDocs').addEventListener('click', refreshDocuments);
   document.getElementById('refreshAnalytics').addEventListener('click', refreshAnalytics);
   document.getElementById('refreshSources').addEventListener('click', refreshSources);
   document.getElementById('refreshSourceAudit').addEventListener('click', refreshSourceAudit);
 
+  await refreshAccessStatus();
   await refreshDocuments();
   await refreshAnalytics();
   await refreshSources();
 }
 
 bootstrapAdmin().catch((error) => {
-  alert(error.message || 'Failed to initialize admin console');
+  setAuthState('Access status unavailable', false);
+  setPanelText('compileOutput', error.message || 'Failed to initialize admin console');
 });
