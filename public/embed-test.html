@@ -256,8 +256,7 @@
         const safeTenant = normalizeTenant(tenantId);
         if (!safeTenant) return '';
         const origin = window.location.origin;
-        const cacheBustedBundleUrl = `${origin}/api/embed/bundle?tenant_id=${encodeURIComponent(safeTenant)}&v=${Date.now()}`;
-        return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}" data-api-base="${origin}" data-bundle-url="${cacheBustedBundleUrl}" data-title="Ask ${safeTenant}"><\\/script>`;
+        return `<script src="${origin}/embed.js" data-tenant-id="${safeTenant}"><\\/script>`;
       }
 
       function setActiveTenant(value) {

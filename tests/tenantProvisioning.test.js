@@ -190,7 +190,7 @@ test('deploy enforces membership role and exposes deployment status', async (t) 
   assert.equal(deployed.status, 201);
   const deploymentData = await deployed.json();
   assert.ok(deploymentData.outputs.runtime_url.startsWith(`${baseUrl}/runtime/${signup.tenant.tenant_id}/deploy-`));
-  assert.ok(deploymentData.outputs.embed_code.includes(`data-api-base="${baseUrl}"`));
+  assert.ok(deploymentData.outputs.embed_code.includes(`${baseUrl}/embed.js`));
   assert.ok(deploymentData.outputs.embed_code.includes('data-tenant-id'));
 
   const status = await fetch(

@@ -1680,6 +1680,74 @@ function createApp(options = {}) {
     return syncConnectorSnapshotContent(tenantId, source);
   }
 
+  async function autoSyncAllTenantSources(tenantId) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) {
+      return {
+        total: 0,
+        synced: 0,
+        failed: 0,
+        document_count: 0,
+        results: [],
+      };
+    }
+
+    const sources = listData(storage, 'listSources');
+    const tenantSourceRefs = sources
+      .map((source, index) => ({ source, index }))
+      .filter((entry) => entry.source.tenant_id === normalizedTenantId);
+
+    const results = [];
+    let synced = 0;
+    let failed = 0;
+    let documentCount = 0;
+
+    for (const entry of tenantSourceRefs) {
+      const source = sources[entry.index];
+      const result = await syncSourceContent(normalizedTenantId, source);
+      sources[entry.index] = result.updated;
+
+      const mode = String(source?.type || '').toUpperCase() === 'WEBSITE'
+        ? 'website-crawl'
+        : 'connector-snapshot';
+
+      await connectorVault.appendAudit({
+        tenant_id: normalizedTenantId,
+        source_id: source.source_id,
+        action: 'source.sync',
+        status: result.error ? 'failed' : 'ok',
+        details: {
+          synced_count: result.syncedCount,
+          mode,
+          error: result.error ? (result.error.message || 'source sync failed') : null,
+          trigger: 'onboarding-deploy',
+        },
+      });
+
+      if (result.error) failed += 1;
+      else synced += 1;
+      documentCount += Number(result.syncedCount || 0);
+      results.push({
+        source_id: source.source_id,
+        type: source.type,
+        mode,
+        synced_count: Number(result.syncedCount || 0),
+        ok: !result.error,
+        error: result.error ? (result.error.message || 'source sync failed') : null,
+      });
+    }
+
+    saveData(storage, 'saveSources', sources);
+
+    return {
+      total: tenantSourceRefs.length,
+      synced,
+      failed,
+      document_count: documentCount,
+      results,
+    };
+  }
+
   async function getSourceFullConfig(source, tenantId) {
     const secretRecord = await connectorVault.getSecrets({ tenantId, sourceId: source.source_id });
     const secretConfig = decryptSourceSecretPayload(secretRecord?.encrypted_payload || '');
@@ -2985,7 +3053,7 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveRuntimeInstances', runtimeInstances);
 
-    const embedScript = `<script src="${publicOrigin}/embed.js" data-tenant-id="${tenant.tenant_id}" data-api-base="${publicOrigin}" data-title="Ask ${tenant.tenant_id}"></script>`;
+    const embedScript = `<script src="${publicOrigin}/embed.js" data-tenant-id="${tenant.tenant_id}"></script>`;
 
     return res.status(201).json({
       tenant,
@@ -3267,7 +3335,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post('/api/deploy', writeLimiter, tenantResolverMiddleware, tenantSessionMiddleware, (req, res) => {
+  app.post('/api/deploy', writeLimiter, tenantResolverMiddleware, tenantSessionMiddleware, async (req, res) => {
     const userId = req.session.user_id;
     const memberships = listData(storage, 'listTenantMemberships');
     const membership = memberships.find((item) => item.tenant_id === req.tenantId && item.user_id === userId);
@@ -3322,6 +3390,8 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveRuntimeInstances', runtimeInstances);
 
+    const autoSync = await autoSyncAllTenantSources(req.tenantId);
+
     const deploymentResponse = {
       ...deployment,
       api_key: undefined,
@@ -3338,6 +3408,7 @@ function createApp(options = {}) {
           tenant_membership_required: true,
           audiences: deployment.audience_rules,
         },
+        source_sync: autoSync,
       },
     });
   });

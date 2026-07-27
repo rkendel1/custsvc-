@@ -552,7 +552,7 @@
           return;
         }
         const origin = window.location.origin;
-        embedScript.value = `<script src="${origin}/embed.js" data-tenant-id="${tenantId}" data-api-base="${origin}" data-title="Ask ${tenantId}"><\\/script>`;
+        embedScript.value = `<script src="${origin}/embed.js" data-tenant-id="${tenantId}"><\\/script>`;
       }
 
       function setStatus(title, lines = []) {
@@ -1363,12 +1363,20 @@
             audiences: parseAudiences(),
           });
 
+          const sourceSync = data?.outputs?.source_sync || {};
+          const syncSummary = `${Number(sourceSync?.synced || 0)}/${Number(sourceSync?.total || 0)} sources synced`;
+          const syncDocuments = Number(sourceSync?.document_count || 0);
+          const syncFailures = Number(sourceSync?.failed || 0);
+
           updateEmbedScript(String(data?.outputs?.embed_code || ''));
           const dashboardNext = `/admin.html?tenant_id=${encodeURIComponent(tenantId)}`;
           const dashboardUrl = `/access.html?next=${encodeURIComponent(dashboardNext)}`;
           setStatus('Your assistant is live-ready', [
             `Tenant: ${tenantId}`,
             `Runtime URL: ${data?.outputs?.runtime_url || 'ready'}`,
+            `Source sync: ${syncSummary}`,
+            `Knowledge objects created from sync: ${syncDocuments}`,
+            syncFailures ? `${syncFailures} source sync failure(s). Review sources in dashboard.` : 'All sources synced successfully.',
             'Redirecting to your dashboard...',
           ]);
           window.setTimeout(() => {

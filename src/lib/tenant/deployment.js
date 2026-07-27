@@ -36,7 +36,7 @@ function createDeployment({ tenantId, companyName, deploymentProfile = 'BOTH', a
       product: 'KnowledgeOS',
       tagline: "Your company's intelligence, deployed everywhere.",
     },
-    embed_code: `<script src="${resolvedOrigin}/embed.js" data-tenant-id="${tenantId}" data-api-base="${resolvedOrigin}" data-title="Ask ${tenantId}"></script>`,
+    embed_code: `<script src="${resolvedOrigin}/embed.js" data-tenant-id="${tenantId}"></script>`,
     api_key: apiKey,
   };
 }
