@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KnowledgeOS Access</title>
+    <title>KnowledgeOS Sign in</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -125,17 +125,8 @@
         font-size: 1rem;
       }
 
-      .actions {
-        margin-top: 0.55rem;
-        display: flex;
-        gap: 0.45rem;
-      }
-
-      .btn-ghost {
-        background: #fff;
-        color: var(--ink);
-        border: 1px solid var(--line);
-      }
+      .auth-pane { display: none; }
+      .auth-pane.active { display: block; }
     </style>
   </head>
   <body>
@@ -144,55 +135,59 @@
         <img src="/koslogo.svg" alt="KnowledgeOS logo" />
         <strong>Knowledge<span>OS</span></strong>
       </a>
-      <h1>Protected area</h1>
-      <p>Enter your workspace password to continue.</p>
+      <h1>Sign in</h1>
+      <p id="introText">Use your workspace password to continue.</p>
 
-      <form id="accessForm">
-        <label>Password
-          <input id="password" type="password" autocomplete="current-password" required />
-        </label>
-        <button type="submit">Unlock</button>
-      </form>
-      <div class="actions">
-        <button id="continueBtn" type="button" class="btn-ghost">Continue</button>
-        <button id="logoutBtn" type="button" class="btn-ghost">Sign out</button>
-      </div>
-
-      <section class="section">
-        <h2>Set or change password</h2>
-        <p id="passwordHelp">Create your own workspace password for protected pages.</p>
-        <form id="passwordForm">
-          <label>Current password (required when changing)
-            <input id="currentPassword" type="password" autocomplete="current-password" />
+      <section id="loginPane" class="auth-pane active">
+        <form id="accessForm">
+          <label>Password
+            <input id="password" type="password" autocomplete="current-password" required />
           </label>
-          <label>New password
-            <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required />
-          </label>
-          <label>Confirm new password
-            <input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required />
-          </label>
-          <button type="submit">Save password</button>
+          <button type="submit">Log in</button>
         </form>
       </section>
-      <div id="status" class="status">Waiting for password.</div>
+
+      <section id="signupPane" class="auth-pane">
+        <section class="section" style="margin-top:0.75rem; border-top:none; padding-top:0;">
+          <h2>Create password</h2>
+          <p id="passwordHelp">Create your workspace password. You will use this password to access protected pages.</p>
+          <form id="passwordForm">
+            <label>New password
+              <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required />
+            </label>
+            <label>Confirm new password
+              <input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required />
+            </label>
+            <button type="submit">Create password</button>
+          </form>
+        </section>
+      </section>
+
+      <div id="status" class="status">Checking sign-in requirements...</div>
     </section>
 
     <script>
       const form = document.getElementById('accessForm');
       const passwordInput = document.getElementById('password');
       const passwordForm = document.getElementById('passwordForm');
-      const currentPasswordInput = document.getElementById('currentPassword');
       const newPasswordInput = document.getElementById('newPassword');
       const confirmPasswordInput = document.getElementById('confirmPassword');
       const passwordHelp = document.getElementById('passwordHelp');
-      const continueBtn = document.getElementById('continueBtn');
-      const logoutBtn = document.getElementById('logoutBtn');
+      const introText = document.getElementById('introText');
       const status = document.getElementById('status');
+      const loginPane = document.getElementById('loginPane');
+      const signupPane = document.getElementById('signupPane');
       const params = new URLSearchParams(window.location.search);
       const next = params.get('next') || '/admin';
 
       function setStatus(message) {
         status.textContent = String(message || '');
+      }
+
+      function setMode(mode) {
+        const signupMode = mode === 'signup';
+        loginPane.classList.toggle('active', !signupMode);
+        signupPane.classList.toggle('active', signupMode);
       }
 
       async function getAccessStatus() {
@@ -205,15 +200,17 @@
         try {
           const state = await getAccessStatus();
           if (!state.password_required) {
-            passwordHelp.textContent = 'No password is set yet. Create one to protect company pages.';
-            setStatus('You are currently logged in because password protection is not enabled yet.');
+            introText.textContent = 'Create a workspace password to get started.';
+            setMode('signup');
+            setStatus('Create your password to continue.');
             return;
           }
           if (state.authenticated) {
-            passwordHelp.textContent = 'You are signed in. You can change your password below.';
-            setStatus('You are logged in.');
+            setStatus('You are already logged in. Redirecting...');
+            window.location.href = next;
           } else {
-            passwordHelp.textContent = 'Sign in to continue. If you know the current password, you can also change it below.';
+            introText.textContent = 'Sign in with your workspace password to continue.';
+            setMode('login');
             setStatus('You are logged out.');
           }
         } catch (_error) {
@@ -242,11 +239,11 @@
 
         setStatus('Access granted.');
         await refreshStatus();
+        window.location.href = next;
       });
 
       passwordForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const currentPassword = currentPasswordInput.value;
         const newPassword = newPasswordInput.value;
         const confirmPassword = confirmPasswordInput.value;
 
@@ -265,7 +262,6 @@
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            current_password: currentPassword,
             new_password: newPassword,
           }),
         });
@@ -279,21 +275,11 @@
           return;
         }
 
-        currentPasswordInput.value = '';
         newPasswordInput.value = '';
         confirmPasswordInput.value = '';
         setStatus('Password updated. You are logged in.');
         await refreshStatus();
-      });
-
-      continueBtn.addEventListener('click', () => {
         window.location.href = next;
-      });
-
-      logoutBtn.addEventListener('click', async () => {
-        await fetch('/api/access/logout', { method: 'POST' });
-        setStatus('Signed out.');
-        await refreshStatus();
       });
 
       refreshStatus();
