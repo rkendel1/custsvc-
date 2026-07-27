@@ -35,6 +35,12 @@
     agreement: 0.2,
     reviewer: 0.25,
   };
+  const intentConfidence = {
+    refund_request: 0.96,
+    cancel_request: 0.9,
+    billing_question: 0.86,
+    general_question: 0.72,
+  };
 
   function normalizeAudience(value) {
     const item = String(value || '').toUpperCase();
@@ -278,10 +284,12 @@
 
   function detectIntent(question) {
     const q = String(question || '').toLowerCase();
-    if (q.includes('refund')) return { intent: 'refund_request', confidence: 0.96 };
-    if (q.includes('cancel')) return { intent: 'cancel_request', confidence: 0.9 };
-    if (q.includes('billing') || q.includes('invoice')) return { intent: 'billing_question', confidence: 0.86 };
-    return { intent: 'general_question', confidence: 0.72 };
+    if (q.includes('refund')) return { intent: 'refund_request', confidence: intentConfidence.refund_request };
+    if (q.includes('cancel')) return { intent: 'cancel_request', confidence: intentConfidence.cancel_request };
+    if (q.includes('billing') || q.includes('invoice')) {
+      return { intent: 'billing_question', confidence: intentConfidence.billing_question };
+    }
+    return { intent: 'general_question', confidence: intentConfidence.general_question };
   }
 
   function initializeAiIfNeeded(bundle) {

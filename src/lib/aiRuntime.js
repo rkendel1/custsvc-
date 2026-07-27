@@ -1,4 +1,12 @@
 const DEFAULT_ALLOWED_ACTIONS = ['start_process', 'retrieve_policy', 'ask_question'];
+const INTENT_CONFIDENCE = {
+  refund_request: 0.96,
+  cancel_request: 0.9,
+  billing_question: 0.86,
+  general_question: 0.72,
+};
+const MIN_LOCAL_CONFIDENCE = 0.3;
+const LOCAL_CONFIDENCE_ADJUSTMENT = 0.03;
 
 function detectBackend(preferredBackend) {
   const preferred = String(preferredBackend || '').toLowerCase();
@@ -9,10 +17,12 @@ function detectBackend(preferredBackend) {
 
 function inferIntent(question) {
   const q = String(question || '').toLowerCase();
-  if (q.includes('refund')) return { intent: 'refund_request', confidence: 0.96 };
-  if (q.includes('cancel')) return { intent: 'cancel_request', confidence: 0.9 };
-  if (q.includes('billing') || q.includes('invoice')) return { intent: 'billing_question', confidence: 0.86 };
-  return { intent: 'general_question', confidence: 0.72 };
+  if (q.includes('refund')) return { intent: 'refund_request', confidence: INTENT_CONFIDENCE.refund_request };
+  if (q.includes('cancel')) return { intent: 'cancel_request', confidence: INTENT_CONFIDENCE.cancel_request };
+  if (q.includes('billing') || q.includes('invoice')) {
+    return { intent: 'billing_question', confidence: INTENT_CONFIDENCE.billing_question };
+  }
+  return { intent: 'general_question', confidence: INTENT_CONFIDENCE.general_question };
 }
 
 function extractFields(text) {
@@ -80,7 +90,7 @@ function createAIRuntime(options = {}) {
     const intent = inferIntent(question);
     return {
       answer: top?.text || `Intent detected: ${intent.intent}`,
-      confidence: Number(Math.max(0.3, intent.confidence - 0.03).toFixed(3)),
+      confidence: Number(Math.max(MIN_LOCAL_CONFIDENCE, intent.confidence - LOCAL_CONFIDENCE_ADJUSTMENT).toFixed(3)),
       mode: 'local-llm',
       intent: intent.intent,
     };

@@ -27,11 +27,13 @@ function buildAnalytics(telemetryEvents) {
   const departmentUsage = {};
   const confidenceBuckets = { high: 0, medium: 0, low: 0 };
   let unansweredTotal = 0;
+  let totalQuestions = 0;
 
   for (const event of events) {
     const question = String(event.question || '').trim();
     const intent = String(event.intent || '').trim();
     if (!question && !intent) continue;
+    totalQuestions += 1;
 
     if (question) byQuestion[question] = (byQuestion[question] || 0) + 1;
     const normalizedIntent = intent || classifyIntent(question);
@@ -58,8 +60,6 @@ function buildAnalytics(telemetryEvents) {
   }
 
   const unansweredCount = unansweredTotal;
-  const totalQuestions = events.filter((event) => String(event.question || '').trim() || String(event.intent || '').trim()).length;
-
   return {
     totalQuestions,
     answeredQuestions: totalQuestions - unansweredCount,
