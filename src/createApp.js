@@ -906,6 +906,21 @@ function resolveTenantOrigin(req, tenantId, fallbackPort = 3000) {
   return `${protocol}://${normalizedTenantId}.${baseDomain}`;
 }
 
+function shouldRedirectToTenantHost(req, tenantId) {
+  const safeTenant = String(tenantId || '').trim().toLowerCase();
+  if (!safeTenant) return false;
+
+  const baseDomain = resolveTenantBaseDomain(req);
+  if (!baseDomain) return false;
+
+  const hostHeader = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
+  const currentHost = sanitizeDomainHost(hostHeader);
+  if (!currentHost) return false;
+
+  if (currentHost === `${safeTenant}.${baseDomain}`) return false;
+  return currentHost === baseDomain || currentHost === `www.${baseDomain}`;
+}
+
 function resolveScopedTenantId(req) {
   const scopedFromMiddleware = String(req.tenantId || '').trim();
   if (scopedFromMiddleware) return scopedFromMiddleware;
@@ -2349,6 +2364,22 @@ function createApp(options = {}) {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, product: 'KnowledgeOS' });
+  });
+
+  app.get(['/admin.html', '/embed-test.html', '/onboarding.html', '/tenant.html'], (req, res, next) => {
+    const tenantFromQuery = String(req.query.tenant_id || '').trim().toLowerCase();
+    if (!tenantFromQuery || !shouldRedirectToTenantHost(req, tenantFromQuery)) return next();
+
+    const targetOrigin = resolveTenantOrigin(req, tenantFromQuery, Number(process.env.APP_PORT || 3000));
+    try {
+      const currentUrl = new URL(`${resolvePublicOrigin(req, Number(process.env.APP_PORT || 3000))}${req.originalUrl || req.path}`);
+      const target = new URL(targetOrigin);
+      currentUrl.protocol = target.protocol;
+      currentUrl.host = target.host;
+      return res.redirect(302, currentUrl.toString());
+    } catch (_error) {
+      return next();
+    }
   });
 
   app.get('/api/system/status', async (_req, res) => {
