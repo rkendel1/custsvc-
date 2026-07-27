@@ -44,6 +44,8 @@ function createStorage(baseDir) {
   const onboardingPath = path.join(dataDir, 'onboarding.json');
   const sessionsPath = path.join(dataDir, 'sessions.json');
   const sourcesPath = path.join(dataDir, 'sources.json');
+  const connectorSecretsPath = path.join(dataDir, 'connector_secrets.json');
+  const connectorAuditPath = path.join(dataDir, 'connector_audit.json');
 
   ensureJsonFile(docsPath, []);
   ensureJsonFile(telemetryPath, []);
@@ -56,6 +58,8 @@ function createStorage(baseDir) {
   ensureJsonFile(onboardingPath, []);
   ensureJsonFile(sessionsPath, []);
   ensureJsonFile(sourcesPath, []);
+  ensureJsonFile(connectorSecretsPath, []);
+  ensureJsonFile(connectorAuditPath, []);
 
   function sanitizeBundleName(name) {
     let raw = String(name || 'company.intelligence.bundle.json');
@@ -137,6 +141,18 @@ function createStorage(baseDir) {
     },
     saveSources(sources) {
       writeJson(sourcesPath, sources);
+    },
+    listConnectorSecrets() {
+      return readJson(connectorSecretsPath, []);
+    },
+    saveConnectorSecrets(items) {
+      writeJson(connectorSecretsPath, items);
+    },
+    listConnectorAudit() {
+      return readJson(connectorAuditPath, []);
+    },
+    saveConnectorAudit(items) {
+      writeJson(connectorAuditPath, items);
     },
     writeBundle(name, bundle) {
       const safeName = sanitizeBundleName(name);

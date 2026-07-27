@@ -16,3 +16,29 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_documents_tenant_id ON knowledge_documents (tenant_id);
+
+CREATE TABLE IF NOT EXISTS connector_secrets (
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  key_version INTEGER NOT NULL,
+  algorithm TEXT NOT NULL,
+  encrypted_payload TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  rotated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_connector_secrets_tenant_id ON connector_secrets (tenant_id);
+
+CREATE TABLE IF NOT EXISTS connector_audit_log (
+  audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NULL,
+  actor_user_id TEXT NULL,
+  action TEXT NOT NULL,
+  status TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_connector_audit_tenant_created ON connector_audit_log (tenant_id, created_at DESC);

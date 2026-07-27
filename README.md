@@ -100,8 +100,11 @@ docker compose up --build
 Production secret management:
 
 - Set `SOURCE_SECRET_KEY` for connector credential encryption at rest.
+- Set `SOURCE_SECRET_KEY_VERSION` (integer) for key-rotation metadata tagging.
 - In `NODE_ENV=production`, app startup fails fast if `SOURCE_SECRET_KEY` is missing.
 - Recommended: use a 32+ character random secret sourced from your secret manager.
+- Connector secrets are stored in Postgres table `connector_secrets` (with `key_version`, `algorithm`, and `rotated_at`) rather than embedded in `sources.json` configs.
+- Connector audit events are stored in Postgres table `connector_audit_log`.
 
 Or via npm scripts:
 
@@ -135,6 +138,12 @@ Container persistence:
 Dependency status API:
 
 - `GET /api/system/status` validates Postgres reachability and reports browser runtime asset URLs.
+
+Tenant isolation guarantees:
+
+- Document, source, compile, and analytics APIs execute in tenant scope.
+- Bundles compile per-tenant (`<tenant>.knowledgeos.bundle.json`) and do not aggregate cross-tenant knowledge.
+- Source listings are always tenant-filtered.
 
 ## Browser Runtime Warmup
 
@@ -172,6 +181,7 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `POST /api/documents/pdf` (multipart file upload)
 - `GET /api/sources`
 - `GET /api/sources/templates`
+- `GET /api/sources/audit`
 - `POST /api/sources`
 - `PATCH /api/sources/:sourceId`
 - `POST /api/sources/:sourceId/test`
@@ -188,6 +198,19 @@ Note: URL ingestion uses secure mode: provide the source URL plus pasted page co
 - `GET /api/demo`
 
 ## Positioning
+
+## Real Connector Adapters
+
+`POST /api/sources/:sourceId/test` now performs real outbound provider checks, including OAuth/token exchange and API verification for:
+
+- SharePoint (Microsoft Entra token + Microsoft Graph site call)
+- Salesforce (OAuth token + limits API)
+- Confluence (Atlassian API)
+- GitHub (REST API)
+- Notion (users/me)
+- Slack (auth.test)
+- Zendesk (users/me)
+- Website endpoint HEAD checks
 
 - Customer service chatbot alone: **5/10**
 - Browser-native local RAG + organizational intelligence platform: **9/10**

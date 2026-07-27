@@ -24,9 +24,12 @@
   },
   "homepage": "https://github.com/rkendel1/custsvc-#readme",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1095.0",
     "@electric-sql/pglite": "^0.5.4",
     "express": "^5.2.1",
+    "googleapis": "^173.0.0",
     "multer": "^2.2.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.22.0"
   }
 }

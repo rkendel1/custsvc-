@@ -10,6 +10,8 @@ const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
 const { provisionTenant } = require('./lib/tenantProvisioner');
 const { createDeployment } = require('./lib/tenant/deployment');
+const { createConnectorVault } = require('./lib/connectorVault');
+const { testConnector } = require('./lib/connectors');
 
 function stripHtml(text) {
   const input = String(text || '');
@@ -177,7 +179,8 @@ const SOURCE_TEMPLATES = {
     fields: [
       { key: 'folder_id', label: 'Folder ID', required: true, input_type: 'text' },
       { key: 'service_account_email', label: 'Service account email', required: true, input_type: 'email' },
-      { key: 'private_key_id', label: 'Private key ID', required: true, input_type: 'text' },
+      { key: 'private_key_id', label: 'Private key ID', required: false, input_type: 'text' },
+      { key: 'private_key', label: 'Private key', required: true, input_type: 'password' },
     ],
   },
   NOTION: {
@@ -314,6 +317,39 @@ function decryptSourceConfig(config) {
   return decrypted;
 }
 
+function encryptSourceSecretPayload(secretsConfig) {
+  const normalized = normalizeSourceConfig(secretsConfig);
+  if (!Object.keys(normalized).length) return '';
+  return encryptSourceSecret(JSON.stringify(normalized));
+}
+
+function decryptSourceSecretPayload(payload) {
+  const decrypted = decryptSourceSecret(payload);
+  if (!decrypted) return {};
+  try {
+    const parsed = JSON.parse(decrypted);
+    return normalizeSourceConfig(parsed);
+  } catch (_error) {
+    return {};
+  }
+}
+
+function splitSensitiveConfig(config) {
+  const normalized = normalizeSourceConfig(config);
+  const publicConfig = {};
+  const secretConfig = {};
+
+  for (const [key, value] of Object.entries(normalized)) {
+    if (isSensitiveConfigKey(key)) {
+      secretConfig[key] = value;
+    } else {
+      publicConfig[key] = value;
+    }
+  }
+
+  return { publicConfig, secretConfig };
+}
+
 function validateSourceConfig(type, config) {
   const normalizedType = normalizeSourceType(type);
   const template = getSourceTemplate(normalizedType);
@@ -344,12 +380,11 @@ function redactSourceConfig(config) {
   return redacted;
 }
 
-function sourceHealth(source) {
+function sourceHealth(source, fullConfig = source?.config || {}) {
   const status = String(source?.status || 'connected').toLowerCase();
   if (status !== 'connected') return status;
 
-  const decryptedConfig = decryptSourceConfig(source?.config || {});
-  const validation = validateSourceConfig(source?.type || 'GENERIC', decryptedConfig);
+  const validation = validateSourceConfig(source?.type || 'GENERIC', fullConfig);
   if (!validation.ok) return 'misconfigured';
 
   const lastSyncAt = source?.last_sync_at ? Date.parse(source.last_sync_at) : null;
@@ -416,6 +451,10 @@ function resolveTenantId(req) {
     req.body?.tenantId ||
     null
   );
+}
+
+function resolveScopedTenantId(req) {
+  return String(req.tenantId || resolveTenantId(req) || 'public');
 }
 
 function requireTenant(req, res, next) {
@@ -634,6 +673,29 @@ function createApp(options = {}) {
   const readLimiter = createRateLimiter({ max: 240, windowMs: 60_000 });
   const tenantResolverMiddleware = requireTenantOrSession(storage);
   const tenantSessionMiddleware = requireTenantSession(storage);
+  const connectorVault = createConnectorVault({ storage });
+
+  async function getSourceFullConfig(source, tenantId) {
+    const secretRecord = await connectorVault.getSecrets({ tenantId, sourceId: source.source_id });
+    const secretConfig = decryptSourceSecretPayload(secretRecord?.encrypted_payload || '');
+    return {
+      ...normalizeSourceConfig(source.config || {}),
+      ...secretConfig,
+    };
+  }
+
+  async function toSourceResponse(source, tenantId) {
+    const fullConfig = await getSourceFullConfig(source, tenantId);
+    const maskedConfig = { ...fullConfig };
+    for (const key of Array.isArray(source.secret_fields) ? source.secret_fields : []) {
+      if (!maskedConfig[key]) maskedConfig[key] = '__set__';
+    }
+    return {
+      ...source,
+      config: redactSourceConfig(maskedConfig),
+      health: sourceHealth(source, fullConfig),
+    };
+  }
 
   app.use(express.json({ limit: '8mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -665,6 +727,7 @@ function createApp(options = {}) {
     res.json({
       ok: true,
       database,
+      connector_vault: connectorVault.getState(),
       browser_runtime: {
         bundle_url: '/bundles/knowledgeos.bundle.json',
         pglite_module_url: '/vendor/pglite/index.js',
@@ -673,9 +736,9 @@ function createApp(options = {}) {
   });
 
   app.get('/api/documents', readLimiter, (req, res) => {
-    const tenantId = resolveTenantId(req);
+    const tenantId = resolveScopedTenantId(req);
     const documents = listData(storage, 'listDocuments');
-    const filtered = tenantId ? documents.filter((doc) => doc.tenant_id === tenantId) : documents;
+    const filtered = documents.filter((doc) => doc.tenant_id === tenantId);
     res.json({ documents: filtered });
   });
 
@@ -703,7 +766,7 @@ function createApp(options = {}) {
       return res.status(400).json({ error: 'title and body are required' });
     }
 
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
     const docs = listData(storage, 'listDocuments');
     const document = {
       id: `doc-${randomUUID()}`,
@@ -733,7 +796,7 @@ function createApp(options = {}) {
   });
 
   app.post('/api/documents/bulk', writeLimiter, (req, res) => {
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (!items.length) {
       return res.status(400).json({ error: 'items array is required' });
@@ -776,7 +839,7 @@ function createApp(options = {}) {
       const text = stripHtml(content);
       if (!text) return res.status(400).json({ error: 'content was empty after sanitization' });
 
-      const tenantId = resolveTenantId(req) || 'public';
+      const tenantId = resolveScopedTenantId(req);
       const docs = listData(storage, 'listDocuments');
       const document = {
         id: `doc-${randomUUID()}`,
@@ -810,7 +873,7 @@ function createApp(options = {}) {
         return res.status(400).json({ error: 'pdf had no extractable text' });
       }
 
-      const tenantId = resolveTenantId(req) || 'public';
+      const tenantId = resolveScopedTenantId(req);
       const docs = listData(storage, 'listDocuments');
       const document = {
         id: `doc-${randomUUID()}`,
@@ -831,18 +894,18 @@ function createApp(options = {}) {
   });
 
   app.post('/api/compile', writeLimiter, (req, res) => {
-    const tenantId = resolveTenantId(req);
+    const tenantId = resolveScopedTenantId(req);
     const allDocs = listData(storage, 'listDocuments');
-    const docs = tenantId ? allDocs.filter((doc) => doc.tenant_id === tenantId) : allDocs;
+    const docs = allDocs.filter((doc) => doc.tenant_id === tenantId);
     const bundle = compileBundle(docs, { company: companyName });
-    const defaultBundleName = tenantId ? `${tenantId}.knowledgeos.bundle.json` : 'knowledgeos.bundle.json';
+    const defaultBundleName = `${tenantId}.knowledgeos.bundle.json`;
     const name = req.body?.name || defaultBundleName;
     const { safeName } = storage.writeBundle(name, bundle);
 
     res.json({
       message: 'bundle compiled',
       name: safeName,
-      tenant_id: tenantId || null,
+      tenant_id: tenantId,
       bundleSummary: {
         version: bundle.version,
         company: bundle.company,
@@ -881,7 +944,7 @@ function createApp(options = {}) {
 
     const events = listData(storage, 'listTelemetry');
     const event = {
-      tenant_id: resolveTenantId(req) || 'public',
+      tenant_id: resolveScopedTenantId(req),
       timestamp: new Date().toISOString(),
       answered: Boolean(answered),
       score: Number(score || 0),
@@ -902,9 +965,9 @@ function createApp(options = {}) {
   });
 
   app.get('/api/admin/analytics', readLimiter, (req, res) => {
-    const tenantId = resolveTenantId(req);
+    const tenantId = resolveScopedTenantId(req);
     const events = listData(storage, 'listTelemetry');
-    const filtered = tenantId ? events.filter((event) => event.tenant_id === tenantId) : events;
+    const filtered = events.filter((event) => event.tenant_id === tenantId);
     const analytics = buildAnalytics(filtered);
     res.json({ analytics });
   });
@@ -917,19 +980,22 @@ function createApp(options = {}) {
     res.json({ templates });
   });
 
-  app.get('/api/sources', readLimiter, (req, res) => {
-    const tenantId = resolveTenantId(req) || null;
+  app.get('/api/sources', readLimiter, async (req, res) => {
+    const tenantId = resolveScopedTenantId(req);
     const allSources = listData(storage, 'listSources');
-    const sources = tenantId ? allSources.filter((item) => item.tenant_id === tenantId) : allSources;
-    const summarized = sources.map((source) => ({
-      ...source,
-      config: redactSourceConfig(source.config),
-      health: sourceHealth(source),
-    }));
-    res.json({ sources: summarized });
+    const sources = allSources.filter((item) => item.tenant_id === tenantId);
+    const summarized = await Promise.all(sources.map((source) => toSourceResponse(source, tenantId)));
+    res.json({ sources: summarized, tenant_id: tenantId });
   });
 
-  app.post('/api/sources', writeLimiter, (req, res) => {
+  app.get('/api/sources/audit', readLimiter, async (req, res) => {
+    const tenantId = resolveScopedTenantId(req);
+    const limit = Number(req.query.limit || 100);
+    const events = await connectorVault.listAudit({ tenantId, limit });
+    res.json({ tenant_id: tenantId, events });
+  });
+
+  app.post('/api/sources', writeLimiter, async (req, res) => {
     const { name, type = 'GENERIC', site_url = null, poll_minutes = 60, config = {}, credentials = {} } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required' });
     if (site_url && !isValidHttpUrl(site_url)) {
@@ -947,7 +1013,8 @@ function createApp(options = {}) {
       });
     }
 
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
+    const { publicConfig, secretConfig } = splitSensitiveConfig(configValidation.config);
     const sources = listData(storage, 'listSources');
     const source = {
       source_id: `source-${randomUUID()}`,
@@ -957,7 +1024,8 @@ function createApp(options = {}) {
       site_url: site_url ? String(site_url) : null,
       poll_minutes: Math.max(5, Number(poll_minutes || 60)),
       status: 'connected',
-      config: encryptSourceConfig(configValidation.config),
+      config: publicConfig,
+      secret_fields: Object.keys(secretConfig),
       last_sync_at: null,
       last_sync_status: 'never',
       last_sync_error: null,
@@ -965,20 +1033,30 @@ function createApp(options = {}) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    if (Object.keys(secretConfig).length) {
+      await connectorVault.setSecrets({
+        tenantId,
+        sourceId: source.source_id,
+        encryptedPayload: encryptSourceSecretPayload(secretConfig),
+      });
+    }
+
     sources.push(source);
     saveData(storage, 'saveSources', sources);
-    res.status(201).json({
-      source: {
-        ...source,
-        config: redactSourceConfig(source.config),
-        health: sourceHealth(source),
-      },
+    await connectorVault.appendAudit({
+      tenant_id: tenantId,
+      source_id: source.source_id,
+      action: 'source.create',
+      status: 'ok',
+      details: { type: source.type, has_secret_fields: Boolean(source.secret_fields.length) },
     });
+
+    res.status(201).json({ source: await toSourceResponse(source, tenantId) });
   });
 
-  app.patch('/api/sources/:sourceId', writeLimiter, (req, res) => {
+  app.patch('/api/sources/:sourceId', writeLimiter, async (req, res) => {
     const sourceId = req.params.sourceId;
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');
     const index = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
     if (index < 0) return res.status(404).json({ error: 'source not found' });
@@ -993,18 +1071,29 @@ function createApp(options = {}) {
       return res.status(400).json({ error: 'site_url must be public http(s) and not private/internal' });
     }
 
-    const existingConfig = decryptSourceConfig(existing.config || {});
+    const existingFullConfig = await getSourceFullConfig(existing, tenantId);
     const incomingConfig = {
       ...(typeof req.body?.config === 'object' && req.body?.config ? req.body.config : {}),
       ...(typeof req.body?.credentials === 'object' && req.body?.credentials ? req.body.credentials : {}),
     };
-    const mergedConfig = { ...existingConfig, ...incomingConfig };
+    const mergedConfig = { ...existingFullConfig, ...incomingConfig };
     const configValidation = validateSourceConfig(nextType, mergedConfig);
     if (!configValidation.ok) {
       return res.status(400).json({
         error: `missing required credentials: ${configValidation.missing.join(', ')}`,
         missing: configValidation.missing,
       });
+    }
+
+    const { publicConfig, secretConfig } = splitSensitiveConfig(configValidation.config);
+    if (Object.keys(secretConfig).length) {
+      await connectorVault.setSecrets({
+        tenantId,
+        sourceId,
+        encryptedPayload: encryptSourceSecretPayload(secretConfig),
+      });
+    } else {
+      await connectorVault.deleteSecrets({ tenantId, sourceId });
     }
 
     const updated = {
@@ -1017,31 +1106,41 @@ function createApp(options = {}) {
           ? Math.max(5, Number(req.body.poll_minutes || existing.poll_minutes || 60))
           : existing.poll_minutes,
       status: req.body?.status ? String(req.body.status).toLowerCase() : existing.status,
-      config: encryptSourceConfig(configValidation.config),
+      config: publicConfig,
+      secret_fields: Object.keys(secretConfig),
       updated_at: new Date().toISOString(),
     };
     sources[index] = updated;
     saveData(storage, 'saveSources', sources);
 
-    return res.json({
-      source: {
-        ...updated,
-        config: redactSourceConfig(updated.config),
-        health: sourceHealth(updated),
-      },
+    await connectorVault.appendAudit({
+      tenant_id: tenantId,
+      source_id: sourceId,
+      action: 'source.update',
+      status: 'ok',
+      details: { type: updated.type, rotated_secret_fields: updated.secret_fields },
     });
+
+    return res.json({ source: await toSourceResponse(updated, tenantId) });
   });
 
   app.post('/api/sources/:sourceId/test', writeLimiter, async (req, res) => {
     const sourceId = req.params.sourceId;
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');
     const source = sources.find((item) => item.source_id === sourceId && item.tenant_id === tenantId);
     if (!source) return res.status(404).json({ error: 'source not found' });
 
-    const decryptedConfig = decryptSourceConfig(source.config || {});
-    const validation = validateSourceConfig(source.type, decryptedConfig);
+    const fullConfig = await getSourceFullConfig(source, tenantId);
+    const validation = validateSourceConfig(source.type, fullConfig);
     if (!validation.ok) {
+      await connectorVault.appendAudit({
+        tenant_id: tenantId,
+        source_id: sourceId,
+        action: 'source.test',
+        status: 'failed',
+        details: { reason: 'missing_credentials', missing: validation.missing },
+      });
       return res.status(400).json({
         ok: false,
         source_id: source.source_id,
@@ -1050,30 +1149,18 @@ function createApp(options = {}) {
       });
     }
 
-    const targetUrl = source.site_url || decryptedConfig.instance_url || decryptedConfig.base_url || null;
-    let connectivity = { ok: true, reason: 'credentials_validated' };
-    if (targetUrl) {
-      try {
-        const parsed = new URL(targetUrl);
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-          connectivity = { ok: false, reason: 'unsupported_protocol' };
-        } else if (isPrivateHost(parsed.hostname)) {
-          connectivity = { ok: false, reason: 'private_host_not_allowed' };
-        } else {
-          const port = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80));
-          connectivity = await probeTcp({ host: parsed.hostname, port }, 1500);
-        }
-      } catch (_error) {
-        connectivity = { ok: false, reason: 'invalid_target_url' };
-      }
-    }
+    const testResult = await testConnector({
+      type: source.type,
+      config: fullConfig,
+      source,
+    });
 
-    const nextStatus = connectivity.ok ? 'connected' : 'degraded';
-    const nextSyncStatus = connectivity.ok ? source.last_sync_status || 'ready' : 'error';
+    const nextStatus = testResult.ok ? 'connected' : 'degraded';
+    const nextSyncStatus = testResult.ok ? source.last_sync_status || 'ready' : 'error';
     const updated = {
       ...source,
       status: nextStatus,
-      last_sync_error: connectivity.ok ? null : connectivity.reason,
+      last_sync_error: testResult.ok ? null : (testResult.error || 'connector test failed'),
       last_sync_status: nextSyncStatus,
       updated_at: new Date().toISOString(),
     };
@@ -1083,22 +1170,30 @@ function createApp(options = {}) {
       saveData(storage, 'saveSources', sources);
     }
 
-    return res.json({
-      ok: connectivity.ok,
-      source_id: source.source_id,
-      status: connectivity.ok ? 'healthy' : 'degraded',
-      connectivity,
-      source: {
-        ...updated,
-        config: redactSourceConfig(updated.config),
-        health: sourceHealth(updated),
+    await connectorVault.appendAudit({
+      tenant_id: tenantId,
+      source_id: sourceId,
+      action: 'source.test',
+      status: testResult.ok ? 'ok' : 'failed',
+      details: {
+        provider: source.type,
+        error: testResult.ok ? null : (testResult.error || null),
+        status: testResult.status || null,
       },
+    });
+
+    return res.json({
+      ok: Boolean(testResult.ok),
+      source_id: source.source_id,
+      status: testResult.ok ? 'healthy' : 'degraded',
+      connectivity: testResult,
+      source: await toSourceResponse(updated, tenantId),
     });
   });
 
-  app.post('/api/sources/:sourceId/sync', writeLimiter, (req, res) => {
+  app.post('/api/sources/:sourceId/sync', writeLimiter, async (req, res) => {
     const sourceId = req.params.sourceId;
-    const tenantId = resolveTenantId(req) || 'public';
+    const tenantId = resolveScopedTenantId(req);
     const sources = listData(storage, 'listSources');
     const index = sources.findIndex((item) => item.source_id === sourceId && item.tenant_id === tenantId);
     if (index < 0) return res.status(404).json({ error: 'source not found' });
@@ -1136,8 +1231,16 @@ function createApp(options = {}) {
     sources[index] = updated;
     saveData(storage, 'saveSources', sources);
 
+    await connectorVault.appendAudit({
+      tenant_id: tenantId,
+      source_id: sourceId,
+      action: 'source.sync',
+      status: 'ok',
+      details: { synced_count: syncedCount },
+    });
+
     res.json({
-      source: { ...updated, config: redactSourceConfig(updated.config), health: sourceHealth(updated) },
+      source: await toSourceResponse(updated, tenantId),
       synced_count: syncedCount,
     });
   });

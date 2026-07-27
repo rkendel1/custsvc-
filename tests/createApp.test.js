@@ -174,6 +174,42 @@ test('bulk documents endpoint ingests valid items and reports rejects', async (t
   assert.equal(documents.length >= 1, true);
 });
 
+test('documents are strictly scoped per tenant and do not bleed across tenants', async (t) => {
+  const documents = [];
+  const storage = {
+    listDocuments: () => [...documents],
+    saveDocuments: (nextDocuments) => {
+      documents.length = 0;
+      documents.push(...nextDocuments);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-a' },
+    body: JSON.stringify({ title: 'A1', body: 'Tenant A policy' }),
+  });
+
+  await fetch(`${baseUrl}/api/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': 'tenant-b' },
+    body: JSON.stringify({ title: 'B1', body: 'Tenant B policy' }),
+  });
+
+  const tenantA = await fetch(`${baseUrl}/api/documents`, { headers: { 'x-tenant-id': 'tenant-a' } }).then((r) => r.json());
+  const tenantB = await fetch(`${baseUrl}/api/documents`, { headers: { 'x-tenant-id': 'tenant-b' } }).then((r) => r.json());
+
+  assert.equal(tenantA.documents.length, 1);
+  assert.equal(tenantB.documents.length, 1);
+  assert.equal(tenantA.documents[0].title, 'A1');
+  assert.equal(tenantB.documents[0].title, 'B1');
+});
+
 test('source monitoring endpoints register and sync website sources', async (t) => {
   const documents = [];
   const sources = [];
@@ -378,14 +414,10 @@ test('source test endpoint validates connector state and updates source status',
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      name: 'Confluence KB',
-      type: 'CONFLUENCE',
+      name: 'Generic KB',
+      type: 'GENERIC',
       tenant_id: 'public',
-      credentials: {
-        workspace: 'acme',
-        email: 'admin@example.com',
-        api_token: 'token-123',
-      },
+      config: { notes: 'local-test' },
     }),
   });
   const created = await createResponse.json();
@@ -414,6 +446,7 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
   });
 
   const sources = [];
+  const connectorSecrets = [];
   const storage = {
     listDocuments: () => [],
     saveDocuments: () => {},
@@ -421,6 +454,11 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
     saveSources: (nextSources) => {
       sources.length = 0;
       sources.push(...nextSources);
+    },
+    listConnectorSecrets: () => [...connectorSecrets],
+    saveConnectorSecrets: (nextSecrets) => {
+      connectorSecrets.length = 0;
+      connectorSecrets.push(...nextSecrets);
     },
     writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
   };
@@ -445,5 +483,47 @@ test('source credentials are encrypted at rest when SOURCE_SECRET_KEY is configu
   const body = await response.json();
   assert.equal(response.status, 201);
   assert.equal(body.source.config.token, '***');
-  assert.equal(String(sources[0].config.token || '').startsWith('enc:v1:'), true);
+  assert.equal(typeof sources[0].config.token, 'undefined');
+  assert.equal(String(connectorSecrets[0].encrypted_payload || '').startsWith('enc:v1:'), true);
+});
+
+test('source audit trail records connector lifecycle events', async (t) => {
+  const sources = [];
+  const connectorAudit = [];
+  const storage = {
+    listDocuments: () => [],
+    saveDocuments: () => {},
+    listSources: () => [...sources],
+    saveSources: (nextSources) => {
+      sources.length = 0;
+      sources.push(...nextSources);
+    },
+    listConnectorAudit: () => [...connectorAudit],
+    saveConnectorAudit: (nextAudit) => {
+      connectorAudit.length = 0;
+      connectorAudit.push(...nextAudit);
+    },
+    writeBundle: () => ({ bundleFileName: 'company.intelligence.bundle.json' }),
+  };
+
+  const app = createApp({ rootDir: os.tmpdir(), storage });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const created = await fetch(`${baseUrl}/api/sources`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Website Docs', type: 'WEBSITE', site_url: 'https://example.com/help', tenant_id: 'public' }),
+  }).then((r) => r.json());
+
+  await fetch(`${baseUrl}/api/sources/${created.source.source_id}/test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tenant_id: 'public' }),
+  });
+
+  const audit = await fetch(`${baseUrl}/api/sources/audit?tenant_id=public`).then((r) => r.json());
+  assert.equal(Array.isArray(audit.events), true);
+  assert.equal(audit.events.some((event) => event.action === 'source.create'), true);
+  assert.equal(audit.events.some((event) => event.action === 'source.test'), true);
 });

@@ -15,6 +15,7 @@ services:
       PGPASSWORD: knowledgeos
       PGDATABASE: knowledgeos
       SOURCE_SECRET_KEY: ${SOURCE_SECRET_KEY:-replace-me-with-a-strong-secret}
+      SOURCE_SECRET_KEY_VERSION: ${SOURCE_SECRET_KEY_VERSION:-1}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

@@ -96,6 +96,16 @@ async function refreshSources() {
   }
 }
 
+async function refreshSourceAudit() {
+  const output = document.getElementById('sourcesOutput');
+  try {
+    const data = await requestJson('/api/sources/audit?limit=100');
+    output.textContent = format(data.events || []);
+  } catch (error) {
+    output.textContent = error.message;
+  }
+}
+
 function wireTextDocForm() {
   const form = document.getElementById('textDocForm');
   form.addEventListener('submit', async (event) => {
@@ -415,6 +425,7 @@ async function bootstrapAdmin() {
   document.getElementById('refreshDocs').addEventListener('click', refreshDocuments);
   document.getElementById('refreshAnalytics').addEventListener('click', refreshAnalytics);
   document.getElementById('refreshSources').addEventListener('click', refreshSources);
+  document.getElementById('refreshSourceAudit').addEventListener('click', refreshSourceAudit);
 
   await refreshDocuments();
   await refreshAnalytics();
