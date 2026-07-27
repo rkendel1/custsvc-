@@ -91,6 +91,46 @@
     return allowed;
   }
 
+  function getAudienceContext(context = state.context) {
+    const roleValue = String(context.role || 'Customer').toLowerCase();
+    if (roleValue === 'customer' || roleValue === 'partner') return 'customer';
+    if (roleValue === 'executive' || roleValue === 'administrator') return 'executive';
+    if (roleValue === 'manager') return 'manager';
+    return 'employee';
+  }
+
+  function getStorageProfile(bundle = state.bundle) {
+    if (bundle?.storage_profile && Array.isArray(bundle.storage_profile.stores)) return bundle.storage_profile;
+    return {
+      mode: 'browser-local',
+      stores: [{ id: 'public', type: 'browser-local', audiences: ['customer'] }],
+    };
+  }
+
+  function hasStorePermission(store, context = state.context) {
+    const required = Array.isArray(store?.permissions) ? store.permissions : [];
+    if (!required.length) return true;
+    const available = new Set((context.permissions || []).map((item) => String(item).toLowerCase()));
+    return required.every((item) => available.has(String(item).toLowerCase()));
+  }
+
+  function storeSupportsAudience(store, audience) {
+    const audiences = Array.isArray(store?.audiences) ? store.audiences : [];
+    if (!audiences.length) return true;
+    return audiences.map((item) => String(item).toLowerCase()).includes(String(audience).toLowerCase());
+  }
+
+  function getKnowledgeSource(chunk, bundle = state.bundle) {
+    const profile = getStorageProfile(bundle);
+    const chunkAudience = normalizeAudience(chunk?.audience || chunk?.visibility).toLowerCase();
+    const mapped = profile.stores.find((store) => {
+      const audiences = Array.isArray(store?.audiences) ? store.audiences : [];
+      if (!audiences.length) return false;
+      return audiences.map((item) => String(item).toLowerCase()).includes(chunkAudience);
+    });
+    return mapped || profile.stores[0] || { id: 'public', type: 'browser-local', audiences: ['customer'] };
+  }
+
   function simpleHash(value) {
     let hash = 0;
     const input = String(value || '');
@@ -386,20 +426,39 @@
     };
   }
 
-  async function answerQuestion(question) {
+  async function search(question, options = {}) {
     const bundle = await loadBundle();
-    initializeAiIfNeeded(bundle);
     const queryTokens = tokenize(question);
     const queryTf = termFrequency(queryTokens);
     const queryMag = magnitude(queryTf);
-    const intentResult = detectIntent(question);
+    const profile = getStorageProfile(bundle);
+    const audience = getAudienceContext(options.context || state.context);
+    const stores = (profile.stores || []).filter((store) => {
+      const context = options.context || state.context;
+      return storeSupportsAudience(store, audience) && hasStorePermission(store, context);
+    });
+    const allowedStoreIds = new Set(stores.map((store) => store.id));
 
-    let best = null;
+    const results = [];
     for (const chunk of bundle.chunks || []) {
-      if (!isVisible(chunk, state.context)) continue;
+      if (!isVisible(chunk, options.context || state.context)) continue;
+      const source = getKnowledgeSource(chunk, bundle);
+      if (allowedStoreIds.size && !allowedStoreIds.has(source.id)) continue;
       const score = similarity(queryTf, queryMag, chunk);
-      if (!best || score > best.score) best = { chunk, score };
+      if (score <= 0) continue;
+      results.push({ chunk, score, source });
     }
+    results.sort((a, b) => b.score - a.score);
+    const limit = Number(options.limit || 5);
+    return results.slice(0, limit);
+  }
+
+  async function answerQuestion(question) {
+    const bundle = await loadBundle();
+    initializeAiIfNeeded(bundle);
+    const intentResult = detectIntent(question);
+    const results = await search(question, { limit: 5 });
+    const best = results[0] || null;
 
     if (best && best.score >= minAnswerConfidence) {
       const fresh = freshnessScore(best.chunk);
@@ -424,6 +483,8 @@
         intent: intentResult.intent,
         process_started: false,
         topChunkId: best.chunk.id,
+        sourceStoreId: best.source.id,
+        sourceStoreType: best.source.type,
         answered: true,
       };
     }
@@ -611,6 +672,28 @@
 
   window.CompanyIntelligenceRuntime = {
     askQuestion: answerQuestion,
+    getStorageStatus: async () => {
+      const bundle = await loadBundle();
+      const profile = getStorageProfile(bundle);
+      const audience = getAudienceContext();
+      return {
+        mode: profile.mode,
+        audience,
+        stores: profile.stores.map((store) => ({
+          ...store,
+          allowed: hasStorePermission(store),
+          active: storeSupportsAudience(store, audience),
+        })),
+      };
+    },
+    getAudienceContext: () => ({
+      audience: getAudienceContext(),
+      role: state.context.role,
+      department: state.context.department,
+      permissions: state.context.permissions,
+    }),
+    search,
+    getKnowledgeSource,
     getAIStatus,
     downloadModel,
     initializeAI,
