@@ -1,389 +1,235 @@
 # KnowledgeOS
 
-This repository defines a **browser-native organizational intelligence platform**, not just a customer service chatbot.
+KnowledgeOS is a multi-tenant company intelligence platform that turns enterprise documents, policies, process knowledge, and system integrations into a secure, role-aware AI runtime for both employees and customers.
 
-## Implemented MVP
+It is not only a chatbot. It is a complete intelligence operating layer that supports:
 
-This repository now includes a working end-to-end MVP:
+- Internal operations assistants for teams (support, product, engineering, legal, compliance, operations, leadership)
+- External customer-facing AI support experiences
+- Structured process execution with approval flows
+- Connector-based ingestion and synchronization from business systems
+- Browser-local and server-side hybrid AI retrieval patterns
 
-- Document ingestion APIs for:
-  - text/markdown/faq/policy
-  - URL fetch + extraction
-  - PDF upload + text extraction
-- Knowledge compiler that generates:
-  - `bundles/company.intelligence.bundle.json`
-- Embeddable widget runtime:
-  - `<script src="/company-ai.js" ...></script>`
-  - local bundle retrieval and scoring in the browser
-  - local AI runtime (`WASM` tier first, optional cloud fallback)
-  - privacy-preserving telemetry capture (intent/confidence/process outcomes by default)
-- Admin console at `/admin`:
-  - upload content
-  - compile bundle
-  - inspect documents
-  - inspect analytics and recommendations
+## What This Is
 
-## Company Intelligence Model v2
+KnowledgeOS provides four core capabilities in one system:
 
-The compiler now emits a richer `company.intelligence.bundle` model:
+1. Knowledge ingestion and normalization
+2. Intelligence compilation into runtime bundles
+3. Multi-tenant retrieval and process runtime
+4. Analytics and governance loops for continuous improvement
 
-- `knowledge[]` objects (title, summary, body, owner, department, audience, tags, confidence, review schedule)
-- first-class `relationships[]` and `graph` adjacency
-- role and audience indexes for retrieval
-- duplicate and contradiction detection signals
-- freshness/review metadata for governance dashboards
+The result is an organization-specific AI layer that can safely answer questions, guide processes, execute allowed actions, and reveal where knowledge gaps are costing time or customer trust.
 
-Audience layers:
+## How It Works
 
-- `PUBLIC`
-- `INTERNAL`
-- `CONFIDENTIAL`
-- `EXECUTIVE`
+### 1) Ingest and model enterprise knowledge
 
-Runtime retrieval is now role-aware and department-aware before ranking.
+KnowledgeOS ingests document content from text, URL, PDF, and connector-backed sources. Each record is normalized with metadata such as:
 
-## Company Operating System Model v6
+- Tenant scope
+- Audience and visibility
+- Source provenance
+- Ownership and review cadence
 
-The compiler now supports executable `processes[]` as first-class bundle peers to `knowledge[]`.
+### 2) Build a structured intelligence bundle
 
-- New process model fields include ownership, roles, required capabilities/documents, policies, and executable `steps[]`.
-- New `process_graph` is compiled alongside the knowledge graph.
-- Validation checks include dead-ends, unreachable steps, branch correctness, cycle safety, role/capability mismatches, orphaned processes, and knowledge link integrity.
-- Runtime APIs now include: `startProcess`, `resumeProcess`, `completeStep`, `validateStep`, `branch`, `rollback`, `cancel`, `getStorageStatus`, `getAudienceContext`, `search`, and `getKnowledgeSource`.
-- Bundle output is now `company.intelligence.bundle.v6` with enriched `models[]`, `runtime_requirements[]`, and `storage_profile`, while keeping `format_legacy: company.intelligence.bundle.v5` compatibility.
+The compiler transforms raw documents into a runtime-ready bundle that includes:
 
-### Enterprise action runtime primitives
+- Knowledge objects and chunks
+- Relationship graph and process graph
+- Runtime model metadata
+- Storage profile information
+- Validation signals (duplicates, contradictions, stale content)
 
-The runtime also supports operational execution primitives:
+### 3) Serve runtime APIs with strict tenant boundaries
 
-- `capabilities[]` registry entries with provider/auth/risk/permission metadata
-- `connectors[]` and `execution_policies[]` in the compiled bundle
-- process step support for `Action` + `capability` + `input_mapping`
-- runtime APIs for capability execution and human approval flow:
-  - `executeCapability`
-  - `listCapabilities`
-  - `getExecutionHistory`
-  - `approve`
-  - `reject`
+At runtime, APIs enforce tenant-scoped access and role-aware behavior:
 
-## Quick start
+- Tenant isolation across documents, sources, retrieval, analytics, and vectors
+- Owner/Admin controls for connector mutation and audit endpoints
+- Audience-aware retrieval before ranking
+
+### 4) Hybrid retrieval with pgvector and browser-local embeddings
+
+KnowledgeOS supports vector retrieval with PostgreSQL + pgvector while generating embeddings browser-side for low marginal token cost.
+
+- Vectors are stored by tenant in PostgreSQL
+- Search endpoint performs tenant-scoped cosine retrieval
+- Browser-local embedding generation avoids external embedding token spend
+
+### 5) Actionable execution and approvals
+
+Capabilities, connectors, and process steps can execute actions with explicit policy and approval controls.
+
+- Capability registry with risk and permission metadata
+- Human-in-the-loop approval/rejection paths
+- Full execution and audit history
+
+### 6) Learn from telemetry
+
+Runtime telemetry captures intent and outcome signals (privacy-preserving defaults), allowing teams to:
+
+- Identify unresolved customer intents
+- Detect documentation gaps
+- Improve onboarding and product UX
+- Prioritize process and policy updates
+
+## Why This Is Valuable
+
+### External customer value
+
+KnowledgeOS improves customer experience by providing:
+
+- Faster, more accurate answers
+- Consistent policy and process responses
+- Better 24x7 support coverage
+- Lower response latency for common questions
+- Improved escalation quality with context-aware routing
+
+### Internal enterprise value
+
+KnowledgeOS improves internal operations through:
+
+- Faster employee knowledge access
+- Standardized process execution and decision support
+- Lower support burden on SMEs and senior operators
+- Better compliance posture through auditability and access controls
+- Cross-functional visibility into knowledge quality and operational friction
+
+### Business impact
+
+Teams typically target outcomes like:
+
+- Lower support ticket cost per resolution
+- Higher first-contact resolution rates
+- Reduced onboarding time for new staff
+- Fewer policy/process errors
+- Better CSAT and trust through consistent answers
+
+## Internal + External Service Excellence
+
+KnowledgeOS is designed to serve both inside and outside the organization without splitting into disconnected systems.
+
+### Internally
+
+- Support teams get policy-accurate guidance and process copilots
+- Product and engineering teams see recurring customer confusion patterns
+- Compliance and legal teams gain auditable control over knowledge visibility and updates
+- Executives receive trend-level intelligence on friction, risk, and service quality
+
+### Externally
+
+- Customers get consistent, trustworthy answers
+- Public knowledge and policy responses remain aligned with internal truth
+- Escalations route with better context and less repetition
+- Service quality improves as telemetry drives continuous knowledge refinement
+
+## Security, Isolation, and Governance
+
+KnowledgeOS includes foundational enterprise controls:
+
+- Multi-tenant isolation across data, source config, analytics, and vectors
+- Encrypted connector secrets with key-version metadata
+- Connector audit logs for source lifecycle and health-test events
+- Role-based endpoint enforcement for sensitive operations
+- Production safeguard requiring connector secret key
+
+These controls are designed to support high-trust deployment in environments where cross-tenant bleed, weak secret handling, or unaudited connector changes are unacceptable.
+
+## Architecture Summary
+
+```text
+Enterprise Sources + Documents
+            |
+            v
+Ingestion + Normalization
+            |
+            v
+Knowledge Compiler (bundle + graphs + validation)
+            |
+            v
+Runtime APIs (tenant/role aware)
+            |
+     +------+------+
+     |             |
+     v             v
+PostgreSQL       Browser Runtime
++ pgvector       (local AI + local embeddings)
+     |             |
+     +------ Retrieval + Process Execution ------+
+                          |
+                          v
+                  Customer + Internal Experiences
+                          |
+                          v
+                     Telemetry + Analytics
+                          |
+                          v
+               Continuous Knowledge Improvement
+```
+
+## Technology Highlights
+
+- Node.js + Express runtime
+- PostgreSQL for durable storage
+- pgvector for semantic retrieval
+- Browser-local embedding generation using Transformers.js
+- Multi-source connector architecture with real outbound provider checks
+- Dockerized local stack and cloud deployment support
+
+## Deployment Model
+
+KnowledgeOS runs locally or in cloud environments such as Fly.io with managed PostgreSQL.
+
+### Managed PostgreSQL (Aiven or equivalent)
+
+- Uses `DATABASE_URL` and standard `PG*` environment variables
+- Supports TLS with CA certificate configuration
+- Supports pgvector-backed embeddings and search
+
+### Fly.io
+
+- App runs with explicit host and port configuration
+- Health endpoint is available at `/health`
+- Production requires `SOURCE_SECRET_KEY`
+
+## Quick Start
 
 ```bash
 npm install
 npm start
 ```
 
-Open:
+Common routes:
 
-- `http://localhost:3000/` landing page
-- `http://localhost:3000/demo` interactive demo (seeded `Acme Manufacturing`)
-- `http://localhost:3000/signup` self-service signup
-- `http://localhost:3000/onboarding?tenant_id=<tenant>` onboarding wizard
-- `http://localhost:3000/tenant` tenant dashboard
-- `http://localhost:3000/admin` KnowledgeOS Console
-- `http://localhost:3000/` now includes Runtime Diagnostics for browser warmup visibility
+- `/` landing page
+- `/admin` admin console
+- `/demo` demo environment
+- `/health` health check
 
-## Docker (Fully Contained)
+## API Surface (Core)
 
-This repository now includes a contained Docker stack with:
+- Documents ingestion and management
+- Source templates, source CRUD, source health test, source sync
+- Vector search
+- Bundle compilation
+- Telemetry and analytics
+- Tenant lifecycle and onboarding
+- Deployment status
 
-- `app` (Node/Express API + static runtime)
-- `postgres` (PostgreSQL 16, optional local profile)
-- `adminer` (database UI)
+## Who Should Use This
 
-Run the app against an external database (recommended for Aiven/Render):
+KnowledgeOS is a strong fit for organizations that need:
 
-```bash
-docker compose up --build
-```
+- Reliable customer-facing AI answers
+- Internal process intelligence beyond simple FAQ bots
+- Multi-tenant isolation and governance controls
+- Lower token dependency via local embedding strategy
+- A single intelligence layer shared across support, product, ops, and leadership
 
-Run with local postgres/adminer for development:
+## Practical Outcome
 
-```bash
-docker compose --profile localdb up --build
-```
+KnowledgeOS gives organizations a repeatable way to convert scattered docs and tribal knowledge into a governed AI operating layer that improves customer service externally and execution quality internally.
 
-Production secret management:
-
-- Set `SOURCE_SECRET_KEY` for connector credential encryption at rest.
-- Set `SOURCE_SECRET_KEY_VERSION` (integer) for key-rotation metadata tagging.
-- In `NODE_ENV=production`, app startup fails fast if `SOURCE_SECRET_KEY` is missing.
-- Recommended: use a 32+ character random secret sourced from your secret manager.
-- Connector secrets are stored in Postgres table `connector_secrets` (with `key_version`, `algorithm`, and `rotated_at`) rather than embedded in `sources.json` configs.
-- Connector audit events are stored in Postgres table `connector_audit_log`.
-
-Render Postgres + pgvector:
-
-- This app supports Render Postgres using `DATABASE_URL`.
-- On startup, API modules create pgvector schema if available.
-- Required extension: `vector`.
-- New table: `knowledge_embeddings` for tenant-scoped vector storage.
-- New endpoint: `POST /api/documents/search` for tenant-scoped cosine vector retrieval.
-
-Aiven PostgreSQL 17:
-
-- Set `DATABASE_URL` to your Aiven service URI.
-- Keep TLS enabled with `PGSSLMODE=require`.
-- Supply CA with one of:
-        - `PGSSLROOTCERT=/path/to/aiven-ca.pem`
-        - `DATABASE_SSL_CA` as inline PEM (supports escaped `\n`)
-        - `DATABASE_SSL_CA_BASE64` as base64-encoded PEM
-- Keep certificate validation on: `PGSSL_REJECT_UNAUTHORIZED=true`.
-
-Quick connectivity check:
-
-```bash
-npm run db:check
-```
-
-Expected output includes a PostgreSQL 17 version string and whether `pgvector` is installed.
-
-Or via npm scripts:
-
-```bash
-npm run docker:up
-```
-
-Stop the stack:
-
-```bash
-npm run docker:down
-```
-
-View live logs:
-
-```bash
-npm run docker:logs
-```
-
-Endpoints:
-
-- `http://127.0.0.1:3000` app
-- `http://127.0.0.1:8080` adminer
-
-Container persistence:
-
-- app data volume: `app_data`
-- app bundles volume: `app_bundles`
-- postgres volume: `postgres_data`
-
-Dependency status API:
-
-- `GET /api/system/status` validates Postgres reachability and reports browser runtime asset URLs.
-
-Tenant isolation guarantees:
-
-- Document, source, compile, and analytics APIs execute in tenant scope.
-- Bundles compile per-tenant (`<tenant>.knowledgeos.bundle.json`) and do not aggregate cross-tenant knowledge.
-- Source listings are always tenant-filtered.
-- Vector search is always tenant-filtered in `knowledge_embeddings`.
-
-Browser-local embedding strategy:
-
-- Admin and onboarding ingestion now generate embeddings in-browser with `Transformers.js` using `Xenova/all-MiniLM-L6-v2`.
-- Embedding vectors are sent to the API and persisted in pgvector.
-- No external embedding API tokens are required.
-
-## Browser Runtime Warmup
-
-On page load, the widget runtime now performs warmup automatically:
-
-1. Load bundle from `/bundles/knowledgeos.bundle.json`
-2. Initialize AI mode and selected local model metadata
-3. Download and initialize the configured browser LLM from model repository (default: `Xenova/LaMini-Neo-125M` via Transformers.js)
-4. Initialize browser-local PGlite from `/vendor/pglite/index.js`
-5. Seed a PGlite table with bundle chunks and use it during search
-
-Verification options:
-
-- Open `http://127.0.0.1:3000` and inspect Runtime Diagnostics section
-- In browser console run:
-
-```js
-await window.KnowledgeOSRuntime.getRuntimeDiagnostics()
-```
-
-Notes:
-
-- Default local model configuration is emitted by the compiler in `models[]` and points to a real downloadable model repository.
-- You can override model selection by passing `options.models` to the compiler or by embedding custom model metadata in your bundle.
-
-Note: URL ingestion uses secure mode: provide the source URL plus pasted page content.
-
-## API surface
-
-- `GET /health`
-- `GET /api/documents`
-- `POST /api/documents`
-- `POST /api/documents/bulk`
-- `POST /api/documents/url`
-- `POST /api/documents/pdf` (multipart file upload)
-- `POST /api/documents/search`
-- `GET /api/sources`
-- `GET /api/sources/templates`
-- `GET /api/sources/audit`
-- `POST /api/sources`
-- `PATCH /api/sources/:sourceId`
-- `POST /api/sources/:sourceId/test`
-- `POST /api/sources/:sourceId/sync`
-- `POST /api/compile`
-- `POST /api/telemetry`
-- `GET /api/admin/analytics`
-- `POST /api/signup`
-- `POST /api/tenants`
-- `GET /api/tenant`
-- `POST /api/onboarding`
-- `POST /api/deploy`
-- `GET /api/deployment/status`
-- `GET /api/demo`
-
-## Positioning
-
-## Real Connector Adapters
-
-`POST /api/sources/:sourceId/test` now performs real outbound provider checks, including OAuth/token exchange and API verification for:
-
-- SharePoint (Microsoft Entra token + Microsoft Graph site call)
-- Salesforce (OAuth token + limits API)
-- Confluence (Atlassian API)
-- GitHub (REST API)
-- Notion (users/me)
-- Slack (auth.test)
-- Zendesk (users/me)
-- Website endpoint HEAD checks
-
-- Customer service chatbot alone: **5/10**
-- Browser-native local RAG + organizational intelligence platform: **9/10**
-
-The differentiator is the runtime: a company ships a private intelligence package that runs in a visitor's browser as a temporary local instance.
-
-## Core Architecture
-
-```text
-Company Knowledge Base
-        |
-        v
-Postgres + pgvector
-        |
- Knowledge Compiler
-        |
-        v
-Company Intelligence Package
-        |
-        v
-Website Embed
-        |
-        v
-Browser Runtime
-        |
-        +----------------+
-        |                |
-      PGlite          WASM
-        |                |
-   Local Vector     Fast Tools
-     Search        Processing
-        |
-        v
-Local RAG Agent
-        |
-        v
-Customer Conversation
-```
-
-## Why This Matters
-
-### 1) Cost collapse
-
-Inference shifts from centralized cloud calls to browser-local compute whenever possible:
-
-- Near-zero marginal inference cost at high traffic
-- Cloud focused on distribution, governance, updates, and analytics
-
-### 2) Privacy as a feature
-
-The intelligence runs inside the browser sandbox, improving privacy posture for regulated environments (healthcare, finance, government, legal, internal enterprise use).
-
-### 3) Questions as telemetry
-
-Conversation data powers a knowledge gap discovery engine:
-
-- intent classification
-- documentation gaps
-- product confusion signals
-- recommendations for docs, onboarding, and UI improvements
-
-## Organizational Intelligence Layer
-
-One shared truth with role-aware visibility:
-
-- Customer: answers
-- Support: volume and trends
-- Product: root-cause patterns
-- Engineering: implementation-level failure signals
-- Executive: business impact
-
-## Document Visibility Model
-
-Each knowledge object supports:
-
-- `PUBLIC`
-- `INTERNAL`
-- `BOTH`
-
-This allows one object to serve external policies and internal exception handling without duplicating sources.
-
-## Product Framing
-
-Primary framing:
-
-- "Deploy your company's intelligence everywhere."
-- "A private AI operating layer for every organization."
-
-Customer support widget is the first go-to-market surface, not the full platform identity.
-
-## MVP Slice (v1)
-
-### Inputs
-
-- PDFs
-- Markdown
-- URLs
-- FAQs
-- Policies
-
-### Output
-
-- `company.intelligence.bundle`
-
-### Embed
-
-```html
-<script src="company-ai.js"></script>
-```
-
-### Visitor experience
-
-- floating assistant
-- local PGlite DB
-- local vector search
-- optional remote inference fallback
-
-### Admin experience
-
-- questions asked
-- unanswered questions
-- knowledge recommendations
-
-## Long-Term Platform
-
-```text
-Enterprise Intelligence Runtime
-        |
----------------------------------
-|               |               |
-Customer AI   Employee AI   Executive AI
-        |
-Browser Runtime (Local data + WASM + AI)
-```
-
-Strategic inversion: instead of external AI agents entering companies, companies ship their own intelligence runtime outward.
+That dual value is the core advantage: one platform, one knowledge truth, two high-impact surfaces.
