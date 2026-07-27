@@ -371,10 +371,24 @@
 
           <div class="wizard-pane" data-step="3">
             <h3 style="font-size:1rem;">Import starter knowledge</h3>
-            <label>Bulk knowledge JSON
+            <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">Paste JSON, upload docs, or skip this step.</p>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.2rem; font-size: 0.92rem;">Default visibility for imported content</p>
+            <div class="target-grid" id="visibilityGrid">
+              <label><input type="radio" name="importVisibility" value="PUBLIC" /> Public</label>
+              <label><input type="radio" name="importVisibility" value="INTERNAL" checked /> Internal</label>
+              <label><input type="radio" name="importVisibility" value="CONFIDENTIAL" /> Confidential</label>
+              <label><input type="radio" name="importVisibility" value="EXECUTIVE" /> Executive</label>
+            </div>
+            <label>Upload docs (txt, md, csv, html, json, pdf)
+              <input id="knowledgeFiles" type="file" multiple accept=".txt,.md,.markdown,.csv,.html,.htm,.json,.pdf" />
+            </label>
+            <label>Bulk knowledge JSON (optional)
               <textarea id="quickKnowledge" rows="7" placeholder='[{"title":"Return policy","body":"Returns allowed in 30 days","type":"POLICY","visibility":"PUBLIC"}]'></textarea>
             </label>
-            <button id="importKnowledgeBtn" class="btn-primary">Import starter knowledge</button>
+            <div class="inline-actions">
+              <button id="importKnowledgeBtn" class="btn-primary">Import starter knowledge</button>
+              <button id="skipKnowledgeBtn" type="button" class="btn-ghost">Skip for now</button>
+            </div>
           </div>
 
           <div class="wizard-pane" data-step="4">
@@ -426,6 +440,9 @@
       const primaryUseCaseChoiceInput = document.getElementById('primaryUseCaseChoice');
       const deploymentChoiceInput = document.getElementById('deploymentChoice');
       const sourceTypeInput = document.getElementById('sourceType');
+      const quickKnowledgeInput = document.getElementById('quickKnowledge');
+      const knowledgeFilesInput = document.getElementById('knowledgeFiles');
+      const skipKnowledgeBtn = document.getElementById('skipKnowledgeBtn');
       const authState = document.getElementById('authState');
       const signOutBtn = document.getElementById('signOutBtn');
       let sourceTemplates = [];
@@ -525,8 +542,54 @@
         window.location.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
-      function requireSessionTokenFor(actionLabel) {
+      async function ensureOnboardingSession() {
+        if (hasSessionToken()) return true;
+
+        let requestedTenantId = String(onboardingTenantInput?.value || tenantId || '').trim();
+        let email = String(onboardingEmailInput?.value || '').trim();
+
+        if (!requestedTenantId || !email) {
+          try {
+            const response = await fetch('/api/access/status');
+            const access = await response.json();
+            const tenantFromAuth = String(access?.authenticated_tenant_id || '').trim();
+            const emailFromAuth = String(access?.authenticated_email || '').trim();
+            if (!requestedTenantId && tenantFromAuth) requestedTenantId = tenantFromAuth;
+            if (!email && emailFromAuth) email = emailFromAuth;
+            if (requestedTenantId && onboardingTenantInput && !onboardingTenantInput.value) onboardingTenantInput.value = requestedTenantId;
+            if (email && onboardingEmailInput && !onboardingEmailInput.value) onboardingEmailInput.value = email;
+          } catch (_error) {
+            // If access status is unavailable, fallback to explicit user input.
+          }
+        }
+
+        if (!requestedTenantId || !email) {
+          return false;
+        }
+
+        const data = await postJson('/api/onboarding/session', {
+          tenant_id: requestedTenantId,
+          name: 'Workspace Owner',
+          email,
+          company: requestedTenantId,
+          companySize: companySizeChoiceInput.value,
+          primaryUseCase: primaryUseCaseChoiceInput.value,
+          deploymentProfile: deploymentChoiceInput.value,
+        });
+        localStorage.setItem('knowledgeos_last_email', email);
+        localStorage.setItem('knowledgeos_last_workspace', requestedTenantId);
+        await applyOnboardingSession(data, 'Setup ready');
+        return true;
+      }
+
+      async function requireSessionTokenFor(actionLabel) {
         if (!hasSessionToken()) {
+          try {
+            const established = await ensureOnboardingSession();
+            if (established) return true;
+          } catch (_error) {
+            // Fall through to the setup message below.
+          }
           setStatus('Action needed', `${actionLabel} requires setup. Click Start setup above.`);
           updateTokenBanner();
           return false;
@@ -569,27 +632,10 @@
           startSetupBtn.disabled = true;
           startSetupBtn.textContent = 'Starting...';
 
-          const requestedTenantId = String(onboardingTenantInput?.value || tenantId || '').trim();
-          const email = String(onboardingEmailInput?.value || '').trim();
-          if (!requestedTenantId) {
-            throw new Error('Workspace ID is required.');
+          const canStart = await ensureOnboardingSession();
+          if (!canStart) {
+            throw new Error('Workspace ID and work email are required.');
           }
-          if (!email) {
-            throw new Error('Work email is required.');
-          }
-
-          const data = await postJson('/api/onboarding/session', {
-            tenant_id: requestedTenantId,
-            name: 'Workspace Owner',
-            email,
-            company: requestedTenantId,
-            companySize: companySizeChoiceInput.value,
-            primaryUseCase: primaryUseCaseChoiceInput.value,
-            deploymentProfile: deploymentChoiceInput.value,
-          });
-          localStorage.setItem('knowledgeos_last_email', email);
-          localStorage.setItem('knowledgeos_last_workspace', requestedTenantId);
-          await applyOnboardingSession(data, 'Setup ready');
         } catch (error) {
           setStatus('Could not start setup', error.message);
         } finally {
@@ -859,6 +905,101 @@
         }
       }
 
+      function selectedImportVisibility() {
+        const selected = document.querySelector('input[name="importVisibility"]:checked');
+        return String(selected?.value || 'INTERNAL').toUpperCase();
+      }
+
+      function inferDocumentTypeFromName(name = '') {
+        const lower = String(name || '').toLowerCase();
+        if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'MARKDOWN';
+        if (lower.endsWith('.csv')) return 'CSV';
+        if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'HTML';
+        if (lower.endsWith('.json')) return 'JSON';
+        if (lower.endsWith('.pdf')) return 'PDF';
+        return 'TEXT';
+      }
+
+      function normalizeStarterItem(item, index, fallbackVisibility) {
+        if (!item || typeof item !== 'object') return null;
+        const title = String(item.title || '').trim();
+        const body = String(item.body || '').trim();
+        if (!title || !body) return null;
+        const visibility = String(item.visibility || fallbackVisibility || 'INTERNAL').toUpperCase();
+        return {
+          ...item,
+          title,
+          body,
+          type: String(item.type || 'TEXT').toUpperCase(),
+          visibility,
+          audience: String(item.audience || visibility).toUpperCase(),
+          id: item.id || `starter-${Date.now()}-${index + 1}`,
+        };
+      }
+
+      async function parseUploadedKnowledgeFiles(defaultVisibility) {
+        const files = Array.from(knowledgeFilesInput?.files || []);
+        const bulkItems = [];
+        const pdfFiles = [];
+
+        for (const file of files) {
+          const type = inferDocumentTypeFromName(file.name);
+          if (type === 'PDF') {
+            pdfFiles.push(file);
+            continue;
+          }
+
+          const text = String(await file.text()).trim();
+          if (!text) continue;
+
+          if (type === 'JSON') {
+            try {
+              const parsed = JSON.parse(text);
+              const rawItems = Array.isArray(parsed) ? parsed : [parsed];
+              rawItems.forEach((item, index) => {
+                const normalized = normalizeStarterItem(item, index, defaultVisibility);
+                if (normalized) bulkItems.push(normalized);
+              });
+              continue;
+            } catch (_error) {
+              // Fallback to treating JSON as plain text content.
+            }
+          }
+
+          bulkItems.push({
+            id: `upload-${Date.now()}-${bulkItems.length + 1}`,
+            title: file.name,
+            body: text,
+            type,
+            visibility: defaultVisibility,
+            audience: defaultVisibility,
+          });
+        }
+
+        return { bulkItems, pdfFiles };
+      }
+
+      async function uploadPdfKnowledge(file, visibility) {
+        const formData = new FormData();
+        formData.set('file', file, file.name);
+        formData.set('tenant_id', tenantId);
+        formData.set('visibility', visibility);
+        formData.set('title', file.name);
+
+        const response = await fetch('/api/documents/pdf', {
+          method: 'POST',
+          headers: {
+            ...authHeader(),
+          },
+          body: formData,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || `Could not upload ${file.name}`);
+        }
+        return payload;
+      }
+
       async function postJson(url, payload) {
         const response = await fetch(url, {
           method: 'POST',
@@ -909,23 +1050,60 @@
       document.getElementById('importKnowledgeBtn').addEventListener('click', async () => {
         try {
           if (!tenantId) throw new Error('Start secure onboarding first.');
-          const raw = document.getElementById('quickKnowledge').value.trim();
-          if (!raw) throw new Error('Enter JSON array first');
-          const parsedItems = JSON.parse(raw);
-          const items = await Promise.all(parsedItems.map(async (item) => ({
-            ...item,
-            embeddings: Array.isArray(item?.embeddings)
-              ? item.embeddings
-              : await createEmbedding(`${item?.title || ''}\n${item?.body || ''}`),
-          })));
-          if (!Array.isArray(items)) throw new Error('JSON must be an array');
-          const data = await postJson('/api/documents/bulk', {
-            tenant_id: tenantId,
-            items,
-          });
+          const defaultVisibility = selectedImportVisibility();
+          const raw = String(quickKnowledgeInput?.value || '').trim();
+
+          const manualItems = [];
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const rawItems = Array.isArray(parsed) ? parsed : [parsed];
+            rawItems.forEach((item, index) => {
+              const normalized = normalizeStarterItem(item, index, defaultVisibility);
+              if (normalized) manualItems.push(normalized);
+            });
+          }
+
+          const { bulkItems: uploadedItems, pdfFiles } = await parseUploadedKnowledgeFiles(defaultVisibility);
+          const mergedItems = [...manualItems, ...uploadedItems];
+
+          if (!mergedItems.length && !pdfFiles.length) {
+            setStatus('Skipped knowledge import', 'No starter knowledge provided. You can finish setup now.');
+            return;
+          }
+
+          let insertedCount = 0;
+          let rejectedCount = 0;
+
+          if (mergedItems.length) {
+            const enriched = await Promise.all(mergedItems.map(async (item) => ({
+              ...item,
+              embeddings: Array.isArray(item?.embeddings)
+                ? item.embeddings
+                : await createEmbedding(`${item?.title || ''}\n${item?.body || ''}`),
+            })));
+
+            const data = await postJson('/api/documents/bulk', {
+              tenant_id: tenantId,
+              items: enriched,
+            });
+            insertedCount += Number(data.inserted_count || 0);
+            rejectedCount += Number(data.rejected_count || 0);
+          }
+
+          if (pdfFiles.length) {
+            const uploads = await Promise.allSettled(pdfFiles.map((file) => uploadPdfKnowledge(file, defaultVisibility)));
+            uploads.forEach((result) => {
+              if (result.status === 'fulfilled') insertedCount += 1;
+              else rejectedCount += 1;
+            });
+          }
+
+          if (quickKnowledgeInput) quickKnowledgeInput.value = '';
+          if (knowledgeFilesInput) knowledgeFilesInput.value = '';
+
           setStatus('Knowledge imported', [
-            `${data.inserted_count || 0} item(s) added`,
-            `${data.rejected_count || 0} item(s) skipped`,
+            `${insertedCount} item(s) added`,
+            `${rejectedCount} item(s) skipped`,
             'You can now finish setup and go live.',
           ]);
         } catch (error) {
@@ -933,9 +1111,15 @@
         }
       });
 
+      skipKnowledgeBtn?.addEventListener('click', () => {
+        if (quickKnowledgeInput) quickKnowledgeInput.value = '';
+        if (knowledgeFilesInput) knowledgeFilesInput.value = '';
+        setStatus('Skipped knowledge import', 'No problem. Continue to Finish setup and mark ready.');
+      });
+
       document.getElementById('connectSourceBtn').addEventListener('click', async () => {
         try {
-          if (!requireSessionTokenFor('Connector setup')) return;
+          if (!(await requireSessionTokenFor('Connector setup'))) return;
           const credentials = {};
           document.querySelectorAll('#sourceCredentialFields input[name^="cred__"]').forEach((input) => {
             credentials[input.name.slice(6)] = input.value || '';
@@ -962,7 +1146,7 @@
 
       document.getElementById('testSourceBtn').addEventListener('click', async () => {
         try {
-          if (!requireSessionTokenFor('Source test')) return;
+          if (!(await requireSessionTokenFor('Source test'))) return;
           const sourceId = String(document.getElementById('testSourceBtn').dataset.sourceId || '').trim();
           if (!sourceId) throw new Error('Connect a source first to run a live test');
           const data = await postJson(`/api/sources/${encodeURIComponent(sourceId)}/test`, { tenant_id: tenantId });
@@ -977,7 +1161,7 @@
 
       document.getElementById('refreshSourceMonitorBtn').addEventListener('click', async () => {
         try {
-          if (!requireSessionTokenFor('Connected sources')) return;
+          if (!(await requireSessionTokenFor('Connected sources'))) return;
           const data = await getJson('/api/sources');
           const count = Array.isArray(data?.sources) ? data.sources.length : 0;
           setStatus('Connected sources', [`${count} source(s) currently connected.`]);
@@ -988,7 +1172,7 @@
 
       finalizeReadyBtn?.addEventListener('click', async () => {
         try {
-          if (!requireSessionTokenFor('Final setup')) return;
+          if (!(await requireSessionTokenFor('Final setup'))) return;
 
           finalizeReadyBtn.disabled = true;
           finalizeReadyBtn.textContent = 'Finalizing...';
