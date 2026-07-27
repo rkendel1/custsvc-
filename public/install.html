@@ -152,6 +152,16 @@
         font-size: 0.9rem;
       }
 
+      .status {
+        margin-top: 0.45rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .status.ready { color: #11643a; }
+      .status.missing { color: #8b2d2d; }
+      .status.checking { color: #35558f; }
+
       @media (max-width: 860px) {
         .tenant-row { grid-template-columns: 1fr; }
       }
@@ -183,6 +193,7 @@
           <button id="copyScriptBtn" class="btn-primary" type="button">Copy script</button>
           <button id="openDemoBtn" class="btn-ghost" type="button">Open tenant demo</button>
         </div>
+        <div id="bundleStatus" class="status checking">Checking bundle status...</div>
 
         <pre id="scriptOutput">Enter a tenant id to generate your embed script.</pre>
 
@@ -203,7 +214,9 @@
       const tenantInput = document.getElementById('tenantInput');
       const copyScriptBtn = document.getElementById('copyScriptBtn');
       const openDemoBtn = document.getElementById('openDemoBtn');
+      const bundleStatus = document.getElementById('bundleStatus');
       const scriptOutput = document.getElementById('scriptOutput');
+      let statusReq = 0;
 
       const queryTenant = String(params.get('tenant_id') || '').trim();
       if (queryTenant) tenantInput.value = queryTenant;
@@ -218,6 +231,38 @@
       function renderScript() {
         const script = buildTenantScript(tenantInput.value);
         scriptOutput.textContent = script || 'Enter a valid tenant id to generate your embed script.';
+        checkBundleStatus();
+      }
+
+      async function checkBundleStatus() {
+        const tenantId = String(tenantInput.value || '').trim().toLowerCase();
+        const reqId = ++statusReq;
+
+        if (!tenantId) {
+          bundleStatus.className = 'status missing';
+          bundleStatus.textContent = 'Enter a tenant id to check readiness.';
+          return;
+        }
+
+        bundleStatus.className = 'status checking';
+        bundleStatus.textContent = `Checking ${tenantId} bundle...`;
+
+        try {
+          const url = `/bundles/${encodeURIComponent(tenantId)}.knowledgeos.bundle.json`;
+          const response = await fetch(url, { method: 'HEAD' });
+          if (reqId !== statusReq) return;
+          if (response.ok) {
+            bundleStatus.className = 'status ready';
+            bundleStatus.textContent = `Ready: bundle exists for ${tenantId}.`;
+            return;
+          }
+          bundleStatus.className = 'status missing';
+          bundleStatus.textContent = `Not ready: bundle missing for ${tenantId}. Run onboarding deploy first.`;
+        } catch (_error) {
+          if (reqId !== statusReq) return;
+          bundleStatus.className = 'status missing';
+          bundleStatus.textContent = 'Could not check status right now.';
+        }
       }
 
       tenantInput.addEventListener('input', renderScript);

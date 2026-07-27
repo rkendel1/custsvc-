@@ -402,6 +402,16 @@
         overflow: auto;
       }
 
+      .install-status {
+        margin-top: 0.45rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .install-status.ready { color: #11643a; }
+      .install-status.missing { color: #8b2d2d; }
+      .install-status.checking { color: #35558f; }
+
       .reveal {
         opacity: 0;
         transform: translateY(14px);
@@ -624,6 +634,7 @@
             <button id="quickInstallAction" class="btn primary" type="button">Copy script + open guide</button>
             <button id="quickInstallCopyOnly" class="btn ghost" type="button">Copy only</button>
           </div>
+          <div id="quickInstallStatus" class="install-status checking">Checking bundle status...</div>
           <div id="quickInstallScript" class="install-code">Select a tenant id to generate an embed script.</div>
         </section>
 
@@ -663,7 +674,9 @@
       const quickInstallTenant = document.getElementById('quickInstallTenant');
       const quickInstallAction = document.getElementById('quickInstallAction');
       const quickInstallCopyOnly = document.getElementById('quickInstallCopyOnly');
+      const quickInstallStatus = document.getElementById('quickInstallStatus');
       const quickInstallScript = document.getElementById('quickInstallScript');
+      let quickInstallStatusReq = 0;
 
       function buildTenantEmbedScript(tenantId) {
         const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -675,6 +688,38 @@
       function renderQuickInstallScript() {
         const script = buildTenantEmbedScript(quickInstallTenant.value);
         quickInstallScript.textContent = script || 'Enter a valid tenant id to generate an embed script.';
+        checkQuickInstallStatus();
+      }
+
+      async function checkQuickInstallStatus() {
+        const tenantId = String(quickInstallTenant.value || '').trim().toLowerCase();
+        const reqId = ++quickInstallStatusReq;
+
+        if (!tenantId) {
+          quickInstallStatus.className = 'install-status missing';
+          quickInstallStatus.textContent = 'Enter a tenant id to check readiness.';
+          return;
+        }
+
+        quickInstallStatus.className = 'install-status checking';
+        quickInstallStatus.textContent = `Checking ${tenantId} bundle...`;
+
+        try {
+          const url = `/bundles/${encodeURIComponent(tenantId)}.knowledgeos.bundle.json`;
+          const response = await fetch(url, { method: 'HEAD' });
+          if (reqId !== quickInstallStatusReq) return;
+          if (response.ok) {
+            quickInstallStatus.className = 'install-status ready';
+            quickInstallStatus.textContent = `Ready: bundle exists for ${tenantId}.`;
+            return;
+          }
+          quickInstallStatus.className = 'install-status missing';
+          quickInstallStatus.textContent = `Not ready: bundle missing for ${tenantId}. Run onboarding deploy first.`;
+        } catch (_error) {
+          if (reqId !== quickInstallStatusReq) return;
+          quickInstallStatus.className = 'install-status missing';
+          quickInstallStatus.textContent = 'Could not check status right now.';
+        }
       }
 
       async function copyScript() {

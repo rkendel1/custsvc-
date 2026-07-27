@@ -401,6 +401,16 @@
         font-size: 0.8rem;
       }
 
+      .install-status {
+        margin-top: 0.45rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .install-status.ready { color: #11643a; }
+      .install-status.missing { color: #8b2d2d; }
+      .install-status.checking { color: #35558f; }
+
       @media (max-width: 980px) {
         .hero,
         .frame,
@@ -510,6 +520,7 @@
           <button id="demoInstallAction" class="btn primary" type="button">Copy script + open guide</button>
           <button id="demoInstallCopyOnly" class="btn ghost" type="button">Copy only</button>
         </div>
+        <div id="demoInstallStatus" class="install-status checking">Checking bundle status...</div>
         <div id="demoInstallScript" class="install-script">Select a tenant id to generate an embed script.</div>
       </section>
 
@@ -590,9 +601,11 @@
       const demoInstallTenant = document.getElementById('demoInstallTenant');
       const demoInstallAction = document.getElementById('demoInstallAction');
       const demoInstallCopyOnly = document.getElementById('demoInstallCopyOnly');
+      const demoInstallStatus = document.getElementById('demoInstallStatus');
       const demoInstallScript = document.getElementById('demoInstallScript');
       const personaButtons = Array.from(document.querySelectorAll('.persona-btn'));
       const scenarioButtons = Array.from(document.querySelectorAll('[data-scenario]'));
+      let demoInstallStatusReq = 0;
 
       let demo = null;
       let storyTimer = null;
@@ -654,6 +667,38 @@
       function renderInstallScript() {
         const script = buildTenantEmbedScript(demoInstallTenant.value);
         demoInstallScript.textContent = script || 'Enter a valid tenant id to generate an embed script.';
+        checkDemoInstallStatus();
+      }
+
+      async function checkDemoInstallStatus() {
+        const tenantId = String(demoInstallTenant.value || '').trim().toLowerCase();
+        const reqId = ++demoInstallStatusReq;
+
+        if (!tenantId) {
+          demoInstallStatus.className = 'install-status missing';
+          demoInstallStatus.textContent = 'Enter a tenant id to check readiness.';
+          return;
+        }
+
+        demoInstallStatus.className = 'install-status checking';
+        demoInstallStatus.textContent = `Checking ${tenantId} bundle...`;
+
+        try {
+          const url = `/bundles/${encodeURIComponent(tenantId)}.knowledgeos.bundle.json`;
+          const response = await fetch(url, { method: 'HEAD' });
+          if (reqId !== demoInstallStatusReq) return;
+          if (response.ok) {
+            demoInstallStatus.className = 'install-status ready';
+            demoInstallStatus.textContent = `Ready: bundle exists for ${tenantId}.`;
+            return;
+          }
+          demoInstallStatus.className = 'install-status missing';
+          demoInstallStatus.textContent = `Not ready: bundle missing for ${tenantId}. Run onboarding deploy first.`;
+        } catch (_error) {
+          if (reqId !== demoInstallStatusReq) return;
+          demoInstallStatus.className = 'install-status missing';
+          demoInstallStatus.textContent = 'Could not check status right now.';
+        }
       }
 
       async function copyInstallScript() {
