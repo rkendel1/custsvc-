@@ -26,7 +26,7 @@
 
   const apiBase = explicitApiBase || runtimeOrigin;
   const bundleUrl = explicitBundleUrl || (tenantId
-    ? `${apiBase}/bundles/${encodeURIComponent(tenantId)}.knowledgeos.bundle.json`
+    ? `${apiBase}/api/embed/bundle?tenant_id=${encodeURIComponent(tenantId)}`
     : `${apiBase}/bundles/knowledgeos.bundle.json`);
   const loaderSrc = explicitLoaderSrc || `${apiBase}/company-ai.js`;
 
@@ -50,6 +50,7 @@
 
   loader.dataset.bundleUrl = bundleUrl;
   loader.dataset.apiBase = apiBase;
+  if (tenantId) loader.dataset.tenantId = tenantId;
 
   if (!script.dataset.title && tenantId) {
     loader.dataset.title = `Ask ${tenantId}`;

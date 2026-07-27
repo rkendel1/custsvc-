@@ -2,6 +2,7 @@
   const script = document.currentScript;
   const bundleUrl = script?.dataset?.bundleUrl || '/bundles/knowledgeos.bundle.json';
   const apiBase = script?.dataset?.apiBase || '';
+  const tenantId = String(script?.dataset?.tenantId || '').trim().toLowerCase();
   const widgetTitle = script?.dataset?.title || 'KnowledgeOS Assistant';
   const remoteFallbackUrl = script?.dataset?.remoteFallbackUrl || '';
   const aiModeSetting = String(script?.dataset?.aiMode || 'LOCAL').toUpperCase();
@@ -46,7 +47,29 @@
       completed: false,
       error: null,
     },
+    embedSession: {
+      token: null,
+      expiresAt: 0,
+    },
   };
+    async function getEmbedSessionToken() {
+      if (!tenantId || !apiBase) return null;
+      const now = Date.now();
+      if (state.embedSession.token && state.embedSession.expiresAt - now > 5_000) {
+        return state.embedSession.token;
+      }
+
+      const response = await fetch(`${apiBase}/api/embed/session?tenant_id=${encodeURIComponent(tenantId)}`);
+      if (!response.ok) {
+        throw new Error(`Unable to establish secure embed session (${response.status})`);
+      }
+      const data = await response.json();
+      const expiresAt = Date.parse(String(data?.expires_at || ''));
+      state.embedSession.token = String(data?.token || '');
+      state.embedSession.expiresAt = Number.isFinite(expiresAt) ? expiresAt : now + 5 * 60 * 1000;
+      return state.embedSession.token || null;
+    }
+
   const AI_MODE = {
     LOCAL: 'LOCAL',
     RETRIEVAL_ONLY: 'RETRIEVAL_ONLY',
@@ -238,7 +261,12 @@
     }
 
     if (!state.bundle) {
-      const response = await fetch(bundleUrl);
+      const headers = {};
+      if (tenantId && bundleUrl.includes('/api/embed/bundle')) {
+        const token = await getEmbedSessionToken();
+        if (token) headers['x-embed-token'] = token;
+      }
+      const response = await fetch(bundleUrl, { headers });
       if (!response.ok) throw new Error(`Could not load bundle (${response.status})`);
       state.bundle = await response.json();
       localStorage.setItem(cacheKey, JSON.stringify(state.bundle));
@@ -862,9 +890,15 @@
 
   async function sendTelemetry(entry) {
     try {
+      const headers = { 'content-type': 'application/json' };
+      if (tenantId) {
+        const token = await getEmbedSessionToken();
+        if (token) headers['x-embed-token'] = token;
+      }
+
       await fetch(`${apiBase}/api/telemetry`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify(entry),
       });
     } catch (_e) {

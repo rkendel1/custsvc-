@@ -51,7 +51,6 @@ function createPgVectorStore() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_tenant ON knowledge_embeddings (tenant_id)');
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_vector_cosine ON knowledge_embeddings USING ivfflat (embedding vector_cosine_ops)');
     schemaReady = true;
   }
 

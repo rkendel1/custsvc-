@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const net = require('net');
 const pdfParse = require('pdf-parse');
-const { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } = require('crypto');
+const { randomUUID, createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } = require('crypto');
 const { compileBundle, normalizeVisibility } = require('./lib/compiler');
 const { buildAnalytics } = require('./lib/analytics');
 const { createStorage } = require('./lib/storage');
@@ -442,6 +442,14 @@ function resolveSessionToken(req) {
   return req.header('x-session-token') || req.query.session_token || req.body?.session_token || null;
 }
 
+function resolveEmbedToken(req) {
+  const authHeader = req.header('authorization') || '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  return req.header('x-embed-token') || req.query.embed_token || null;
+}
+
 function resolveTenantId(req) {
   return (
     req.header('x-tenant-id') ||
@@ -454,6 +462,73 @@ function resolveTenantId(req) {
 
 function resolveScopedTenantId(req) {
   return String(req.tenantId || resolveTenantId(req) || 'public');
+}
+
+function base64urlEncode(input) {
+  return Buffer.from(String(input || ''), 'utf8').toString('base64url');
+}
+
+function base64urlDecode(input) {
+  return Buffer.from(String(input || ''), 'base64url').toString('utf8');
+}
+
+function getEmbedTokenSecret() {
+  const fromEnv = String(process.env.EMBED_TOKEN_SECRET || '').trim();
+  if (fromEnv) return fromEnv;
+  const sourceSecret = String(process.env.SOURCE_SECRET_KEY || '').trim();
+  if (sourceSecret) return sourceSecret;
+  return null;
+}
+
+function signEmbedSessionToken(payload) {
+  const secret = getEmbedTokenSecret();
+  if (!secret) return null;
+  const encoded = base64urlEncode(JSON.stringify(payload));
+  const signature = createHmac('sha256', secret).update(encoded).digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+function verifyEmbedSessionToken(token, { tenantId, origin }) {
+  const secret = getEmbedTokenSecret();
+  if (!secret) return { ok: false, reason: 'embed_token_secret_missing' };
+  const raw = String(token || '').trim();
+  const parts = raw.split('.');
+  if (parts.length !== 2) return { ok: false, reason: 'invalid_token_format' };
+
+  const [encoded, signature] = parts;
+  const expected = createHmac('sha256', secret).update(encoded).digest('base64url');
+  if (signature !== expected) return { ok: false, reason: 'invalid_signature' };
+
+  let payload;
+  try {
+    payload = JSON.parse(base64urlDecode(encoded));
+  } catch (_error) {
+    return { ok: false, reason: 'invalid_payload' };
+  }
+
+  if (!payload?.tenant_id || String(payload.tenant_id) !== String(tenantId)) {
+    return { ok: false, reason: 'tenant_mismatch' };
+  }
+
+  const expiresAt = Number(payload.exp || 0);
+  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+    return { ok: false, reason: 'token_expired' };
+  }
+
+  const tokenOrigin = String(payload.origin || '').trim();
+  const requestOrigin = String(origin || '').trim();
+  if (tokenOrigin && requestOrigin && tokenOrigin !== requestOrigin) {
+    return { ok: false, reason: 'origin_mismatch' };
+  }
+
+  return { ok: true, payload };
+}
+
+function isSessionValid(session) {
+  if (!session) return false;
+  if (String(session.status || '').toLowerCase() !== 'active') return false;
+  if (session.expires_at && Date.now() > Date.parse(session.expires_at)) return false;
+  return true;
 }
 
 function requireTenant(req, res, next) {
@@ -779,11 +854,69 @@ function createApp(options = {}) {
       database,
       connector_vault: connectorVault.getState(),
       pgvector: pgVectorStore.getState(),
+      embed_auth: {
+        enabled: Boolean(getEmbedTokenSecret()),
+        strategy: 'scoped-session-token',
+      },
       browser_runtime: {
         bundle_url: '/bundles/knowledgeos.bundle.json',
         pglite_module_url: '/vendor/pglite/index.js',
       },
     });
+  });
+
+  app.get('/api/embed/session', readLimiter, (req, res) => {
+    const tenantId = String(req.query.tenant_id || '').trim();
+    if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
+
+    const tenants = listData(storage, 'listTenants');
+    const tenant = tenants.find((item) => item.tenant_id === tenantId);
+    if (!tenant) return res.status(404).json({ error: 'tenant not found' });
+
+    const deployments = listData(storage, 'listDeployments');
+    const activeDeployment = deployments.find((item) => item.tenant_id === tenantId && item.status === 'active');
+    if (!activeDeployment) {
+      return res.status(403).json({ error: 'tenant is not deployed yet' });
+    }
+
+    const origin = String(req.header('origin') || '').trim();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    const token = signEmbedSessionToken({
+      tenant_id: tenantId,
+      scope: 'embed-runtime',
+      origin,
+      exp: expiresAt,
+    });
+    if (!token) {
+      return res.status(500).json({ error: 'embed token secret is not configured' });
+    }
+
+    return res.json({
+      tenant_id: tenantId,
+      token,
+      expires_at: new Date(expiresAt).toISOString(),
+    });
+  });
+
+  app.get('/api/embed/bundle', readLimiter, (req, res) => {
+    const tenantId = String(req.query.tenant_id || '').trim();
+    if (!tenantId) return res.status(400).json({ error: 'tenant_id is required' });
+
+    const verification = verifyEmbedSessionToken(resolveEmbedToken(req), {
+      tenantId,
+      origin: req.header('origin') || '',
+    });
+    if (!verification.ok) {
+      return res.status(401).json({ error: 'invalid embed session token', reason: verification.reason });
+    }
+
+    const bundleName = `${tenantId}.knowledgeos.bundle.json`;
+    const bundlePath = path.join(rootDir, 'bundles', bundleName);
+    if (!fs.existsSync(bundlePath)) {
+      return res.status(404).json({ error: 'bundle not found' });
+    }
+
+    return res.sendFile(bundlePath);
   });
 
   app.get('/api/documents', readLimiter, (req, res) => {
@@ -1008,9 +1141,28 @@ function createApp(options = {}) {
     } = req.body || {};
     if (!question && !intent) return res.status(400).json({ error: 'at least one of question or intent is required' });
 
+    const tenantId = resolveScopedTenantId(req);
+    const sessionToken = resolveSessionToken(req);
+    const sessions = listData(storage, 'listSessions');
+    const validSession = sessions.find((item) => item.token === sessionToken && item.tenant_id === tenantId);
+    const hasSessionAuth = isSessionValid(validSession);
+
+    let hasEmbedAuth = false;
+    if (!hasSessionAuth && tenantId !== 'public') {
+      const verification = verifyEmbedSessionToken(resolveEmbedToken(req), {
+        tenantId,
+        origin: req.header('origin') || '',
+      });
+      hasEmbedAuth = verification.ok;
+    }
+
+    if (tenantId !== 'public' && !hasSessionAuth && !hasEmbedAuth) {
+      return res.status(401).json({ error: 'tenant telemetry requires session or scoped embed token' });
+    }
+
     const events = listData(storage, 'listTelemetry');
     const event = {
-      tenant_id: resolveScopedTenantId(req),
+      tenant_id: tenantId,
       timestamp: new Date().toISOString(),
       answered: Boolean(answered),
       score: Number(score || 0),
@@ -1690,13 +1842,19 @@ function createApp(options = {}) {
     });
     saveData(storage, 'saveRuntimeInstances', runtimeInstances);
 
+    const deploymentResponse = {
+      ...deployment,
+      api_key: undefined,
+    };
+
     return res.status(201).json({
-      deployment,
+      deployment: deploymentResponse,
       outputs: {
         runtime_url: deployment.runtime_url,
         embed_code: deployment.embed_code,
-        api_key: deployment.api_key,
         access_settings: {
+          embed_auth: 'scoped-session-token',
+          key_in_script_required: false,
           tenant_membership_required: true,
           audiences: deployment.audience_rules,
         },
