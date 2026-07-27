@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
 const net = require('net');
@@ -273,12 +274,28 @@ function ensureDemoTenant(storage) {
   }
 }
 
+function ensureDefaultBundle(storage, companyName) {
+  const defaultBundleName = 'knowledgeos.bundle.json';
+  const bundlesDir = storage?.bundlesDir;
+  const canCheckFilesystem = Boolean(bundlesDir);
+
+  if (canCheckFilesystem) {
+    const defaultBundlePath = path.join(bundlesDir, defaultBundleName);
+    if (fs.existsSync(defaultBundlePath)) return;
+  }
+
+  const docs = listData(storage, 'listDocuments');
+  const bundle = compileBundle(docs, { company: companyName });
+  storage.writeBundle(defaultBundleName, bundle);
+}
+
 function createApp(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const companyName = options.companyName || 'KnowledgeOS';
   const storage = options.storage || createStorage(rootDir);
 
   ensureDemoTenant(storage);
+  ensureDefaultBundle(storage, companyName);
 
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() });
