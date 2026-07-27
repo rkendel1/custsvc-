@@ -260,6 +260,7 @@
         <nav class="topnav">
           <a href="/">Home</a>
           <a href="/onboarding">Setup</a>
+          <a href="/sources.html">Sources</a>
           <a href="/access.html?next=%2Fonboarding.html">Sign in</a>
         </nav>
         <div class="session-actions">
@@ -278,6 +279,13 @@
             <li><strong>Step 3. Add starter answers</strong><span>Drop in a few key policies so value shows up immediately.</span></li>
             <li><strong>Step 4. Go live</strong><span>We finalize setup and generate your install snippet.</span></li>
           </ul>
+          <div class="status-box" style="margin-top:0.75rem;">
+            <strong>Prefer the simple path?</strong>
+            Use the single-screen flow to add a source, sync content, and go embed-ready in one place.
+            <div class="inline-actions" style="margin-top:0.45rem;">
+              <a id="openUnifiedSourceFlowLink" href="/sources.html" class="btn-ghost" style="display:inline-flex; align-items:center; text-decoration:none;">Open simple source flow</a>
+            </div>
+          </div>
         </section>
 
         <section class="panel">
@@ -473,6 +481,7 @@
       const sourceDiagnostics = document.getElementById('sourceDiagnostics');
       const authState = document.getElementById('authState');
       const signOutBtn = document.getElementById('signOutBtn');
+      const openUnifiedSourceFlowLink = document.getElementById('openUnifiedSourceFlowLink');
       let sourceTemplates = [];
       let stagedKnowledgeFiles = [];
       let latestConnectedSourceId = '';
@@ -565,6 +574,15 @@
         if (sessionToken) next.searchParams.set('session_token', sessionToken);
         else next.searchParams.delete('session_token');
         window.history.replaceState({}, '', next.toString());
+        updateUnifiedSourceFlowLink();
+      }
+
+      function updateUnifiedSourceFlowLink() {
+        if (!openUnifiedSourceFlowLink) return;
+        const next = new URL('/sources.html', window.location.origin);
+        if (tenantId) next.searchParams.set('tenant_id', tenantId);
+        if (sessionToken) next.searchParams.set('session_token', sessionToken);
+        openUnifiedSourceFlowLink.href = `${next.pathname}${next.search}`;
       }
 
       function updateEmbedScript(script = '') {
@@ -704,6 +722,7 @@
           if (!resolvedTenantId) return;
           tenantId = resolvedTenantId;
           renderTenantLine();
+          updateUnifiedSourceFlowLink();
           updateUrlState();
           updateEmbedScript();
         } catch (_error) {

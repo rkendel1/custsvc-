@@ -223,6 +223,7 @@
         </a>
         <nav class="topnav">
           <a href="/">Home</a>
+          <a href="/sources.html">Sources</a>
           <a href="/embed-test.html">Embed test</a>
         </nav>
         <div class="session-actions">
@@ -252,7 +253,10 @@
 
           <div class="wizard-step active" data-step="1">
             <h3 style="font-size:1rem;">Source operations</h3>
-            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">Switch between setup, monitoring, and ingestion.</p>
+            <p style="color: var(--muted); margin: 0.35rem 0 0.55rem;">Use the single-screen flow for fastest setup, or use advanced controls below.</p>
+            <div class="inline-actions" style="margin-bottom:0.6rem;">
+              <button id="openSourceFlow" type="button" class="btn-primary">Open simple source flow</button>
+            </div>
             <div class="inline-actions source-nav">
               <button id="sourceScreenConnectBtn" type="button" class="btn-primary" aria-pressed="true">Connect source</button>
               <button id="sourceScreenHealthBtn" type="button" class="btn-ghost" aria-pressed="false">Monitor + health</button>

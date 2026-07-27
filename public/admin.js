@@ -960,6 +960,7 @@ function wireQuickStart() {
   const openEmbedTesterBtn = document.getElementById('openEmbedTester');
   const refreshQuickStatsBtn = document.getElementById('refreshQuickStats');
   const toggleAdvancedBtn = document.getElementById('toggleAdvanced');
+  const openSourceFlowBtn = document.getElementById('openSourceFlow');
 
   openEmbedTesterBtn?.addEventListener('click', () => {
     const tenantId = getTenantForDashboardActions();
@@ -974,6 +975,12 @@ function wireQuickStart() {
   toggleAdvancedBtn?.addEventListener('click', () => {
     const showing = document.body.classList.toggle('show-advanced');
     toggleAdvancedBtn.textContent = showing ? 'Hide advanced tools' : 'Show advanced tools';
+  });
+
+  openSourceFlowBtn?.addEventListener('click', () => {
+    const tenantId = getTenantForDashboardActions();
+    if (!tenantId) return;
+    window.location.href = `/sources.html?tenant_id=${encodeURIComponent(tenantId)}`;
   });
 }
 

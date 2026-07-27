@@ -177,6 +177,7 @@
         <nav class="topnav">
           <a href="/">Home</a>
           <a href="/onboarding">Setup</a>
+          <a href="/sources.html">Sources</a>
           <a href="/access.html?next=%2Finstall.html">Sign in</a>
         </nav>
       </header>
@@ -204,11 +205,13 @@
           <li>For custom UI behavior, pass optional data attributes after initial install.</li>
         </ol>
 
-        <div class="note">If your tenant bundle does not exist yet, run onboarding and deploy once before installation.</div>
+        <div class="note">If your tenant bundle is missing, open Sources to add and sync content first.</div>
       </section>
     </div>
 
+    <script src="/auth-context.js"></script>
     <script>
+      const authContext = window.KnowledgeOSAuthContext || {};
       const params = new URLSearchParams(window.location.search);
       const tenantInput = document.getElementById('tenantInput');
       const copyScriptBtn = document.getElementById('copyScriptBtn');
@@ -216,14 +219,49 @@
       const bundleStatus = document.getElementById('bundleStatus');
       const scriptOutput = document.getElementById('scriptOutput');
       let statusReq = 0;
+      let tenantOrigin = '';
 
-      const queryTenant = String(params.get('tenant_id') || '').trim();
-      if (queryTenant) tenantInput.value = queryTenant;
+      function normalizeTenant(value) {
+        if (typeof authContext.normalizeTenant === 'function') {
+          return authContext.normalizeTenant(value);
+        }
+        return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+      }
+
+      const queryTenant = normalizeTenant(params.get('tenant_id') || '');
+      const storedTenant = normalizeTenant(localStorage.getItem('knowledgeos_active_tenant_id') || '');
+      if (queryTenant) {
+        tenantInput.value = queryTenant;
+        localStorage.setItem('knowledgeos_active_tenant_id', queryTenant);
+      } else if (storedTenant) {
+        tenantInput.value = storedTenant;
+      }
+
+      async function refreshAccessStatus() {
+        try {
+          const response = await fetch('/api/access/status');
+          const data = await response.json();
+          const tenantFromAuth = normalizeTenant(data?.authenticated_tenant_id || '');
+          tenantOrigin = String(data?.tenant_origin || '').trim();
+          if (tenantFromAuth) {
+            if (typeof authContext.maybeRedirectToTenantHost === 'function') {
+              if (authContext.maybeRedirectToTenantHost(tenantFromAuth, tenantOrigin)) return;
+            }
+            tenantInput.value = tenantFromAuth;
+            localStorage.setItem('knowledgeos_active_tenant_id', tenantFromAuth);
+            renderScript();
+          }
+        } catch (_error) {
+          // Keep manual tenant input path as fallback when status call is unavailable.
+        }
+      }
 
       function buildTenantScript(tenantId) {
-        const normalized = String(tenantId || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+        const normalized = normalizeTenant(tenantId);
         if (!normalized) return '';
-        const origin = window.location.origin;
+        const origin = (typeof authContext.resolveTenantOrigin === 'function')
+          ? (authContext.resolveTenantOrigin(normalized, tenantOrigin) || window.location.origin)
+          : window.location.origin;
         return `<script src="${origin}/embed.js" data-tenant-id="${normalized}"><\\/script>`;
       }
 
@@ -234,7 +272,10 @@
       }
 
       async function checkBundleStatus() {
-        const tenantId = String(tenantInput.value || '').trim().toLowerCase();
+        const tenantId = normalizeTenant(tenantInput.value || '');
+        if (tenantId) {
+          localStorage.setItem('knowledgeos_active_tenant_id', tenantId);
+        }
         const reqId = ++statusReq;
 
         if (!tenantId) {
@@ -256,7 +297,7 @@
             return;
           }
           bundleStatus.className = 'status missing';
-          bundleStatus.textContent = `Not ready: bundle missing for ${tenantId}. Run onboarding deploy first.`;
+          bundleStatus.textContent = `Not ready: bundle missing for ${tenantId}. Open /sources.html to add and sync content.`;
         } catch (_error) {
           if (reqId !== statusReq) return;
           bundleStatus.className = 'status missing';
@@ -283,7 +324,7 @@
       });
 
       openDemoBtn.addEventListener('click', () => {
-        const tenantId = String(tenantInput.value || '').trim().toLowerCase();
+        const tenantId = normalizeTenant(tenantInput.value || '');
         if (!tenantId) {
           scriptOutput.textContent = 'Enter a valid tenant id first.';
           return;
@@ -292,6 +333,7 @@
       });
 
       renderScript();
+      refreshAccessStatus();
     </script>
   </body>
 </html>
