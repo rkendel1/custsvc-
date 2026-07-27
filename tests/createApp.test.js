@@ -89,7 +89,7 @@ test('telemetry endpoint rejects payloads without question and intent', async (t
   assert.equal(response.status, 400);
 });
 
-test('access credentials support signup and require full login credentials', async (t) => {
+test('access credentials support signup and allow tenant lookup during login', async (t) => {
   const previousAuthSecret = process.env.APP_AUTH_SECRET;
   process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
   t.after(() => {
@@ -153,6 +153,19 @@ test('access credentials support signup and require full login credentials', asy
   });
   assert.equal(deniedLogin.status, 401);
 
+  const inferredTenantLogin = await fetch(`${baseUrl}/api/access/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email: 'owner@acme.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(inferredTenantLogin.status, 200);
+  const inferredTenantLoginBody = await inferredTenantLogin.json();
+  assert.equal(typeof inferredTenantLoginBody.next_url, 'string');
+  assert.equal(inferredTenantLoginBody.next_url.includes('/onboarding.html?tenant_id=acme'), true);
+
   const loginResponse = await fetch(`${baseUrl}/api/access/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -182,6 +195,50 @@ test('access credentials support signup and require full login credentials', asy
   const onboardedLoginBody = await onboardedLoginResponse.json();
   assert.equal(typeof onboardedLoginBody.next_url, 'string');
   assert.equal(onboardedLoginBody.next_url.includes('/admin.html?tenant_id=acme'), true);
+});
+
+test('signup is not blocked by tenant scope middleware', async (t) => {
+  const previousAuthSecret = process.env.APP_AUTH_SECRET;
+  process.env.APP_AUTH_SECRET = 'test-app-auth-secret';
+  t.after(() => {
+    if (previousAuthSecret === undefined) delete process.env.APP_AUTH_SECRET;
+    else process.env.APP_AUTH_SECRET = previousAuthSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-access-scope-signup-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const firstSignup = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      tenant_id: 'alpha',
+      email: 'owner@alpha.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(firstSignup.status, 201);
+  const cookie = firstSignup.headers.get('set-cookie');
+  assert.equal(Boolean(cookie), true);
+
+  const secondSignup = await fetch(`${baseUrl}/api/access/signup`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie,
+    },
+    body: JSON.stringify({
+      tenant_id: 'gofo',
+      email: 'randy@kendelconsulting.com',
+      password: 'G04broke',
+    }),
+  });
+  const secondBody = await secondSignup.json();
+
+  assert.equal(secondSignup.status, 201);
+  assert.equal(secondBody.tenant_id, 'gofo');
 });
 
 test('onboarding standards endpoint returns canonical option sets', async (t) => {

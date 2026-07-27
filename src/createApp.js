@@ -930,13 +930,23 @@ function createAccessCredentialState(rootDir) {
       const normalizedTenantId = normalizeCredentialTenantId(tenantId);
       const normalizedEmail = normalizeCredentialEmail(email);
       const candidatePassword = String(password || '').trim();
-      if (!normalizedTenantId || !normalizedEmail || !candidatePassword) {
-        return { ok: false, error: 'tenant_id, email, and password are required' };
+      if (!normalizedEmail || !candidatePassword) {
+        return { ok: false, error: 'email and password are required' };
       }
 
-      const record = records.find(
-        (item) => item.tenant_id === normalizedTenantId && item.email === normalizedEmail,
-      );
+      let record = null;
+      if (normalizedTenantId) {
+        record = records.find(
+          (item) => item.tenant_id === normalizedTenantId && item.email === normalizedEmail,
+        );
+      } else {
+        const matches = records.filter((item) => item.email === normalizedEmail);
+        if (!matches.length) return { ok: false, error: 'invalid credentials' };
+        if (matches.length > 1) {
+          return { ok: false, error: 'multiple workspaces found for this email; provide tenant_id' };
+        }
+        [record] = matches;
+      }
       if (!record) return { ok: false, error: 'invalid credentials' };
 
       const candidateHash = hashAccessCredentialPassword(candidatePassword, record.salt);
@@ -945,7 +955,7 @@ function createAccessCredentialState(rootDir) {
       if (expected.length !== provided.length) return { ok: false, error: 'invalid credentials' };
       if (!timingSafeEqual(expected, provided)) return { ok: false, error: 'invalid credentials' };
 
-      return { ok: true, tenant_id: normalizedTenantId, email: normalizedEmail };
+      return { ok: true, tenant_id: String(record.tenant_id || '').trim().toLowerCase(), email: normalizedEmail };
     },
   };
 }
@@ -2124,6 +2134,8 @@ function createApp(options = {}) {
   app.locals.accessCredentialState = accessCredentialState;
 
   app.use('/api', (req, res, next) => {
+    if (String(req.path || '').startsWith('/access/')) return next();
+
     const identityTenantId = String(resolveConsoleAccessIdentity(req)?.tenant_id || '').trim();
     if (!identityTenantId) return next();
 
@@ -2221,8 +2233,11 @@ function createApp(options = {}) {
     if (credentialsEnabled) {
       const verified = accessCredentialState.verify({ tenantId, email, password });
       if (!verified.ok) {
-        const message = verified.error === 'tenant_id, email, and password are required'
-          ? 'tenant_id, email, and password are required'
+        const message = (
+          verified.error === 'email and password are required'
+          || verified.error === 'multiple workspaces found for this email; provide tenant_id'
+        )
+          ? verified.error
           : 'invalid credentials';
         return res.status(401).json({ error: message });
       }
