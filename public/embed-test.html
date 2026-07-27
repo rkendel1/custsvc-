@@ -181,7 +181,6 @@
         </a>
         <nav class="topnav">
           <a href="/onboarding.html">Setup</a>
-          <a href="/install.html">Install</a>
           <a id="spaceLink" href="/tenant.html">Your space</a>
           <a id="dashboardLink" href="/access.html?next=%2Fadmin.html">Dashboard</a>
         </nav>
@@ -189,9 +188,9 @@
 
       <div class="layout">
         <section class="panel">
-          <h1 style="font-size:1.35rem;">Embed script test lab</h1>
+          <h1 style="font-size:1.35rem;">Test Assistant With Your Data</h1>
           <p style="margin:0.42rem 0 0; color: var(--muted);">
-            Paste your embed script and launch a clean sandbox page to validate the assistant behavior.
+            Enter your tenant and run one preview. Then ask a test question below.
           </p>
 
           <label for="tenantIdInput">Tenant ID</label>
@@ -201,14 +200,21 @@
           <textarea id="embedScriptInput" placeholder="Paste the full script tag from onboarding."></textarea>
 
           <div class="actions">
-            <button id="generateBtn" class="btn-ghost" type="button">Generate script from tenant</button>
-            <button id="runBtn" class="btn-primary" type="button">Run test page</button>
-            <button id="copyBtn" class="btn-ghost" type="button">Copy script</button>
+            <button id="loadBtn" class="btn-primary" type="button">Load assistant preview</button>
+            <button id="runBtn" class="btn-ghost" type="button">Refresh preview</button>
+            <button id="copyBtn" class="btn-ghost" type="button">Copy install script</button>
             <button id="clearBtn" class="btn-ghost" type="button">Clear</button>
           </div>
 
+          <label for="questionInput">Test question</label>
+          <input id="questionInput" placeholder="Ask about the knowledge you just added" value="What can you tell me from our current knowledge base?" />
+          <div class="actions" style="margin-top:0.45rem;">
+            <button id="askBtn" class="btn-primary" type="button">Ask test question</button>
+          </div>
+          <div id="answer" class="status" style="display:none;"></div>
+
           <div id="status" class="status"><strong>Status</strong> Ready to test.</div>
-          <p class="hint">The script is also saved in local storage so you can iterate quickly.</p>
+          <p class="hint">Expected result: an Ask button appears in the preview and this page returns an answer below.</p>
         </section>
 
         <section class="panel">
@@ -225,10 +231,13 @@
       const params = new URLSearchParams(window.location.search);
       const tenantIdInput = document.getElementById('tenantIdInput');
       const embedScriptInput = document.getElementById('embedScriptInput');
-      const generateBtn = document.getElementById('generateBtn');
+      const loadBtn = document.getElementById('loadBtn');
       const runBtn = document.getElementById('runBtn');
       const copyBtn = document.getElementById('copyBtn');
       const clearBtn = document.getElementById('clearBtn');
+      const askBtn = document.getElementById('askBtn');
+      const questionInput = document.getElementById('questionInput');
+      const answer = document.getElementById('answer');
       const status = document.getElementById('status');
       const previewFrame = document.getElementById('previewFrame');
       const spaceLink = document.getElementById('spaceLink');
@@ -241,6 +250,12 @@
 
       function normalizeTenant(value) {
         return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+      }
+
+      function extractTenantFromScript(script) {
+        const text = String(script || '');
+        const match = text.match(/data-tenant-id\s*=\s*['\"]([^'\"]+)['\"]/i);
+        return normalizeTenant(match?.[1] || '');
       }
 
       function buildEmbedScript(tenantId) {
@@ -264,12 +279,14 @@
 
       function saveState() {
         localStorage.setItem('knowledgeos_embed_test_script', String(embedScriptInput.value || ''));
-        localStorage.setItem('knowledgeos_last_workspace', String(tenantIdInput.value || ''));
+        const tenant = normalizeTenant(tenantIdInput.value);
+        localStorage.setItem('knowledgeos_last_workspace', tenant);
+        if (tenant) localStorage.setItem('knowledgeos_active_tenant_id', tenant);
       }
 
       function loadState() {
         const tenantFromQuery = String(params.get('tenant_id') || '').trim();
-        const savedTenant = String(localStorage.getItem('knowledgeos_last_workspace') || '').trim();
+        const savedTenant = String(localStorage.getItem('knowledgeos_active_tenant_id') || localStorage.getItem('knowledgeos_last_workspace') || '').trim();
         tenantIdInput.value = tenantFromQuery || savedTenant;
 
         const savedScript = String(localStorage.getItem('knowledgeos_embed_test_script') || '').trim();
@@ -281,12 +298,50 @@
         updateLinks(tenantIdInput.value);
       }
 
-      function runSandbox() {
+      function setAnswer(title, lines = []) {
+        const safeLines = Array.isArray(lines) ? lines : [String(lines || '')];
+        answer.style.display = 'block';
+        answer.innerHTML = `<strong>${title}</strong>${safeLines.filter(Boolean).join('<br />')}`;
+      }
+
+      function clearAnswer() {
+        answer.style.display = 'none';
+        answer.innerHTML = '';
+      }
+
+      function waitForRuntimeReady(timeoutMs = 12000) {
+        return new Promise((resolve) => {
+          const startedAt = Date.now();
+          const timer = setInterval(() => {
+            const frameWindow = previewFrame.contentWindow;
+            const frameDocument = previewFrame.contentDocument;
+            const runtimeReady = Boolean(frameWindow?.KnowledgeOSRuntime?.askQuestion);
+            const askButton = frameDocument
+              ? Array.from(frameDocument.querySelectorAll('button')).find((node) => String(node.textContent || '').trim() === 'Ask')
+              : null;
+
+            if (runtimeReady) {
+              clearInterval(timer);
+              resolve({ ok: true, askButtonVisible: Boolean(askButton) });
+              return;
+            }
+
+            if (Date.now() - startedAt > timeoutMs) {
+              clearInterval(timer);
+              resolve({ ok: false, askButtonVisible: Boolean(askButton) });
+            }
+          }, 250);
+        });
+      }
+
+      async function runSandbox() {
         const script = String(embedScriptInput.value || '').trim();
         if (!script) {
           setStatus('Action needed', 'Paste or generate an embed script first.');
           return;
         }
+
+        clearAnswer();
 
         const html = `<!doctype html>
 <html>
@@ -299,12 +354,14 @@
       .card { max-width: 760px; margin: 0 auto; border: 1px solid #d7e1f4; border-radius: 12px; background: #fff; padding: 16px; }
       h1 { margin: 0 0 8px; font-size: 20px; }
       p { margin: 0; color: #475569; }
+      .note { margin-top: 10px; font-size: 13px; color: #64748b; }
     </style>
   </head>
   <body>
     <div class="card">
       <h1>KnowledgeOS Embed Sandbox</h1>
-      <p>Your script is loaded below. Open browser console for diagnostics if needed.</p>
+      <p>Your script is loaded below. The Ask button should appear at the bottom-right.</p>
+      <p class="note">If it does not appear, return to the test tab and use Ask test question.</p>
     </div>
     ${script}
   </body>
@@ -312,11 +369,61 @@
 
         previewFrame.srcdoc = html;
         saveState();
-        setStatus('Sandbox running', 'Your embed script has been injected in the preview frame.');
+        setStatus('Loading preview', 'Injecting embed script into sandbox...');
+
+        const runtime = await waitForRuntimeReady();
+        if (!runtime.ok) {
+          setStatus('Preview loaded with warning', [
+            'Runtime did not fully initialize in time.',
+            'Check tenant deployment and bundle readiness, then try again.',
+          ]);
+          return;
+        }
+
+        if (runtime.askButtonVisible) {
+          setStatus('Preview ready', [
+            'Ask button detected in sandbox.',
+            'You can click Ask in the preview or use Ask test question here.',
+          ]);
+          return;
+        }
+
+        setStatus('Preview ready', [
+          'Runtime initialized but Ask button was not detected.',
+          'Use Ask test question below to verify answers from your server data.',
+        ]);
       }
 
-      generateBtn.addEventListener('click', () => {
-        const tenantId = normalizeTenant(tenantIdInput.value);
+      async function askTestQuestion() {
+        const question = String(questionInput.value || '').trim();
+        if (!question) {
+          setStatus('Action needed', 'Enter a test question first.');
+          return;
+        }
+
+        const runtime = previewFrame.contentWindow?.KnowledgeOSRuntime;
+        if (!runtime || typeof runtime.askQuestion !== 'function') {
+          setStatus('Action needed', 'Load assistant preview first.');
+          return;
+        }
+
+        setStatus('Querying assistant', 'Running question against embedded runtime...');
+        try {
+          const result = await runtime.askQuestion(question);
+          const answerText = String(result?.answer || '').trim() || 'No answer returned.';
+          setAnswer('Assistant answer', [answerText]);
+          setStatus('Query complete', [
+            `Answered: ${result?.answered ? 'yes' : 'no'}`,
+            `Score: ${Number(result?.score || 0).toFixed(3)}`,
+          ]);
+        } catch (error) {
+          setAnswer('Query failed', String(error?.message || 'Unexpected error'));
+          setStatus('Could not query assistant', 'See details in the response box.');
+        }
+      }
+
+      loadBtn.addEventListener('click', async () => {
+        const tenantId = normalizeTenant(tenantIdInput.value || extractTenantFromScript(embedScriptInput.value));
         if (!tenantId) {
           setStatus('Action needed', 'Enter a tenant id first.');
           return;
@@ -325,10 +432,16 @@
         tenantIdInput.value = tenantId;
         updateLinks(tenantId);
         saveState();
-        setStatus('Script generated', `Generated script for tenant: ${tenantId}`);
+        await runSandbox();
       });
 
-      runBtn.addEventListener('click', runSandbox);
+      runBtn.addEventListener('click', () => {
+        runSandbox();
+      });
+
+      askBtn.addEventListener('click', () => {
+        askTestQuestion();
+      });
 
       copyBtn.addEventListener('click', async () => {
         const value = String(embedScriptInput.value || '').trim();
@@ -348,6 +461,7 @@
         embedScriptInput.value = '';
         previewFrame.srcdoc = '';
         localStorage.removeItem('knowledgeos_embed_test_script');
+        clearAnswer();
         setStatus('Cleared', 'Script and preview were cleared.');
       });
 
@@ -359,8 +473,8 @@
       embedScriptInput.addEventListener('change', saveState);
 
       loadState();
-      if (embedScriptInput.value) {
-        setStatus('Ready', 'Embed script loaded from your previous session.');
+      if (embedScriptInput.value || tenantIdInput.value) {
+        setStatus('Ready to test', 'Click Load assistant preview to verify your latest server data.');
       }
     </script>
   </body>
