@@ -291,6 +291,10 @@
       || normalized.includes('breadcrumb')
       || normalized.includes('skip to main content')
       || normalized.includes('dmv practice tests')
+      || normalized.includes('practice test')
+      || normalized.includes('motorcycle permit')
+      || normalized.includes('multiple-choice questions')
+      || normalized.includes('questions you answered incorrectly')
     );
   }
 
@@ -335,8 +339,49 @@
     const stopWords = new Set([
       'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'about', 'does', 'have', 'what', 'how', 'many',
       'much', 'tell', 'me', 'is', 'are', 'in', 'on', 'at', 'to', 'of', 'a', 'an', 'it', 'as', 'by', 'be', 'has', 'who',
+      'need', 'needs', 'want', 'wants', 'old', 'older', 'get', 'getting', 'like', 'just', 'can', 'could',
     ]);
     return tokenize(question).filter((token) => token.length > 2 && !stopWords.has(token));
+  }
+
+  function extractAnchorKeywords(question) {
+    const weakKeywords = new Set([
+      'question', 'questions', 'answer', 'answers', 'help', 'information', 'details', 'general', 'company',
+      'policy', 'process', 'thing', 'things', 'need', 'want', 'know', 'tell',
+    ]);
+    return extractQuestionKeywords(question)
+      .filter((token) => token.length >= 4)
+      .filter((token) => !weakKeywords.has(token));
+  }
+
+  function sentenceRelevance(question, sentence) {
+    const questionKeywords = extractQuestionKeywords(question);
+    const anchorKeywords = extractAnchorKeywords(question);
+    const sentenceTokenSet = new Set(tokenize(sentence));
+
+    let overlap = 0;
+    for (const token of questionKeywords) {
+      if (sentenceTokenSet.has(token)) overlap += 1;
+    }
+
+    let anchorOverlap = 0;
+    for (const token of anchorKeywords) {
+      if (sentenceTokenSet.has(token)) anchorOverlap += 1;
+    }
+
+    const coverage = questionKeywords.length ? overlap / questionKeywords.length : 0;
+    return { overlap, anchorOverlap, coverage, anchorCount: anchorKeywords.length };
+  }
+
+  function isResultRelevantToQuestion(question, text, score = 0) {
+    const stats = sentenceRelevance(question, text);
+    if (stats.anchorCount > 0) {
+      if (stats.anchorOverlap >= 1) return true;
+      if (stats.overlap >= 2 && stats.coverage >= 0.35) return true;
+      return Number(score || 0) >= 0.88;
+    }
+    if (stats.overlap >= 2 && stats.coverage >= 0.3) return true;
+    return Number(score || 0) >= 0.9;
   }
 
   function hasExplicitSubject(question) {
@@ -434,6 +479,7 @@
     const normalizedSentence = String(sentence || '').toLowerCase();
     const questionKeywords = extractQuestionKeywords(normalizedQuestion);
     const sentenceTokens = new Set(tokenize(normalizedSentence));
+    const { anchorOverlap, anchorCount } = sentenceRelevance(normalizedQuestion, normalizedSentence);
 
     let overlap = 0;
     for (const token of questionKeywords) {
@@ -448,6 +494,7 @@
     if (/\b\d+\+?\s+years?\b/i.test(sentence)) score += 2;
     if (isLikelyPromotionalNoise(sentence)) score -= 4;
     if (isLikelyBoilerplateLine(sentence)) score -= 6;
+    if (anchorCount > 0 && anchorOverlap === 0) score -= 5;
     return score;
   }
 
@@ -458,6 +505,7 @@
       .filter(Boolean)
       .filter((line) => !isLikelyBoilerplateLine(line))
       .filter((line) => !hasSuspiciousTruncation(line))
+      .filter((line) => isResultRelevantToQuestion(question, line, 0))
       .map((line) => ({ line, score: scoreSentence(question, line) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score);
@@ -547,9 +595,7 @@
     }
 
     if (!picked.length) {
-      const fallback = cleanRetrievedText(chunkText).slice(0, 420);
-      if (!fallback) return "I don't have an answer for that yet.";
-      return ensureTerminalPunctuation(fallback);
+      return "I don't have an answer for that yet.";
     }
 
     const complete = picked
@@ -1262,7 +1308,26 @@
     const effectiveQuestion = buildSessionAwareQuestion(question);
     const intentResult = detectIntent(effectiveQuestion);
     const results = await search(effectiveQuestion, { limit: 5 });
-    const best = results[0] || null;
+    const relevantResults = results.filter((item) => {
+      const text = String(item?.chunk?.text || '');
+      return isResultRelevantToQuestion(effectiveQuestion, text, item?.score || 0);
+    });
+    if (!relevantResults.length) {
+      const response = {
+        answer: "I don't have an answer for that yet.",
+        score: results[0] ? Number(results[0].score || 0) : 0,
+        confidence: 0,
+        intent: intentResult.intent,
+        process_started: false,
+        topChunkId: null,
+        answered: false,
+        effectiveQuestion,
+      };
+      updateSessionMemory(question, response);
+      return response;
+    }
+    const answerResults = relevantResults;
+    const best = answerResults[0] || null;
 
     if (best && best.score >= minAnswerConfidence && state.ai.mode === AI_MODE.LOCAL) {
       try {
@@ -1299,7 +1364,7 @@
         agreement * confidenceWeights.agreement +
         reviewerConfidence * confidenceWeights.reviewer
       ).toFixed(3));
-      const evidenceCorpus = results.map((item) => String(item?.chunk?.text || '')).join('\n');
+      const evidenceCorpus = answerResults.map((item) => String(item?.chunk?.text || '')).join('\n');
       const formattedAnswer = formatDeterministicAnswer(effectiveQuestion, evidenceCorpus || best.chunk.text || '');
       const response = {
         answer: formattedAnswer,
