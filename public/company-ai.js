@@ -1579,7 +1579,13 @@
       padding: '0.45rem',
       border: '1px solid #d1d5db',
       borderRadius: '8px',
+      background: '#ffffff',
+      color: '#111827',
+      caretColor: '#111827',
+      opacity: '1',
+      WebkitTextFillColor: '#111827',
     });
+    input.setAttribute('aria-label', 'Ask a question');
 
     const send = document.createElement('button');
     send.textContent = 'Send';

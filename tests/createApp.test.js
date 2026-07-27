@@ -525,6 +525,33 @@ test('embed session does not auto-provision without authenticated tenant identit
   assert.equal(fs.existsSync(tenantBundlePath), false);
 });
 
+test('embed APIs respond to CORS preflight for third-party pages', async (t) => {
+  const previousEmbedSecret = process.env.EMBED_TOKEN_SECRET;
+  process.env.EMBED_TOKEN_SECRET = 'test-embed-token-secret';
+  t.after(() => {
+    if (previousEmbedSecret === undefined) delete process.env.EMBED_TOKEN_SECRET;
+    else process.env.EMBED_TOKEN_SECRET = previousEmbedSecret;
+  });
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledgeos-embed-cors-'));
+  const app = createApp({ rootDir });
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => server.close());
+
+  const preflight = await fetch(`${baseUrl}/api/embed/search`, {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://www.randykendel.com',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type,x-embed-token',
+    },
+  });
+
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
+  assert.equal(preflight.headers.get('access-control-allow-methods'), 'GET,POST,OPTIONS');
+});
+
 test('bulk documents endpoint ingests valid items and reports rejects', async (t) => {
   const documents = [];
   const storage = {

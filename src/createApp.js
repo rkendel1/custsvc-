@@ -906,6 +906,33 @@ function resolveTenantOrigin(req, tenantId, fallbackPort = 3000) {
   return `${protocol}://${normalizedTenantId}.${baseDomain}`;
 }
 
+function resolveEmbedCorsOrigin(req) {
+  const origin = String(req?.header?.('origin') || '').trim();
+  if (!origin) return '';
+
+  const configured = String(process.env.EMBED_CORS_ALLOW_ORIGINS || process.env.CORS_ALLOW_ORIGINS || '*').trim();
+  if (!configured || configured === '*') return '*';
+
+  const allowList = configured
+    .split(',')
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  if (!allowList.length) return '*';
+  if (allowList.includes(origin)) return origin;
+  return '';
+}
+
+function applyEmbedCors(req, res) {
+  const allowOrigin = resolveEmbedCorsOrigin(req);
+  if (!allowOrigin) return;
+
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Embed-Token, X-Tenant-Id, X-Session-Token');
+  res.setHeader('Access-Control-Max-Age', '600');
+}
+
 function shouldRedirectToTenantHost(req, tenantId) {
   const safeTenant = String(tenantId || '').trim().toLowerCase();
   if (!safeTenant) return false;
@@ -2335,6 +2362,19 @@ function createApp(options = {}) {
   app.use(express.urlencoded({ extended: true }));
   app.locals.consolePasswordState = consolePasswordState;
   app.locals.accessCredentialState = accessCredentialState;
+
+  app.use((req, res, next) => {
+    const pathValue = String(req.path || '');
+    const isEmbedPath = pathValue.startsWith('/api/embed/');
+    const isTelemetryPath = pathValue === '/api/telemetry';
+    if (!isEmbedPath && !isTelemetryPath) return next();
+
+    applyEmbedCors(req, res);
+    if (String(req.method || '').toUpperCase() === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    return next();
+  });
 
   app.use('/api', (req, res, next) => {
     if (String(req.path || '').startsWith('/access/')) return next();
