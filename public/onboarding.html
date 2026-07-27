@@ -378,6 +378,7 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       let tenantId = params.get('tenant_id') || '';
+      const quickMode = params.get('quick') === '1';
       let sessionToken =
         params.get('session_token') ||
         localStorage.getItem('knowledgeos_onboarding_session_token') ||
@@ -676,6 +677,23 @@
       applyRequestedTargets();
       updateTargetSummary();
       renderStep();
+
+      if (quickMode) {
+        const guidePanel = document.querySelector('.layout > section.panel');
+        if (guidePanel) guidePanel.style.display = 'none';
+        prevStep.style.display = 'none';
+        nextStep.style.display = 'none';
+        step = 4;
+        renderStep();
+        if (tenantId && hasSessionToken()) {
+          updateEmbedScript();
+          setStatus('Your workspace is live', [
+            `Tenant: ${tenantId}`,
+            'Your starter intelligence and runtime are ready.',
+            'Copy the embed script below and add it to your site.',
+          ]);
+        }
+      }
 
       function authHeader() {
         return sessionToken ? { 'x-session-token': sessionToken } : {};

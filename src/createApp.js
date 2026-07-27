@@ -854,6 +854,53 @@ function createSession(storage, { tenantId, userId, role }) {
   return session;
 }
 
+function seedStarterDocuments(storage, tenantId) {
+  const docs = listData(storage, 'listDocuments');
+  const existingCount = docs.filter((doc) => doc.tenant_id === tenantId).length;
+  if (existingCount > 0) return { added: 0, total: existingCount };
+
+  const now = new Date().toISOString();
+  const starterDocs = [
+    {
+      id: `doc-${randomUUID()}`,
+      tenant_id: tenantId,
+      title: 'Returns and Refunds Policy',
+      body: 'Customers can return products within 30 days with receipt. Refunds over $500 require manager approval within one business day.',
+      type: 'POLICY',
+      visibility: 'PUBLIC',
+      audience: 'PUBLIC',
+      status: 'ACTIVE',
+      createdAt: now,
+    },
+    {
+      id: `doc-${randomUUID()}`,
+      tenant_id: tenantId,
+      title: 'Escalation Workflow',
+      body: 'When confidence is low or policy conflict exists, escalate to support lead, attach source citations, and request manager review.',
+      type: 'PROCESS',
+      visibility: 'INTERNAL',
+      audience: 'INTERNAL',
+      status: 'ACTIVE',
+      createdAt: now,
+    },
+    {
+      id: `doc-${randomUUID()}`,
+      tenant_id: tenantId,
+      title: 'Billing FAQ',
+      body: 'Invoices are issued monthly. Card updates can be done in billing settings. Proration applies when plans change mid-cycle.',
+      type: 'FAQ',
+      visibility: 'PUBLIC',
+      audience: 'PUBLIC',
+      status: 'ACTIVE',
+      createdAt: now,
+    },
+  ];
+
+  docs.push(...starterDocs);
+  saveData(storage, 'saveDocuments', docs);
+  return { added: starterDocs.length, total: starterDocs.length };
+}
+
 function ensureDemoTenant(storage) {
   const DEMO_OWNER_USER_ID = 'user-acme-owner';
   const tenants = listData(storage, 'listTenants');
@@ -1840,6 +1887,149 @@ function createApp(options = {}) {
         status: 'pending',
         hook: '/api/auth/verify-email',
       },
+    });
+  });
+
+  app.post('/api/signup/quickstart', signupLimiter, (req, res) => {
+    const {
+      name,
+      email,
+      company,
+      companySize = '1-50',
+      primaryUseCase = 'Customer Website',
+      deploymentProfile = 'BOTH',
+      audiences = ['Customers', 'Employees'],
+    } = req.body || {};
+
+    if (!name || !email || !company) {
+      return res.status(400).json({ error: 'name, email, and company are required' });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'a valid email is required' });
+    }
+
+    let tenant;
+    try {
+      tenant = provisionTenant({
+        companyName: company,
+        ownerEmail: email,
+        companySize,
+        primaryUseCase,
+        deploymentProfile,
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const tenants = listData(storage, 'listTenants');
+    if (tenants.some((existing) => existing.tenant_id === tenant.tenant_id)) {
+      return res.status(409).json({
+        error: 'workspace already exists for this company',
+        hint: 'Use the access page to sign in to your existing workspace.',
+      });
+    }
+
+    const userId = `user-${randomUUID()}`;
+    tenant.owner_user_id = userId;
+    tenants.push(tenant);
+    saveData(storage, 'saveTenants', tenants);
+
+    const users = listData(storage, 'listUsers');
+    users.push({
+      user_id: userId,
+      tenant_id: tenant.tenant_id,
+      name: String(name),
+      email: String(email).toLowerCase(),
+      email_verified: false,
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveUsers', users);
+
+    const memberships = listData(storage, 'listTenantMemberships');
+    memberships.push({
+      tenant_id: tenant.tenant_id,
+      user_id: userId,
+      role: 'Owner',
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveTenantMemberships', memberships);
+
+    const subscriptions = listData(storage, 'listSubscriptions');
+    subscriptions.push({
+      tenant_id: tenant.tenant_id,
+      plan: 'Starter',
+      usage: { questions_answered: 0, runtime_instances: 0 },
+      limits: { documents: 100, monthly_questions: 1000, runtime_instances: 1 },
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    saveData(storage, 'saveSubscriptions', subscriptions);
+
+    const seeded = seedStarterDocuments(storage, tenant.tenant_id);
+    const tenantDocs = listData(storage, 'listDocuments').filter((doc) => doc.tenant_id === tenant.tenant_id);
+    const tenantBundle = compileBundle(tenantDocs, { company: tenant.company_name || tenant.tenant_id });
+    storage.writeBundle(`${tenant.tenant_id}.knowledgeos.bundle.json`, tenantBundle);
+
+    const session = createSession(storage, { tenantId: tenant.tenant_id, userId, role: 'Owner' });
+
+    const onboarding = listData(storage, 'listOnboarding');
+    const onboardingState = {
+      tenant_id: tenant.tenant_id,
+      step: 'quickstart-complete',
+      company_profile: {
+        company: tenant.company_name,
+        name: String(name),
+        email: String(email).toLowerCase(),
+      },
+      deployment_choice: deploymentProfile,
+      import_sources: ['WEBSITE'],
+      audiences: Array.isArray(audiences) && audiences.length ? audiences : ['Customers', 'Employees'],
+      updated_at: new Date().toISOString(),
+    };
+    onboarding.push(onboardingState);
+    saveData(storage, 'saveOnboarding', onboarding);
+
+    const deployment = createDeployment({
+      tenantId: tenant.tenant_id,
+      companyName: tenant.company_name,
+      deploymentProfile,
+      audiences: onboardingState.audiences,
+    });
+    const deployments = listData(storage, 'listDeployments');
+    deployments.push(deployment);
+    saveData(storage, 'saveDeployments', deployments);
+
+    const runtimeInstances = listData(storage, 'listRuntimeInstances');
+    runtimeInstances.push({
+      runtime_instance_id: `runtime-${randomUUID()}`,
+      tenant_id: tenant.tenant_id,
+      deployment_id: deployment.deployment_id,
+      runtime_url: deployment.runtime_url,
+      status: deployment.status,
+      created_at: deployment.deployed_at,
+    });
+    saveData(storage, 'saveRuntimeInstances', runtimeInstances);
+
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const embedScript = `<script src="${origin}/embed.js" data-tenant-id="${tenant.tenant_id}" data-api-base="${origin}" data-title="Ask ${tenant.tenant_id}"></script>`;
+
+    return res.status(201).json({
+      tenant,
+      session: {
+        token: session.token,
+        expires_at: session.expires_at,
+      },
+      seeded,
+      deployment: {
+        deployment_id: deployment.deployment_id,
+        status: deployment.status,
+        runtime_url: deployment.runtime_url,
+      },
+      embed_script: embedScript,
+      next_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`,
+      admin_url: `/admin?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      tenant_url: `/tenant?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
     });
   });
 

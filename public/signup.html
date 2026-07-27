@@ -32,7 +32,7 @@
       h1, h2, h3 { font-family: 'Sora', sans-serif; margin: 0; letter-spacing: -0.02em; }
 
       .shell {
-        max-width: 980px;
+        max-width: 960px;
         margin: 0 auto;
         padding: 1.2rem 1rem 2.5rem;
       }
@@ -62,19 +62,18 @@
       }
 
       .wordmark strong { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 1.2rem; }
-
       .wordmark span { color: var(--brand); }
-
-      .topbar a {
-        text-decoration: none;
-        color: var(--muted);
-        font-weight: 600;
-      }
 
       .topnav {
         display: flex;
         gap: 0.75rem;
         flex-wrap: wrap;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: var(--muted);
+        font-weight: 600;
       }
 
       .session-chip {
@@ -97,7 +96,7 @@
       .layout {
         margin-top: 1rem;
         display: grid;
-        grid-template-columns: 0.85fr 1.15fr;
+        grid-template-columns: 0.9fr 1.1fr;
         gap: 1rem;
       }
 
@@ -113,64 +112,33 @@
         margin: 0.8rem 0 0;
         padding: 0;
         display: grid;
-        gap: 0.6rem;
+        gap: 0.55rem;
       }
 
       .steps li {
         border: 1px solid var(--line);
         border-radius: 10px;
-        padding: 0.7rem;
+        padding: 0.65rem;
         background: #fff;
       }
 
       .steps strong { display: block; margin-bottom: 0.2rem; }
       .steps span { color: var(--muted); font-size: 0.9rem; }
 
-      .step-pane { display: none; }
-      .step-pane.active { display: block; }
-
       label {
         display: block;
-        margin-top: 0.65rem;
+        margin-top: 0.62rem;
         font-weight: 700;
         font-size: 0.93rem;
       }
 
-      input, select, textarea {
+      input, select {
         width: 100%;
         margin-top: 0.25rem;
         padding: 0.6rem 0.65rem;
         border-radius: 10px;
         border: 1px solid var(--line);
         font: inherit;
-      }
-
-      .target-grid {
-        margin-top: 0.4rem;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.45rem;
-      }
-
-      .target-grid label {
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        font-weight: 600;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 0.45rem 0.5rem;
-        background: #fff;
-      }
-
-      .target-grid input { width: auto; margin: 0; }
-
-      .wizard-nav {
-        margin-top: 0.9rem;
-        display: flex;
-        justify-content: space-between;
-        gap: 0.6rem;
       }
 
       button {
@@ -192,24 +160,22 @@
         color: var(--ink);
       }
 
-      .chips { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.5rem; }
-      .chip {
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        padding: 0.3rem 0.6rem;
-        font-size: 0.82rem;
-        color: #3d4870;
+      .actions {
+        margin-top: 0.9rem;
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
       }
 
       .status-box {
         background: #f4f7ff;
         border: 1px solid var(--line);
         border-radius: 12px;
-        padding: 0.75rem;
+        padding: 0.78rem;
         margin-top: 0.8rem;
         color: #33436b;
-        font-size: 0.9rem;
-        line-height: 1.4;
+        font-size: 0.92rem;
+        line-height: 1.45;
       }
 
       .status-box strong {
@@ -218,9 +184,20 @@
         color: #1d2f59;
       }
 
+      .embed-box {
+        margin-top: 0.7rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 0.6rem;
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+      }
+
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
-        .target-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -240,179 +217,107 @@
         </nav>
         <div class="session-actions">
           <span class="session-chip" data-auth-state>Checking access...</span>
-          <button type="button" class="btn-ghost" data-signout data-next="/signup" style="padding:0.42rem 0.8rem;">Sign out</button>
+          <button type="button" class="btn-ghost" data-signout data-next="/signup">Sign out</button>
         </div>
       </header>
 
       <div class="layout">
         <section class="panel">
-          <h2>Launch Wizard</h2>
-          <p style="color: var(--muted);">Create your workspace, choose your rollout path, and go live quickly.</p>
+          <h2>From idea to live in one flow</h2>
+          <p style="color: var(--muted); margin: 0.45rem 0 0;">No long wizard. We will provision your workspace, seed starter intelligence, and get your embed script ready.</p>
           <ul class="steps">
-            <li><strong>Step 1. Company profile</strong><span>Tell us who you are and your top support goal.</span></li>
-            <li><strong>Step 2. Knowledge sources</strong><span>Select where your trusted answers already live.</span></li>
-            <li><strong>Step 3. Create workspace</strong><span>We provision your tenant and send you into onboarding.</span></li>
+            <li><strong>1. Create your workspace</strong><span>Just your name, work email, and company.</span></li>
+            <li><strong>2. We auto-configure essentials</strong><span>Tenant, owner access, starter intelligence, and runtime deployment.</span></li>
+            <li><strong>3. Launch</strong><span>You land in onboarding with your script ready.</span></li>
           </ul>
         </section>
 
         <section class="panel">
-          <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">Create your KnowledgeOS account</h1>
-          <form id="signupForm">
-            <div class="step-pane active" data-step="1">
-              <label>Name <input name="name" required /></label>
-              <label>Email <input type="email" name="email" required /></label>
-              <label>Company <input name="company" required /></label>
-              <label>Company Size
-                <select name="companySize" required>
-                  <option value="">Select</option>
-                  <option>1-50</option>
-                  <option>51-200</option>
-                  <option>201-500</option>
-                  <option>500+</option>
-                </select>
-              </label>
-              <label>Primary Use Case <input name="primaryUseCase" placeholder="Customer Website" required /></label>
-              <label>Deployment Profile
-                <select name="deploymentProfile">
-                  <option value="BOTH" selected>BOTH</option>
-                  <option value="CUSTOMER">CUSTOMER</option>
-                  <option value="EMPLOYEE">EMPLOYEE</option>
-                  <option value="PRIVATE_ENTERPRISE">PRIVATE_ENTERPRISE</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="step-pane" data-step="2">
-              <h3 style="font-size:1rem;">Select target systems to connect</h3>
-              <p style="color: var(--muted); margin: 0.35rem 0 0.4rem; font-size: 0.92rem;">These selections are passed into onboarding so setup can guide connectors.</p>
-              <div class="target-grid" id="targetGrid">
-                <label><input type="checkbox" name="targets" value="SHAREPOINT" /> SharePoint</label>
-                <label><input type="checkbox" name="targets" value="WEBSITE" /> Website</label>
-                <label><input type="checkbox" name="targets" value="CONFLUENCE" /> Confluence</label>
-                <label><input type="checkbox" name="targets" value="GOOGLE_DRIVE" /> Google Drive</label>
-                <label><input type="checkbox" name="targets" value="NOTION" /> Notion</label>
-                <label><input type="checkbox" name="targets" value="SLACK" /> Slack</label>
-                <label><input type="checkbox" name="targets" value="ZENDESK" /> Zendesk</label>
-                <label><input type="checkbox" name="targets" value="SALESFORCE" /> Salesforce</label>
-                <label><input type="checkbox" name="targets" value="S3" /> S3</label>
-                <label><input type="checkbox" name="targets" value="GITHUB" /> GitHub</label>
-              </div>
-              <div class="chips" id="targetSummary"></div>
-            </div>
-
-            <div class="step-pane" data-step="3">
-              <h3 style="font-size:1rem;">Review and provision</h3>
-              <p style="color: var(--muted); margin: 0.35rem 0 0.5rem; font-size: 0.92rem;">You are one click away from your workspace.</p>
-              <div id="reviewPanel" class="status-box"><strong>Review</strong>Review will appear here before submit.</div>
-            </div>
-
-            <div class="wizard-nav">
-              <button id="prevStep" type="button" class="btn-ghost">Back</button>
-              <button id="nextStep" type="button" class="btn-primary">Next</button>
-              <button id="submitSignup" type="submit" class="btn-primary" style="display:none;">Create Account</button>
+          <h1 style="font-size:1.65rem; margin-bottom: 0.45rem;">Create Account</h1>
+          <form id="quickSignupForm">
+            <label>Name
+              <input name="name" required />
+            </label>
+            <label>Work Email
+              <input type="email" name="email" required />
+            </label>
+            <label>Company
+              <input name="company" required />
+            </label>
+            <label>Primary goal
+              <select name="primaryUseCase">
+                <option value="Customer Website" selected>Improve customer support answers</option>
+                <option value="Internal Copilot">Help internal teams execute faster</option>
+                <option value="Both">Support both customers and internal teams</option>
+              </select>
+            </label>
+            <div class="actions">
+              <button id="createWorkspaceBtn" type="submit" class="btn-primary">Create my workspace</button>
+              <a href="/onboarding" class="btn-ghost" style="text-decoration:none; display:inline-flex; align-items:center;">Open advanced setup</a>
             </div>
           </form>
-          <div id="signupOutput" class="status-box"><strong>Status</strong>Complete the wizard to provision your tenant.</div>
+
+          <div id="signupOutput" class="status-box"><strong>Status</strong>Fill the form and create your workspace.</div>
+          <div id="embedScript" class="embed-box" style="display:none;"></div>
         </section>
       </div>
     </div>
 
     <script>
-      const form = document.getElementById('signupForm');
+      const form = document.getElementById('quickSignupForm');
       const output = document.getElementById('signupOutput');
-      const panes = [...document.querySelectorAll('.step-pane')];
-      const prevStep = document.getElementById('prevStep');
-      const nextStep = document.getElementById('nextStep');
-      const submitSignup = document.getElementById('submitSignup');
-      const reviewPanel = document.getElementById('reviewPanel');
-      const targetSummary = document.getElementById('targetSummary');
-      let step = 1;
+      const submitBtn = document.getElementById('createWorkspaceBtn');
+      const embedScript = document.getElementById('embedScript');
 
-      function selectedTargets() {
-        return [...document.querySelectorAll('input[name="targets"]:checked')].map((item) => item.value);
+      function setStatus(title, lines = []) {
+        const items = Array.isArray(lines) ? lines : [String(lines || '')];
+        output.innerHTML = `<strong>${title}</strong>${items.filter(Boolean).join('<br />')}`;
       }
-
-      function updateTargetSummary() {
-        const targets = selectedTargets();
-        targetSummary.innerHTML = '';
-        if (!targets.length) {
-          const fallback = document.createElement('span');
-          fallback.className = 'chip';
-          fallback.textContent = 'No explicit targets selected yet';
-          targetSummary.appendChild(fallback);
-          return;
-        }
-        for (const target of targets) {
-          const chip = document.createElement('span');
-          chip.className = 'chip';
-          chip.textContent = target;
-          targetSummary.appendChild(chip);
-        }
-      }
-
-      function setStatus(title, message) {
-        output.innerHTML = `<strong>${title}</strong>${message}`;
-      }
-
-      function renderReview() {
-        const payload = Object.fromEntries(new FormData(form).entries());
-        payload.targets = selectedTargets();
-        reviewPanel.innerHTML = [
-          '<strong>Review</strong>',
-          `Name: ${payload.name || 'N/A'}`,
-          `Email: ${payload.email || 'N/A'}`,
-          `Company: ${payload.company || 'N/A'}`,
-          `Use case: ${payload.primaryUseCase || 'N/A'}`,
-          `Targets: ${payload.targets.join(', ') || 'None selected yet'}`,
-        ].join('<br />');
-      }
-
-      function renderStep() {
-        panes.forEach((pane, index) => {
-          pane.classList.toggle('active', index + 1 === step);
-        });
-        prevStep.style.visibility = step === 1 ? 'hidden' : 'visible';
-        nextStep.style.display = step === panes.length ? 'none' : 'inline-flex';
-        submitSignup.style.display = step === panes.length ? 'inline-flex' : 'none';
-        if (step === 3) renderReview();
-      }
-
-      prevStep.addEventListener('click', () => {
-        step = Math.max(1, step - 1);
-        renderStep();
-      });
-
-      nextStep.addEventListener('click', () => {
-        step = Math.min(panes.length, step + 1);
-        renderStep();
-      });
-
-      document.querySelectorAll('input[name="targets"]').forEach((node) => {
-        node.addEventListener('change', updateTargetSummary);
-      });
-
-      updateTargetSummary();
-      renderStep();
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const payload = Object.fromEntries(new FormData(form).entries());
-        payload.targets = selectedTargets();
-        payload.primaryUseCase = `${payload.primaryUseCase} | Targets: ${payload.targets.join(', ') || 'none'}`;
-        const response = await fetch('/api/signup', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          setStatus('Could not create workspace', data.error || 'Signup failed');
-          return;
-        }
-        setStatus('Workspace created', 'Redirecting you to guided onboarding...');
-        window.location.href = data.onboarding_url;
-      });
-    </script>
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating workspace...';
+
+        try {
+          const payload = Object.fromEntries(new FormData(form).entries());
+          payload.companySize = '1-50';
+          payload.deploymentProfile = 'BOTH';
+
+          const response = await fetch('/api/signup/quickstart', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          const text = await response.text();
+          let data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (_error) { data = {}; }
+
+          if (!response.ok) {
+            setStatus('Could not create workspace', data.error || `Request failed (${response.status})`);
+            return;
+          }
+
+          embedScript.style.display = 'block';
+          embedScript.textContent = data.embed_script || '';
+          setStatus('Workspace ready', [
+            `Tenant: ${data?.tenant?.tenant_id || 'created'}`,
+            `Starter intelligence added: ${data?.seeded?.added ?? 0} item(s)` ,
+            'Redirecting to your launch page...'
+          ]);
+
+          setTimeout(() => {
+            window.location.href = data.next_url || '/onboarding';
+          }, 1100);
+        } catch (error) {
+          setStatus('Could not create workspace', error.message || 'Unexpected error');
+         } finally {
+           submitBtn.disabled = false;
+           submitBtn.textContent = 'Create my workspace';
+         }
+       });
+     </script>
     <script src="/auth-ui.js"></script>
   </body>
 </html>
