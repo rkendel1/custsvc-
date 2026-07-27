@@ -2400,6 +2400,9 @@ function createApp(options = {}) {
     const nextUrl = identity?.tenant_id
       ? resolvePostAuthNextUrl(storage, identity.tenant_id)
       : '/onboarding.html';
+    const tenantOrigin = identity?.tenant_id
+      ? resolveTenantOrigin(_req, identity.tenant_id, Number(process.env.APP_PORT || 3000))
+      : null;
     res.json({
       password_required: shouldRequireConsolePassword(_req),
       authenticated: isConsoleAuthorized(_req),
@@ -2408,6 +2411,7 @@ function createApp(options = {}) {
       signup_required: !credentialsEnabled,
       authenticated_tenant_id: identity?.tenant_id || null,
       authenticated_email: identity?.email || null,
+      tenant_origin: tenantOrigin,
       next_url: nextUrl,
     });
   });

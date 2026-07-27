@@ -338,12 +338,49 @@
         dashboardLink.href = `/access.html?next=${encodeURIComponent(next)}`;
       }
 
+      function normalizeOrigin(value) {
+        const input = String(value || '').trim();
+        if (!input) return '';
+        try {
+          return new URL(input).origin;
+        } catch (_error) {
+          return '';
+        }
+      }
+
+      function maybeRedirectToTenantHost(tenantId, tenantOrigin) {
+        const safeTenant = normalizeTenant(tenantId);
+        const origin = normalizeOrigin(tenantOrigin);
+        if (!safeTenant || !origin) return false;
+
+        if (origin === window.location.origin) {
+          const current = normalizeTenant(params.get('tenant_id') || '');
+          if (current !== safeTenant) {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('tenant_id', safeTenant);
+            window.history.replaceState({}, '', nextUrl.toString());
+          }
+          return false;
+        }
+
+        const nextUrl = new URL(window.location.href);
+        nextUrl.protocol = new URL(origin).protocol;
+        nextUrl.host = new URL(origin).host;
+        nextUrl.searchParams.set('tenant_id', safeTenant);
+        window.location.replace(nextUrl.toString());
+        return true;
+      }
+
       async function hydrateTenantFromAuth() {
         try {
           const response = await fetch('/api/access/status', { credentials: 'include' });
           const data = await response.json();
           const tenantFromAuth = normalizeTenant(data?.authenticated_tenant_id || '');
           if (!tenantFromAuth) return '';
+
+          if (maybeRedirectToTenantHost(tenantFromAuth, data?.tenant_origin)) {
+            return tenantFromAuth;
+          }
 
           setActiveTenant(tenantFromAuth);
 
