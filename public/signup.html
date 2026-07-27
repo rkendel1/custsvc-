@@ -364,7 +364,7 @@
           ]);
 
           setTimeout(() => {
-            window.location.href = data.next_url || '/onboarding';
+            window.location.href = data.next_url || '/onboarding.html';
           }, 1100);
         } catch (error) {
           setStatus('Could not create workspace', error.message || 'Unexpected error');

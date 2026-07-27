@@ -84,7 +84,7 @@ test('quickstart signup provisions tenant when identity fields are omitted', asy
   assert.equal(typeof data?.session?.token, 'string');
   assert.equal(data.session.token.length > 0, true);
   assert.equal(typeof data?.next_url, 'string');
-  assert.equal(data.next_url.includes('/onboarding?tenant_id='), true);
+  assert.equal(data.next_url.includes('/onboarding.html?tenant_id='), true);
   assert.equal(typeof data?.embed_script, 'string');
   assert.equal(data.embed_script.includes('data-tenant-id'), true);
 });

@@ -1305,6 +1305,14 @@ function resolvePublicOrigin(req, fallbackPort = 3000) {
   return `${protocol}://${host}`;
 }
 
+function withOriginalQuery(req, targetPath) {
+  const queryIndex = String(req?.originalUrl || '').indexOf('?');
+  if (queryIndex < 0) return targetPath;
+  const query = String(req.originalUrl || '').slice(queryIndex);
+  if (!query) return targetPath;
+  return `${targetPath}${query}`;
+}
+
 function createApp(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   const companyName = options.companyName || 'KnowledgeOS';
@@ -2326,7 +2334,7 @@ function createApp(options = {}) {
         token: session.token,
         expires_at: session.expires_at,
       },
-      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}${targetsQuery}`,
+      onboarding_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}${targetsQuery}`,
       email_verification: {
         required: true,
         status: 'pending',
@@ -2482,9 +2490,9 @@ function createApp(options = {}) {
         runtime_url: deployment.runtime_url,
       },
       embed_script: embedScript,
-      next_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`,
-      admin_url: `/admin?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
-      tenant_url: `/tenant?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      next_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}&quick=1`,
+      admin_url: `/admin.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      tenant_url: `/tenant.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
     });
   });
 
@@ -2613,7 +2621,7 @@ function createApp(options = {}) {
           token: session.token,
           expires_at: session.expires_at,
         },
-        onboarding_url: `/onboarding?tenant_id=${existingTenant.tenant_id}&session_token=${session.token}`,
+        onboarding_url: `/onboarding.html?tenant_id=${existingTenant.tenant_id}&session_token=${session.token}`,
       });
     }
 
@@ -2686,7 +2694,7 @@ function createApp(options = {}) {
         token: session.token,
         expires_at: session.expires_at,
       },
-      onboarding_url: `/onboarding?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
+      onboarding_url: `/onboarding.html?tenant_id=${tenant.tenant_id}&session_token=${session.token}`,
     });
   });
 
@@ -2873,32 +2881,47 @@ function createApp(options = {}) {
 
   app.use(['/admin.html', '/tenant.html', '/onboarding.html', '/signup.html'], requireConsolePageAccess);
 
+  app.get('/bundles/:bundleName', readLimiter, (req, res, next) => {
+    const bundleName = String(req.params.bundleName || '').trim();
+    if (!bundleName) return next();
+
+    const requestedPath = path.join(rootDir, 'bundles', bundleName);
+    if (fs.existsSync(requestedPath)) return res.sendFile(requestedPath);
+
+    const isTenantBundle = bundleName.endsWith('.knowledgeos.bundle.json') && bundleName !== 'knowledgeos.bundle.json';
+    if (!isTenantBundle) return next();
+
+    const fallbackPath = path.join(rootDir, 'bundles', 'knowledgeos.bundle.json');
+    if (fs.existsSync(fallbackPath)) return res.sendFile(fallbackPath);
+    return next();
+  });
+
   app.use('/bundles', express.static(path.join(rootDir, 'bundles')));
   app.use('/vendor/pglite', express.static(path.join(rootDir, 'node_modules', '@electric-sql', 'pglite', 'dist')));
   app.use(express.static(path.join(rootDir, 'public')));
 
-  app.get('/admin', (_req, res) => {
-    res.redirect('/admin.html');
+  app.get('/admin', (req, res) => {
+    res.redirect(withOriginalQuery(req, '/admin.html'));
   });
 
-  app.get('/console', (_req, res) => {
-    res.redirect('/admin.html');
+  app.get('/console', (req, res) => {
+    res.redirect(withOriginalQuery(req, '/admin.html'));
   });
 
-  app.get('/demo', readLimiter, (_req, res) => {
-    res.redirect('/demo.html');
+  app.get('/demo', readLimiter, (req, res) => {
+    res.redirect(withOriginalQuery(req, '/demo.html'));
   });
 
-  app.get('/signup', readLimiter, (_req, res) => {
-    res.redirect('/signup.html');
+  app.get('/signup', readLimiter, (req, res) => {
+    res.redirect(withOriginalQuery(req, '/signup.html'));
   });
 
-  app.get('/onboarding', readLimiter, (_req, res) => {
-    res.redirect('/onboarding.html');
+  app.get('/onboarding', readLimiter, (req, res) => {
+    res.redirect(withOriginalQuery(req, '/onboarding.html'));
   });
 
-  app.get('/tenant', readLimiter, (_req, res) => {
-    res.redirect('/tenant.html');
+  app.get('/tenant', readLimiter, (req, res) => {
+    res.redirect(withOriginalQuery(req, '/tenant.html'));
   });
 
   return app;

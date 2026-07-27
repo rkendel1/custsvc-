@@ -567,6 +567,7 @@
     const bundle = await loadBundle();
     initializeAiIfNeeded(bundle);
     if (!state.ai.model) state.ai.mode = AI_MODE.RETRIEVAL_ONLY;
+    if (state.ai.model && !isTransformersModel(state.ai.model)) state.ai.mode = AI_MODE.RETRIEVAL_ONLY;
     if (state.ai.mode === AI_MODE.DISABLED) state.ai.model = null;
     return getAIStatus();
   }
@@ -641,6 +642,10 @@
     const id = modelId || state.ai.model?.id;
     if (!id) throw new Error('model not found');
     const model = (state.bundle?.models || []).find((item) => item.id === id) || state.ai.model || { id };
+    if (!isTransformersModel(model)) {
+      state.ai.mode = AI_MODE.RETRIEVAL_ONLY;
+      throw new Error('local artifact models are not supported in browser runtime');
+    }
     const artifactPath = model?.artifact?.weights || model?.artifact?.manifest || model?.artifact?.repository || null;
     let artifactUrl = null;
     let bytes = 0;
